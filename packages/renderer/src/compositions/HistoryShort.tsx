@@ -1,9 +1,9 @@
 import React from "react";
 import { AbsoluteFill, Sequence, useVideoConfig } from "remotion";
 import type { CaptionWord, ImageAsset, Scene } from "@rekishi/shared";
-import { KenBurnsImage } from "../components/KenBurnsImage.js";
-import { KaraokeCaption } from "../components/KaraokeCaption.js";
-import { NarrationAudio } from "../components/NarrationAudio.js";
+import { KenBurnsImage } from "../components/KenBurnsImage";
+import { KaraokeCaption } from "../components/KaraokeCaption";
+import { NarrationAudio } from "../components/NarrationAudio";
 
 export interface HistoryShortProps {
   scenes: Scene[];

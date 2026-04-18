@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { SceneSchema, ScriptSchema } from "./script.js";
-import { AudioAssetSchema, CaptionWordSchema, ImageAssetSchema } from "./asset.js";
+import { SceneSchema, ScriptSchema } from "./script";
+import { AudioAssetSchema, CaptionWordSchema, ImageAssetSchema } from "./asset";
 
 export const VIDEO_WIDTH = 1080;
 export const VIDEO_HEIGHT = 1920;

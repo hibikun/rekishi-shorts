@@ -1,9 +1,14 @@
-import "dotenv/config";
+import dotenv from "dotenv";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// repo root の .env.local を明示的に読む（pnpm monorepo では cwd が package dir になるため）
+const REPO_ROOT = path.resolve(__dirname, "../../../");
+dotenv.config({ path: path.join(REPO_ROOT, ".env.local") });
+dotenv.config({ path: path.join(REPO_ROOT, ".env") });
 
 function requireEnv(key: string): string {
   const v = process.env[key];
@@ -14,9 +19,9 @@ function requireEnv(key: string): string {
 export const config = {
   gemini: {
     apiKey: requireEnv("GEMINI_API_KEY"),
-    scriptModel: process.env.GEMINI_SCRIPT_MODEL ?? "gemini-3-pro",
-    sceneModel: process.env.GEMINI_SCENE_MODEL ?? "gemini-3-flash",
-    imageModel: process.env.GEMINI_IMAGE_MODEL ?? "gemini-3-flash-image",
+    scriptModel: process.env.GEMINI_SCRIPT_MODEL ?? "gemini-3.1-pro-preview",
+    sceneModel: process.env.GEMINI_SCENE_MODEL ?? "gemini-3.1-flash-lite-preview",
+    imageModel: process.env.GEMINI_IMAGE_MODEL ?? "gemini-3.1-flash-image-preview",
   },
   elevenlabs: {
     apiKey: requireEnv("ELEVENLABS_API_KEY"),

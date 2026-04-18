@@ -33,7 +33,12 @@ const responseSchema = {
   required: ["narration", "hook", "body", "closing", "keyTerms", "estimatedDurationSec"],
 };
 
-export async function generateScript(topic: Topic): Promise<Script> {
+export interface ScriptResult {
+  script: Script;
+  usage: { inputTokens: number; outputTokens: number; model: string };
+}
+
+export async function generateScript(topic: Topic): Promise<ScriptResult> {
   const ai = new GoogleGenAI({ apiKey: config.gemini.apiKey });
   const prompt = renderPrompt(topic);
 
@@ -52,5 +57,12 @@ export async function generateScript(topic: Topic): Promise<Script> {
 
   const raw = JSON.parse(text);
   const script = ScriptSchema.parse({ ...raw, topic });
-  return script;
+  return {
+    script,
+    usage: {
+      inputTokens: response.usageMetadata?.promptTokenCount ?? 0,
+      outputTokens: response.usageMetadata?.candidatesTokenCount ?? 0,
+      model: config.gemini.scriptModel,
+    },
+  };
 }

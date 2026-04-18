@@ -16,6 +16,7 @@ import { alignCaptions } from "./asr-aligner.js";
 import { LocalStorageAdapter, jobPath } from "./storage/local.js";
 import { FURIGANA_MAP } from "./furigana.js";
 import { dataPath } from "./config.js";
+import { CostTracker } from "./cost-tracker.js";
 
 export interface GenerateOptions {
   topic: Topic;
@@ -23,8 +24,9 @@ export interface GenerateOptions {
   allowImageGeneration?: boolean;
 }
 
-export async function generatePlan(opts: GenerateOptions): Promise<RenderPlan> {
+export async function generatePlan(opts: GenerateOptions): Promise<{ plan: RenderPlan; tracker: CostTracker }> {
   const jobId = opts.jobId ?? shortId();
+  const tracker = new CostTracker();
   const storage = new LocalStorageAdapter();
   await storage.ensureJobDir(jobId, "scripts");
   await storage.ensureJobDir(jobId, "audio");
@@ -32,23 +34,30 @@ export async function generatePlan(opts: GenerateOptions): Promise<RenderPlan> {
   await storage.ensureJobDir(jobId, "captions");
 
   log(`📝 [1/5] Gemini Pro で台本生成中...`);
-  const script = await generateScript(opts.topic);
+  const scriptResult = await generateScript(opts.topic);
+  const script = scriptResult.script;
+  tracker.addGemini("script", scriptResult.usage.model, scriptResult.usage.inputTokens, scriptResult.usage.outputTokens);
   await writeJson(jobPath(jobId, "scripts", "script.json"), script);
-  log(chalk.dim(`   ${script.narration.length}文字 / 推定${script.estimatedDurationSec}秒`));
+  log(chalk.dim(`   ${script.narration.length}文字 / 推定${script.estimatedDurationSec}秒 / in=${scriptResult.usage.inputTokens}tok out=${scriptResult.usage.outputTokens}tok`));
 
   log(`🎬 [2/5] Gemini Flash でシーン分割中...`);
-  const scenePlan = await planScenes(script);
+  const sceneResult = await planScenes(script);
+  const scenePlan = sceneResult.plan;
+  tracker.addGemini("scene-plan", sceneResult.usage.model, sceneResult.usage.inputTokens, sceneResult.usage.outputTokens);
   await writeJson(jobPath(jobId, "scripts", "scene-plan.json"), scenePlan);
-  log(chalk.dim(`   ${scenePlan.scenes.length}シーン`));
+  log(chalk.dim(`   ${scenePlan.scenes.length}シーン / in=${sceneResult.usage.inputTokens}tok out=${sceneResult.usage.outputTokens}tok`));
 
   log(`🎙️  [3/5] ElevenLabs でナレーション合成中...`);
   const audioDestPath = jobPath(jobId, "audio", "narration.mp3");
   const tts = await synthesizeNarration(script.narration, audioDestPath, {
     furigana: FURIGANA_MAP,
   });
+  tracker.addElevenLabs("tts", tts.characters);
+  log(chalk.dim(`   ${tts.characters}文字`));
 
   log(`📝 [4/5] Whisper で字幕タイムスタンプ取得中...`);
   const { words, totalDurationSec } = await alignCaptions(tts.path);
+  tracker.addWhisper("whisper", totalDurationSec);
   await writeJson(jobPath(jobId, "captions", "words.json"), { words, totalDurationSec });
   log(chalk.dim(`   ${words.length}単語 / 実測${totalDurationSec.toFixed(2)}秒`));
 
@@ -56,7 +65,10 @@ export async function generatePlan(opts: GenerateOptions): Promise<RenderPlan> {
   const rescaledScenes = rescaleScenes(scenePlan.scenes, totalDurationSec);
 
   log(`🖼️  [5/5] 画像取得中 (Wikimedia → Nano Banana fallback)...`);
-  const images = await resolveSceneAssets(rescaledScenes, { jobId, allowGeneration: opts.allowImageGeneration });
+  const resolved = await resolveSceneAssets(rescaledScenes, { jobId, allowGeneration: opts.allowImageGeneration });
+  const images = resolved.assets;
+  tracker.addImage("nano-banana", resolved.usage.generatedImages);
+  tracker.addFree("wikimedia", `${images.filter((i) => i.source === "wikimedia").length} images`);
   await writeJson(jobPath(jobId, "scripts", "images.json"), images);
   const wikiCount = images.filter((i) => i.source === "wikimedia").length;
   const genCount = images.filter((i) => i.source === "generated").length;
@@ -79,8 +91,9 @@ export async function generatePlan(opts: GenerateOptions): Promise<RenderPlan> {
   });
 
   await writeJson(jobPath(jobId, "scripts", "render-plan.json"), plan);
+  await writeJson(jobPath(jobId, "scripts", "cost.json"), { entries: tracker.getEntries(), totalUsd: tracker.totalUsd(), totalJpy: tracker.totalJpy() });
   log(chalk.green(`✅ RenderPlan 保存: ${jobPath(jobId, "scripts", "render-plan.json")}`));
-  return plan;
+  return { plan, tracker };
 }
 
 function rescaleScenes(scenes: Scene[], targetTotalSec: number): Scene[] {

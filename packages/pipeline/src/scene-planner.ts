@@ -40,7 +40,12 @@ const responseSchema = {
   required: ["scenes"],
 };
 
-export async function planScenes(script: Script): Promise<ScenePlan> {
+export interface ScenePlanResult {
+  plan: ScenePlan;
+  usage: { inputTokens: number; outputTokens: number; model: string };
+}
+
+export async function planScenes(script: Script): Promise<ScenePlanResult> {
   const ai = new GoogleGenAI({ apiKey: config.gemini.apiKey });
   const prompt = renderPrompt(script);
 
@@ -59,5 +64,12 @@ export async function planScenes(script: Script): Promise<ScenePlan> {
 
   const raw = JSON.parse(text);
   const plan = ScenePlanSchema.parse(raw);
-  return plan;
+  return {
+    plan,
+    usage: {
+      inputTokens: response.usageMetadata?.promptTokenCount ?? 0,
+      outputTokens: response.usageMetadata?.candidatesTokenCount ?? 0,
+      model: config.gemini.sceneModel,
+    },
+  };
 }

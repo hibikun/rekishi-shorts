@@ -1,3 +1,3 @@
-export * from "./schemas/script.js";
-export * from "./schemas/asset.js";
-export * from "./schemas/render-plan.js";
+export * from "./schemas/script";
+export * from "./schemas/asset";
+export * from "./schemas/render-plan";

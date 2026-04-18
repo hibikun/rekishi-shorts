@@ -1,7 +1,7 @@
 import React from "react";
 import { Composition } from "remotion";
 import { VIDEO_FPS, VIDEO_HEIGHT, VIDEO_WIDTH } from "@rekishi/shared";
-import { HistoryShort, type HistoryShortProps } from "./compositions/HistoryShort.js";
+import { HistoryShort, type HistoryShortProps } from "./compositions/HistoryShort";
 
 const defaultProps: HistoryShortProps = {
   scenes: [],

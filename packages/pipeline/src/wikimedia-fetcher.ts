@@ -2,7 +2,10 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 const COMMONS_API = "https://commons.wikimedia.org/w/api.php";
-const USER_AGENT = "rekishi-shorts/0.1 (contact: local dev)";
+// Wikimedia の User-Agent ポリシー: https://meta.wikimedia.org/wiki/User-Agent_policy
+// contact email or URL を必ず含めること
+const USER_AGENT =
+  "rekishi-shorts/0.1 (https://github.com/okawa-h/rekishi-shorts; educational video generator)";
 
 /** CC / PD 系ライセンスのみ許可 */
 const ALLOWED_LICENSE_SUBSTRINGS = [
@@ -98,11 +101,37 @@ export async function searchWikimediaImages(
 
 /**
  * 画像URLからダウンロードしてローカルに保存する。
+ * 429/503 は指数バックオフで 3 回まで再試行。
  */
 export async function downloadImage(url: string, destPath: string): Promise<void> {
-  const res = await fetch(url, { headers: { "User-Agent": USER_AGENT } });
-  if (!res.ok) throw new Error(`Image download failed ${res.status}: ${url}`);
-  const buffer = Buffer.from(await res.arrayBuffer());
-  await fs.mkdir(path.dirname(destPath), { recursive: true });
-  await fs.writeFile(destPath, buffer);
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) {
+      await sleep(500 * 2 ** attempt);
+    }
+    try {
+      const res = await fetch(url, {
+        headers: {
+          "User-Agent": USER_AGENT,
+          Accept: "image/*,*/*",
+        },
+      });
+      if (res.status === 429 || res.status === 503) {
+        lastErr = new Error(`Image download failed ${res.status}: ${url}`);
+        continue;
+      }
+      if (!res.ok) throw new Error(`Image download failed ${res.status}: ${url}`);
+      const buffer = Buffer.from(await res.arrayBuffer());
+      await fs.mkdir(path.dirname(destPath), { recursive: true });
+      await fs.writeFile(destPath, buffer);
+      return;
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  throw lastErr ?? new Error(`Image download failed: ${url}`);
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
 }

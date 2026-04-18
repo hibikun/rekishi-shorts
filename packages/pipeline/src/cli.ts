@@ -31,19 +31,41 @@ program
     });
     console.log(chalk.bold(`\n🎞️  rekishi-shorts: ${topic.title}\n`));
 
-    const plan = await generatePlan({
+    const { plan, tracker } = await generatePlan({
       topic,
       allowImageGeneration: opts.generateImages !== false,
     });
 
     if (opts.planOnly) {
       console.log(chalk.yellow("\n--plan-only 指定のためレンダリングをスキップします"));
+      console.log(chalk.bold("\n💰 コスト内訳:"));
+      console.log(tracker.formatTable());
       return;
     }
 
     const { renderHistoryShort } = await import("@rekishi/renderer");
     const outputPath = path.join(getJobOutputDir(), `${plan.id}.mp4`);
     console.log(chalk.bold(`\n🎥 Remotion でレンダリング中...`));
+    await renderHistoryShort(plan, outputPath);
+    console.log(chalk.green(`\n✅ 完成: ${outputPath}`));
+    console.log(chalk.bold("\n💰 コスト内訳:"));
+    console.log(tracker.formatTable());
+  });
+
+program
+  .command("render")
+  .description("既存の render-plan.json を使ってレンダリングのみ実行（再費用なし）")
+  .requiredOption("--plan-id <id>", "ジョブID（data/scripts/<id>/ 配下）")
+  .action(async (opts) => {
+    const { default: fs } = await import("node:fs");
+    const { RenderPlanSchema } = await import("@rekishi/shared");
+    const { dataPath } = await import("./config.js");
+    const planPath = path.join(dataPath("scripts", opts.planId), "render-plan.json");
+    const raw = JSON.parse(fs.readFileSync(planPath, "utf-8"));
+    const plan = RenderPlanSchema.parse(raw);
+    const { renderHistoryShort } = await import("@rekishi/renderer");
+    const outputPath = path.join(getJobOutputDir(), `${plan.id}.mp4`);
+    console.log(chalk.bold(`🎥 Remotion でレンダリング中: ${plan.id}`));
     await renderHistoryShort(plan, outputPath);
     console.log(chalk.green(`\n✅ 完成: ${outputPath}`));
   });
@@ -63,7 +85,7 @@ program
       subject: opts.subject,
       target: opts.target,
     });
-    const script = await generateScript(topic);
+    const { script } = await generateScript(topic);
     console.log(JSON.stringify(script, null, 2));
   });
 

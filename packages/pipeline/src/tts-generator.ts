@@ -8,6 +8,8 @@ export interface TTSResult {
   path: string;
   /** 実際の mp3 の秒数（ffprobe で後段で測定） */
   approxDurationSec: number;
+  /** 課金文字数（furigana置換後） */
+  characters: number;
 }
 
 /**
@@ -50,7 +52,7 @@ export async function synthesizeNarration(
   // Rough estimate: 1kbps mp3 は ~16000 bytes/sec。
   // 最終的な durationSec は Whisper 側の max(endSec) で上書きされるので初期値扱い。
   const approxDurationSec = Math.max(1, buffer.byteLength / 16000);
-  return { path: destPath, approxDurationSec };
+  return { path: destPath, approxDurationSec, characters: processed.length };
 }
 
 function applyFurigana(text: string, map?: Record<string, string>): string {
