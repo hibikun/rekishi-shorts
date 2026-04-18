@@ -47,16 +47,18 @@ export async function generatePlan(opts: GenerateOptions): Promise<{ plan: Rende
   await writeJson(jobPath(jobId, "scripts", "scene-plan.json"), scenePlan);
   log(chalk.dim(`   ${scenePlan.scenes.length}シーン / in=${sceneResult.usage.inputTokens}tok out=${sceneResult.usage.outputTokens}tok`));
 
-  log(`🎙️  [3/5] ElevenLabs でナレーション合成中...`);
-  const audioDestPath = jobPath(jobId, "audio", "narration.mp3");
+  log(`🎙️  [3/5] Gemini 3.1 Flash TTS でナレーション合成中...`);
+  const audioDestPath = jobPath(jobId, "audio", "narration.wav");
   const tts = await synthesizeNarration(script.narration, audioDestPath, {
     furigana: FURIGANA_MAP,
   });
-  tracker.addElevenLabs("tts", tts.characters);
-  log(chalk.dim(`   ${tts.characters}文字`));
+  tracker.addGemini("tts", tts.usage.model, tts.usage.inputTokens, tts.usage.outputTokens);
+  log(chalk.dim(`   ${tts.characters}文字 / 合成${tts.approxDurationSec.toFixed(2)}秒 / in=${tts.usage.inputTokens}tok out=${tts.usage.outputTokens}tok`));
 
-  log(`📝 [4/5] Whisper で字幕タイムスタンプ取得中...`);
-  const { words, totalDurationSec } = await alignCaptions(tts.path);
+  log(`📝 [4/5] Whisper で字幕タイムスタンプ取得中 (台本バイアス付き)...`);
+  const { words, totalDurationSec } = await alignCaptions(tts.path, {
+    scriptText: script.narration,
+  });
   tracker.addWhisper("whisper", totalDurationSec);
   await writeJson(jobPath(jobId, "captions", "words.json"), { words, totalDurationSec });
   log(chalk.dim(`   ${words.length}単語 / 実測${totalDurationSec.toFixed(2)}秒`));

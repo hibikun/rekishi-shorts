@@ -11,17 +11,27 @@ interface WhisperWord {
 }
 
 /**
- * 生成した音声ファイル（mp3）を Whisper に送り、単語タイムスタンプを取得する。
- * 戻り値の最後の endSec を音声の全体秒数として使える。
+ * 生成した音声ファイルを Whisper に送り、単語タイムスタンプを取得する。
+ *
+ * 改善点 (v2):
+ * - `prompt: scriptText` で既知語彙バイアスをかけて転写精度を底上げ
+ * - Whisperは小さなチャンク（数字・カナ）に分けがちなので、分割された数字を
+ *   再結合する簡易マージ処理を入れる
+ * - WAV/MP3 両対応
  */
-export async function alignCaptions(audioPath: string): Promise<{
+export async function alignCaptions(
+  audioPath: string,
+  opts: { scriptText?: string } = {},
+): Promise<{
   words: CaptionWord[];
   totalDurationSec: number;
 }> {
   const openai = new OpenAI({ apiKey: config.openai.apiKey });
 
   const buffer = fs.readFileSync(audioPath);
-  const file = new File([buffer], "narration.mp3", { type: "audio/mpeg" });
+  const ext = audioPath.endsWith(".wav") ? "wav" : "mp3";
+  const mime = ext === "wav" ? "audio/wav" : "audio/mpeg";
+  const file = new File([buffer], `narration.${ext}`, { type: mime });
 
   const transcription = (await openai.audio.transcriptions.create({
     file: file as unknown as Parameters<typeof openai.audio.transcriptions.create>[0]["file"],
@@ -29,10 +39,13 @@ export async function alignCaptions(audioPath: string): Promise<{
     response_format: "verbose_json",
     timestamp_granularities: ["word"],
     language: "ja",
+    // 台本を渡すことで固有名詞・年号・専門用語の転写精度が大幅に上がる
+    prompt: opts.scriptText?.slice(0, 500),
   })) as unknown as { words?: WhisperWord[]; duration?: number };
 
   const rawWords = transcription.words ?? [];
-  const words: CaptionWord[] = rawWords.map((w) =>
+  const merged = mergeDigitChunks(rawWords);
+  const words: CaptionWord[] = merged.map((w) =>
     CaptionWordSchema.parse({
       text: w.word,
       startSec: w.start,
@@ -42,4 +55,23 @@ export async function alignCaptions(audioPath: string): Promise<{
 
   const totalDurationSec = transcription.duration ?? (words.at(-1)?.endSec ?? 0);
   return { words, totalDurationSec };
+}
+
+/**
+ * Whisper は「1853年」を「18」「53」「年」に分割しがち。連続する数字を再結合。
+ */
+function mergeDigitChunks(words: WhisperWord[]): WhisperWord[] {
+  if (words.length === 0) return words;
+  const DIGITS = /^[0-9]+$/;
+  const out: WhisperWord[] = [];
+  for (const w of words) {
+    const prev = out[out.length - 1];
+    if (prev && DIGITS.test(prev.word) && DIGITS.test(w.word) && w.start - prev.end < 0.25) {
+      prev.word = prev.word + w.word;
+      prev.end = w.end;
+      continue;
+    }
+    out.push({ ...w });
+  }
+  return out;
 }

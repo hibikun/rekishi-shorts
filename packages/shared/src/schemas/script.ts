@@ -39,6 +39,6 @@ export const SceneSchema = z.object({
 export type Scene = z.infer<typeof SceneSchema>;
 
 export const ScenePlanSchema = z.object({
-  scenes: z.array(SceneSchema).min(3).max(20),
+  scenes: z.array(SceneSchema).min(3).max(30),
 });
 export type ScenePlan = z.infer<typeof ScenePlanSchema>;

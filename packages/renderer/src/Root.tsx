@@ -9,6 +9,7 @@ const defaultProps: HistoryShortProps = {
   audioSrc: "",
   captions: [],
   totalDurationSec: 60,
+  keyTerms: [],
 };
 
 const HistoryShortComponent = HistoryShort as unknown as React.FC<Record<string, unknown>>;

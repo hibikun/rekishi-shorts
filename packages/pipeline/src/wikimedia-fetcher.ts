@@ -24,6 +24,9 @@ function isAllowedLicense(licenseShortName: string | undefined): boolean {
 
 interface CommonsImageInfo {
   url: string;
+  thumburl?: string;
+  thumbwidth?: number;
+  thumbheight?: number;
   descriptionurl: string;
   width: number;
   height: number;
@@ -68,7 +71,8 @@ export async function searchWikimediaImages(
     gsrlimit: String(limit),
     prop: "imageinfo",
     iiprop: "url|size|extmetadata",
-    iiurlwidth: "1600",
+    // Chrome のデコーダ限界 (~16k pixels / ~50MB) を避けるため 1200px に縮小して取得
+    iiurlwidth: "1200",
     origin: "*",
   });
 
@@ -89,9 +93,10 @@ export async function searchWikimediaImages(
     if (!isAllowedLicense(license)) continue;
     results.push({
       pageUrl: info.descriptionurl,
-      imageUrl: info.url,
-      width: info.width,
-      height: info.height,
+      // 縮小版が取れている場合はそちらを優先（30MBの原本DLを避ける）
+      imageUrl: info.thumburl ?? info.url,
+      width: info.thumbwidth ?? info.width,
+      height: info.thumbheight ?? info.height,
       license,
       attribution: info.extmetadata?.Artist?.value?.replace(/<[^>]+>/g, "").trim(),
     });

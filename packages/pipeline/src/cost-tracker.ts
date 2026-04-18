@@ -11,6 +11,8 @@ const GEMINI_RATES: Record<string, { input: number; output: number }> = {
   "gemini-3-pro-preview": { input: 1.25, output: 10.0 },
   "gemini-3.1-flash-lite-preview": { input: 0.1, output: 0.4 },
   "gemini-3-flash-preview": { input: 0.3, output: 2.5 },
+  // TTS: 音声出力は $20/1M audio output tokens
+  "gemini-3.1-flash-tts-preview": { input: 1.0, output: 20.0 },
 };
 
 // Nano Banana 2: $0.039/image (1290 tokens @ $30/1M)

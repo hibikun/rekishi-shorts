@@ -7,30 +7,27 @@ const { fontFamily } = loadFont();
 
 export interface KaraokeCaptionProps {
   words: CaptionWord[];
-  /** 一度に画面に表示する単語数（フレーズウィンドウ） */
+  /** 一度に表示する単語数 */
   phraseWordCount?: number;
 }
 
 /**
- * 音声のword timestampに合わせてカラオケ風に単語を強調。
- * 下 1/3 に大きく配置し、受験生がスマホで見ても読める太字ゴシック。
+ * v2: 文節単位の少量表示、太字ピル状背景で読みやすく。
  */
 export const KaraokeCaption: React.FC<KaraokeCaptionProps> = ({
   words,
-  phraseWordCount = 6,
+  phraseWordCount = 4,
 }) => {
   const frame = useCurrentFrame();
   const { fps, width: videoWidth, height: videoHeight } = useVideoConfig();
   const currentSec = frame / fps;
 
-  const activeIndex = words.findIndex((w) => currentSec >= w.startSec && currentSec < w.endSec);
-  if (activeIndex === -1 && currentSec < (words[0]?.startSec ?? Infinity)) {
-    return null;
-  }
+  if (words.length === 0) return null;
+  if (currentSec < (words[0]?.startSec ?? Infinity)) return null;
 
-  // アクティブ単語を中心にウィンドウ切り出し
+  const activeIndex = words.findIndex((w) => currentSec >= w.startSec && currentSec < w.endSec);
   const centerIndex = activeIndex === -1
-    ? words.findIndex((w) => w.startSec > currentSec) - 1
+    ? Math.max(0, words.findIndex((w) => w.startSec > currentSec) - 1)
     : activeIndex;
   const start = Math.max(0, centerIndex - Math.floor(phraseWordCount / 2));
   const phrase = words.slice(start, start + phraseWordCount);
@@ -41,40 +38,49 @@ export const KaraokeCaption: React.FC<KaraokeCaptionProps> = ({
         position: "absolute",
         left: 0,
         right: 0,
-        bottom: videoHeight * 0.18,
+        bottom: videoHeight * 0.14,
         display: "flex",
-        flexWrap: "wrap",
         justifyContent: "center",
         alignItems: "center",
-        padding: "0 60px",
-        gap: "8px 12px",
-        fontFamily,
-        fontWeight: 900,
-        fontSize: 68,
-        lineHeight: 1.3,
-        textAlign: "center",
-        color: "#ffffff",
-        textShadow: "0 4px 12px rgba(0,0,0,0.9), 0 0 20px rgba(0,0,0,0.7)",
-        WebkitTextStroke: "2px rgba(0,0,0,0.6)",
+        padding: "0 48px",
         width: videoWidth,
       }}
     >
-      {phrase.map((w, i) => {
-        const isActive = currentSec >= w.startSec && currentSec < w.endSec;
-        return (
-          <span
-            key={start + i}
-            style={{
-              color: isActive ? "#FFD54F" : "#ffffff",
-              transform: isActive ? "scale(1.08)" : "scale(1)",
-              transition: "transform 80ms ease-out, color 80ms linear",
-              display: "inline-block",
-            }}
-          >
-            {w.text}
-          </span>
-        );
-      })}
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          justifyContent: "center",
+          alignItems: "center",
+          gap: "6px 10px",
+          background: "rgba(0,0,0,0.72)",
+          padding: "20px 32px",
+          borderRadius: 18,
+          maxWidth: "92%",
+        }}
+      >
+        {phrase.map((w, i) => {
+          const isActive = currentSec >= w.startSec && currentSec < w.endSec;
+          return (
+            <span
+              key={start + i}
+              style={{
+                fontFamily,
+                fontWeight: 900,
+                fontSize: 64,
+                lineHeight: 1.25,
+                color: isActive ? "#FFD54F" : "#ffffff",
+                transform: isActive ? "scale(1.06)" : "scale(1)",
+                transition: "transform 70ms ease-out, color 60ms linear",
+                display: "inline-block",
+                textShadow: isActive ? "0 0 14px rgba(255,213,79,0.55)" : "none",
+              }}
+            >
+              {w.text}
+            </span>
+          );
+        })}
+      </div>
     </div>
   );
 };

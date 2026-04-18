@@ -3,17 +3,14 @@ import { Img, interpolate, useCurrentFrame, useVideoConfig } from "remotion";
 
 export interface KenBurnsImageProps {
   src: string;
-  /** このシーンの開始フレーム（composition 全体基準） */
   startFrame: number;
-  /** このシーンのフレーム数 */
   durationFrames: number;
-  /** 0-based index。方向ランダム化のシード */
   sceneIndex: number;
 }
 
 /**
- * 静止画に Ken Burns 風のスロー pan/zoom を適用。
- * シーンごとに方向を変えて単調さを避ける。
+ * 静止画にスロー pan/zoom を適用（v2: 控えめに）。
+ * 1.5-3秒の短いシーンが連続するため Ken Burns は弱め。動きの方向だけ循環。
  */
 export const KenBurnsImage: React.FC<KenBurnsImageProps> = ({
   src,
@@ -25,7 +22,7 @@ export const KenBurnsImage: React.FC<KenBurnsImageProps> = ({
   const { width: videoWidth, height: videoHeight } = useVideoConfig();
   const localFrame = frame - startFrame;
 
-  // 方向パターン（index の mod で循環）
+  // 控えめな pan/zoom パターン
   const patterns: Array<{
     scaleFrom: number;
     scaleTo: number;
@@ -34,10 +31,10 @@ export const KenBurnsImage: React.FC<KenBurnsImageProps> = ({
     yFrom: number;
     yTo: number;
   }> = [
-    { scaleFrom: 1.0, scaleTo: 1.12, xFrom: 0, xTo: -25, yFrom: 0, yTo: -15 },
-    { scaleFrom: 1.12, scaleTo: 1.0, xFrom: 20, xTo: 0, yFrom: 10, yTo: 0 },
-    { scaleFrom: 1.05, scaleTo: 1.15, xFrom: -20, xTo: 15, yFrom: 0, yTo: 10 },
-    { scaleFrom: 1.08, scaleTo: 1.02, xFrom: 0, xTo: 25, yFrom: -10, yTo: 5 },
+    { scaleFrom: 1.02, scaleTo: 1.06, xFrom: 0, xTo: -10, yFrom: 0, yTo: -5 },
+    { scaleFrom: 1.06, scaleTo: 1.02, xFrom: 8, xTo: 0, yFrom: 4, yTo: 0 },
+    { scaleFrom: 1.03, scaleTo: 1.07, xFrom: -8, xTo: 6, yFrom: 0, yTo: 4 },
+    { scaleFrom: 1.05, scaleTo: 1.01, xFrom: 0, xTo: 10, yFrom: -4, yTo: 2 },
   ];
   const pattern = patterns[sceneIndex % patterns.length]!;
 
@@ -46,7 +43,6 @@ export const KenBurnsImage: React.FC<KenBurnsImageProps> = ({
   const translateY = interpolate(localFrame, [0, durationFrames], [pattern.yFrom, pattern.yTo]);
 
   if (!src) {
-    // 画像なしシーン: 暗グラデ背景
     return (
       <div
         style={{
@@ -78,6 +74,17 @@ export const KenBurnsImage: React.FC<KenBurnsImageProps> = ({
           objectFit: "cover",
           transform: `translate(${translateX}px, ${translateY}px) scale(${scale})`,
           transformOrigin: "center center",
+        }}
+      />
+      {/* 下部グラデーション: 字幕を読みやすくする */}
+      <div
+        style={{
+          position: "absolute",
+          left: 0,
+          right: 0,
+          bottom: 0,
+          height: "55%",
+          background: "linear-gradient(to bottom, transparent 0%, rgba(0,0,0,0.75) 80%)",
         }}
       />
     </div>

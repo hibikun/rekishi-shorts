@@ -52,16 +52,19 @@ export async function renderHistoryShort(plan: RenderPlan, outputPath: string): 
 
   const durationInFrames = Math.max(1, Math.ceil(plan.totalDurationSec * VIDEO_FPS));
 
+  const inputProps = {
+    scenes: plan.scenes,
+    images: stagedImages,
+    audioSrc,
+    captions: plan.captions,
+    totalDurationSec: plan.totalDurationSec,
+    keyTerms: plan.script.keyTerms,
+  };
+
   const composition = await selectComposition({
     serveUrl: bundleDir,
     id: "HistoryShort",
-    inputProps: {
-      scenes: plan.scenes,
-      images: stagedImages,
-      audioSrc,
-      captions: plan.captions,
-      totalDurationSec: plan.totalDurationSec,
-    },
+    inputProps,
   });
 
   fs.mkdirSync(path.dirname(outputPath), { recursive: true });
@@ -71,13 +74,7 @@ export async function renderHistoryShort(plan: RenderPlan, outputPath: string): 
     serveUrl: bundleDir,
     codec: "h264",
     outputLocation: outputPath,
-    inputProps: {
-      scenes: plan.scenes,
-      images: stagedImages,
-      audioSrc,
-      captions: plan.captions,
-      totalDurationSec: plan.totalDurationSec,
-    },
+    inputProps,
     onProgress: ({ progress }) => {
       if (progress % 0.1 < 0.01) {
         process.stdout.write(`\r   render ${(progress * 100).toFixed(0)}%`);
