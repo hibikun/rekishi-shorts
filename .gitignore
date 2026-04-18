@@ -1,0 +1,29 @@
+node_modules/
+*.log
+.DS_Store
+
+# env
+.env
+.env.local
+.env.*.local
+
+# build
+dist/
+.next/
+out/
+*.tsbuildinfo
+
+# generated artifacts (Phase 0 local outputs)
+data/scripts/*
+data/audio/*
+data/images/*
+data/captions/*
+data/videos/*
+!data/scripts/.gitkeep
+!data/audio/.gitkeep
+!data/images/.gitkeep
+!data/captions/.gitkeep
+!data/videos/.gitkeep
+
+# remotion
+packages/renderer/out/

@@ -1,0 +1,16 @@
+{
+  "name": "rekishi-shorts",
+  "version": "0.1.0",
+  "description": "受験生向け歴史ショート動画の自動生成サービス (monorepo root)",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "pnpm -r typecheck",
+    "generate": "pnpm --filter @rekishi/pipeline generate",
+    "studio": "pnpm --filter @rekishi/renderer studio"
+  },
+  "packageManager": "pnpm@10.30.2",
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "name": "@rekishi/renderer",
+  "version": "0.1.0",
+  "description": "Remotion composition for rekishi-shorts",
+  "type": "module",
+  "private": true,
+  "main": "./src/render.ts",
+  "types": "./src/render.ts",
+  "exports": {
+    ".": "./src/render.ts",
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "studio": "remotion studio src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@rekishi/shared": "workspace:*",
+    "@remotion/bundler": "^4.0.446",
+    "@remotion/cli": "^4.0.446",
+    "@remotion/google-fonts": "^4.0.446",
+    "@remotion/renderer": "^4.0.446",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "remotion": "^4.0.446"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}
