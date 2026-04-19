@@ -4,7 +4,7 @@ import { dataPath } from "./config.js";
 import { searchWikimediaImages, downloadImage } from "./wikimedia-fetcher.js";
 import { generateImage } from "./image-generator.js";
 
-const MAX_GENERATED_PER_VIDEO = 5;
+const MAX_GENERATED_PER_VIDEO = 10;
 
 export interface ResolveOptions {
   jobId: string;
