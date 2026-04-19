@@ -19,11 +19,16 @@ data/audio/*
 data/images/*
 data/captions/*
 data/videos/*
+data/uploads/*
 !data/scripts/.gitkeep
 !data/audio/.gitkeep
 !data/images/.gitkeep
 !data/captions/.gitkeep
 !data/videos/.gitkeep
+!data/uploads/.gitkeep
+
+# obsidian workspace
+.obsidian/
 
 # remotion
 packages/renderer/out/

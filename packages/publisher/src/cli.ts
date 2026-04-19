@@ -8,6 +8,7 @@ import { dataPath } from "./config.js";
 import { generateYouTubeMetadata } from "./metadata-generator.js";
 import { metadataToDraftMd, draftMdToMetadata } from "./meta-draft-io.js";
 import { uploadToYouTube, formatUploadError } from "./youtube/uploader.js";
+import { runOAuthFlow } from "./youtube/oauth-flow.js";
 import { appendUploadLog, hasBeenUploaded } from "./upload-log.js";
 import { YouTubeMetadataSchema, type YouTubeMetadata } from "./index.js";
 
@@ -78,6 +79,24 @@ program
   .name("rekishi-publisher")
   .description("生成済みショート動画を YouTube 等へ投稿する CLI")
   .version("0.1.0");
+
+program
+  .command("auth")
+  .description("YouTube OAuth 認可フローを起動し refresh_token を取得する（初回1回だけ）")
+  .action(async () => {
+    const clientId = process.env.YOUTUBE_CLIENT_ID;
+    const clientSecret = process.env.YOUTUBE_CLIENT_SECRET;
+    const redirectUri = process.env.YOUTUBE_REDIRECT_URI ?? "http://localhost:53682/oauth2callback";
+    const scope = "https://www.googleapis.com/auth/youtube.upload";
+
+    if (!clientId || !clientSecret) {
+      console.error(chalk.red("❌ YOUTUBE_CLIENT_ID / YOUTUBE_CLIENT_SECRET が .env.local に未設定です。"));
+      console.error("   docs/phases/youtube-setup.md を参照して OAuth クライアントを作成してください。");
+      process.exit(1);
+    }
+
+    await runOAuthFlow({ clientId, clientSecret, redirectUri, scope });
+  });
 
 program
   .command("meta")

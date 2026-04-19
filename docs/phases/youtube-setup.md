@@ -31,11 +31,13 @@ YOUTUBE_REFRESH_TOKEN=
 ターミナルでリポジトリルートから:
 
 ```bash
-npx tsx scripts/youtube-auth.ts
+pnpm post auth
 ```
 
-- ブラウザが開く → Google アカウントでログイン → 同意
-- 「このアプリは Google で確認されていません」と出たら **「詳細」→「安全ではないページに移動」**（自作アプリなのでOK）
+- ブラウザが自動で開く → 投稿したいチャンネルを持つ Google アカウントでログイン
+- 「このアプリは Google で確認されていません」と出たら **「詳細」→「rekishi-shorts(安全ではないページ)に移動」**（自作アプリなのでOK）
+- 権限許可画面で「続行」
+- ブラウザに「認可完了」と表示されたらタブを閉じる
 - ターミナルに `YOUTUBE_REFRESH_TOKEN=...` と表示される
 - その値を `.env.local` の `YOUTUBE_REFRESH_TOKEN=` の右に貼り付ける
 
