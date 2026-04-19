@@ -6,13 +6,24 @@ export type Subject = z.infer<typeof SubjectSchema>;
 export const TargetSchema = z.enum(["共通テスト", "二次", "汎用"]);
 export type Target = z.infer<typeof TargetSchema>;
 
+export const ScriptFormatSchema = z.enum(["single", "three-pick"]).default("single");
+export type ScriptFormat = z.infer<typeof ScriptFormatSchema>;
+
 export const TopicSchema = z.object({
   title: z.string().min(1).describe("トピック名。例: ペリー来航 / フランス革命"),
   era: z.string().optional().describe("時代名。例: 幕末 / 近世"),
   subject: SubjectSchema.default("日本史"),
   target: TargetSchema.default("汎用"),
+  format: ScriptFormatSchema,
 });
 export type Topic = z.infer<typeof TopicSchema>;
+
+export const ThreePickItemSchema = z.object({
+  rank: z.number().int().min(1).max(3),
+  name: z.string().min(1),
+  summary: z.string().min(1).describe("このランクの驚きポイントを含む1-2文"),
+});
+export type ThreePickItem = z.infer<typeof ThreePickItemSchema>;
 
 // AI が生成する台本本体
 export const ScriptSchema = z.object({
@@ -30,6 +41,10 @@ export const ScriptSchema = z.object({
     .default({})
     .describe("難読語の読み仮名。例: { '阿部正弘': 'あべまさひろ' }"),
   estimatedDurationSec: z.number().describe("推定秒数"),
+  items: z
+    .array(ThreePickItemSchema)
+    .optional()
+    .describe("three-pick format 時のランキング項目"),
 });
 export type Script = z.infer<typeof ScriptSchema>;
 

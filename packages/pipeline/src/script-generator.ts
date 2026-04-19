@@ -8,10 +8,13 @@ import { config } from "./config.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const PROMPT_TEMPLATE_PATH = path.resolve(__dirname, "../prompts/script.md");
+const PROMPT_TEMPLATE_PATHS = {
+  single: path.resolve(__dirname, "../prompts/script.md"),
+  "three-pick": path.resolve(__dirname, "../prompts/script-three-pick.md"),
+} as const;
 
 function renderPrompt(topic: Topic): string {
-  const tpl = fs.readFileSync(PROMPT_TEMPLATE_PATH, "utf-8");
+  const tpl = fs.readFileSync(PROMPT_TEMPLATE_PATHS[topic.format], "utf-8");
   return tpl
     .replace(/\{\{topic\.title\}\}/g, topic.title)
     .replace(/\{\{topic\.era\}\}/g, topic.era ?? "指定なし")
@@ -19,7 +22,7 @@ function renderPrompt(topic: Topic): string {
     .replace(/\{\{topic\.target\}\}/g, topic.target);
 }
 
-const responseSchema = {
+const singleResponseSchema = {
   type: Type.OBJECT,
   properties: {
     narration: { type: Type.STRING },
@@ -44,6 +47,47 @@ const responseSchema = {
   required: ["narration", "hook", "body", "closing", "keyTerms", "estimatedDurationSec"],
 };
 
+const threePickResponseSchema = {
+  type: Type.OBJECT,
+  properties: {
+    narration: { type: Type.STRING },
+    hook: { type: Type.STRING },
+    body: { type: Type.STRING },
+    closing: { type: Type.STRING },
+    keyTerms: { type: Type.ARRAY, items: { type: Type.STRING } },
+    readings: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          term: { type: Type.STRING },
+          reading: { type: Type.STRING },
+        },
+        required: ["term", "reading"],
+      },
+    },
+    items: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          rank: { type: Type.NUMBER },
+          name: { type: Type.STRING },
+          summary: { type: Type.STRING },
+        },
+        required: ["rank", "name", "summary"],
+      },
+    },
+    estimatedDurationSec: { type: Type.NUMBER },
+  },
+  required: ["narration", "hook", "body", "closing", "keyTerms", "items", "estimatedDurationSec"],
+};
+
+const RESPONSE_SCHEMAS = {
+  single: singleResponseSchema,
+  "three-pick": threePickResponseSchema,
+} as const;
+
 export interface ScriptResult {
   script: Script;
   usage: { inputTokens: number; outputTokens: number; model: string };
@@ -67,7 +111,7 @@ export async function generateScript(topic: Topic): Promise<ScriptResult> {
     contents: prompt,
     config: {
       responseMimeType: "application/json",
-      responseSchema,
+      responseSchema: RESPONSE_SCHEMAS[topic.format],
       temperature: 0.7,
     },
   });

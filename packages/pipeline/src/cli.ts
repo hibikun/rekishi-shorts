@@ -29,12 +29,14 @@ program
   .option("--era <era>", "時代（例: 幕末）")
   .option("--subject <subject>", "科目（日本史 | 世界史）", "日本史")
   .option("--target <target>", "対象試験（共通テスト | 二次 | 汎用）", "汎用")
+  .option("--format <format>", "台本フォーマット（single | three-pick）", "single")
   .action(async (opts) => {
     const topic = TopicSchema.parse({
       title: opts.topic,
       era: opts.era,
       subject: opts.subject,
       target: opts.target,
+      format: opts.format,
     });
     console.log(chalk.bold(`\n🎞️  rekishi-shorts draft: ${topic.title}\n`));
 
@@ -84,6 +86,7 @@ program
   .option("--era <era>", "時代（例: 幕末）")
   .option("--subject <subject>", "科目（日本史 | 世界史）", "日本史")
   .option("--target <target>", "対象試験（共通テスト | 二次 | 汎用）", "汎用")
+  .option("--format <format>", "台本フォーマット（single | three-pick）", "single")
   .option("--no-generate-images", "Nano Banana 画像生成をスキップし Wikimedia のみ")
   .option("--plan-only", "RenderPlan 生成まで（レンダリングしない）")
   .action(async (opts) => {
@@ -92,6 +95,7 @@ program
       era: opts.era,
       subject: opts.subject,
       target: opts.target,
+      format: opts.format,
     });
     console.log(chalk.bold(`\n🎞️  rekishi-shorts: ${topic.title}\n`));
 
@@ -141,6 +145,7 @@ program
   .option("--era <era>")
   .option("--subject <subject>", "", "日本史")
   .option("--target <target>", "", "汎用")
+  .option("--format <format>", "", "single")
   .action(async (opts) => {
     const { generateScript } = await import("./script-generator.js");
     const topic = TopicSchema.parse({
@@ -148,6 +153,7 @@ program
       era: opts.era,
       subject: opts.subject,
       target: opts.target,
+      format: opts.format,
     });
     const { script } = await generateScript(topic);
     console.log(JSON.stringify(script, null, 2));

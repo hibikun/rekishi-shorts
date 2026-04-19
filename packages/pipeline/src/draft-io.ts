@@ -39,6 +39,16 @@ export function scriptToDraftMd(script: Script): string {
   lines.push(script.mnemonic ?? "");
   lines.push("");
 
+  if (script.items && script.items.length > 0) {
+    lines.push("## items");
+    lines.push("<!-- three-pick 用の内容確認表示。編集しても build では使用されない（narration が正） -->");
+    const sorted = [...script.items].sort((a, b) => b.rank - a.rank);
+    for (const it of sorted) {
+      lines.push(`- 第${it.rank}位 ${it.name}: ${it.summary}`);
+    }
+    lines.push("");
+  }
+
   lines.push("---");
   lines.push("");
   lines.push("<!-- 以下はメタ情報（編集しても無視されます） -->");
@@ -48,6 +58,7 @@ export function scriptToDraftMd(script: Script): string {
   lines.push(`- topic.era: ${script.topic.era ?? ""}`);
   lines.push(`- topic.subject: ${script.topic.subject}`);
   lines.push(`- topic.target: ${script.topic.target}`);
+  lines.push(`- topic.format: ${script.topic.format}`);
   lines.push(`- estimatedDurationSec: ${script.estimatedDurationSec}`);
   lines.push(`- hook: ${script.hook}`);
   lines.push(`- body: ${script.body}`);
