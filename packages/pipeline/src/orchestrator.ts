@@ -101,6 +101,7 @@ export async function runBuildStage(opts: BuildOptions): Promise<{ plan: RenderP
   const tts = await synthesizeNarration(script.narration, audioDestPath, {
     readings: script.readings,
     furigana: FURIGANA_MAP,
+    hook: script.hook,
   });
   tracker.addGemini("tts", tts.usage.model, tts.usage.inputTokens, tts.usage.outputTokens);
   log(chalk.dim(`   ${tts.characters}文字 / 合成${tts.approxDurationSec.toFixed(2)}秒 / in=${tts.usage.inputTokens}tok out=${tts.usage.outputTokens}tok`));
