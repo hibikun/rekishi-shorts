@@ -18,19 +18,27 @@ export interface KeywordPopupProps {
  * 台本中の重要用語（年号・人名・地名など）が話されたタイミングで
  * 画面上部に大きくポップアップ表示する。
  */
+/** 発話区間が短くても最低これだけは表示し続ける秒数（ショート視聴者の可読性優先） */
+const MIN_POPUP_DURATION_SEC = 2.0;
+const FADE_OUT_SEC = 0.3;
+
 export const KeywordPopup: React.FC<KeywordPopupProps> = ({ hits }) => {
   const frame = useCurrentFrame();
   const { fps, height: videoHeight } = useVideoConfig();
   const currentSec = frame / fps;
 
-  const active = hits.find((h) => currentSec >= h.startSec && currentSec < h.endSec + 0.3);
+  const active = hits.find((h) => {
+    const displayEnd = Math.max(h.endSec, h.startSec + MIN_POPUP_DURATION_SEC);
+    return currentSec >= h.startSec && currentSec < displayEnd + FADE_OUT_SEC;
+  });
   if (!active) return null;
 
+  const displayEnd = Math.max(active.endSec, active.startSec + MIN_POPUP_DURATION_SEC);
   const localFrame = frame - Math.round(active.startSec * fps);
   const popScale = spring({ frame: localFrame, fps, config: { damping: 12, stiffness: 200 } });
   const fadeOut = interpolate(
     currentSec,
-    [active.endSec, active.endSec + 0.3],
+    [displayEnd, displayEnd + FADE_OUT_SEC],
     [1, 0],
     { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
   );

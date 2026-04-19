@@ -4,7 +4,6 @@ import type { CaptionSegment, CaptionWord, ImageAsset, Scene } from "@rekishi/sh
 import { KenBurnsImage } from "../components/KenBurnsImage";
 import { Caption } from "../components/Caption";
 import { NarrationAudio } from "../components/NarrationAudio";
-import { FlashTransition } from "../components/FlashTransition";
 import { KeywordPopup, type KeywordHit } from "../components/KeywordPopup";
 
 export interface HistoryShortProps {
@@ -37,9 +36,6 @@ export const HistoryShort: React.FC<HistoryShortProps> = ({
     return { scene, image, startFrame, durationFrames };
   });
 
-  // 境界フレーム (0番除く: hero scene は fade-in じゃなく開幕)
-  const boundaryFrames = layout.slice(1).map((l) => l.startFrame);
-
   // keyTerm → caption words から最初に出現する時間を検出
   const keywordHits: KeywordHit[] = keyTerms
     .map((term) => findKeywordHit(captions, term))
@@ -64,7 +60,6 @@ export const HistoryShort: React.FC<HistoryShortProps> = ({
 
       <Caption captionSegments={captionSegments} />
       <KeywordPopup hits={keywordHits} />
-      <FlashTransition boundaryFrames={boundaryFrames} />
       <NarrationAudio src={audioSrc} />
     </AbsoluteFill>
   );

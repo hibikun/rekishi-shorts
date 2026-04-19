@@ -4,9 +4,7 @@ import chalk from "chalk";
 import { randomUUID } from "node:crypto";
 import {
   RenderPlanSchema,
-  type CaptionSegment,
   type RenderPlan,
-  type Scene,
   type Topic,
 } from "@rekishi/shared";
 import { generateScript } from "./script-generator.js";
@@ -14,6 +12,7 @@ import { planScenes } from "./scene-planner.js";
 import { resolveSceneAssets } from "./asset-resolver.js";
 import { synthesizeNarration } from "./tts-generator.js";
 import { alignCaptions } from "./asr-aligner.js";
+import { alignScenesToAudio } from "./scene-aligner.js";
 import { LocalStorageAdapter, jobPath } from "./storage/local.js";
 import { FURIGANA_MAP } from "./furigana.js";
 import { dataPath } from "./config.js";
@@ -65,9 +64,13 @@ export async function generatePlan(opts: GenerateOptions): Promise<{ plan: Rende
   await writeJson(jobPath(jobId, "captions", "words.json"), { words, totalDurationSec });
   log(chalk.dim(`   ${words.length}単語 / 実測${totalDurationSec.toFixed(2)}秒`));
 
-  // シーン時間を実音声 durationSec にリスケール
-  const rescaledScenes = rescaleScenes(scenePlan.scenes, totalDurationSec);
-  const captionSegments = buildCaptionSegments(rescaledScenes);
+  // Whisper word 列に対して scene を単調アラインし、実発話に沿った境界へ置き換える
+  const alignment = alignScenesToAudio(scenePlan.scenes, words, totalDurationSec);
+  const rescaledScenes = alignment.scenes;
+  const captionSegments = alignment.captionSegments;
+  if (alignment.fallbackUsed) {
+    log(chalk.yellow(`   ⚠ scene alignment fallback used — 実発話とシーン境界がズレる可能性あり`));
+  }
 
   log(`🖼️  [5/5] 画像取得中 (Wikimedia → Nano Banana fallback)...`);
   const resolved = await resolveSceneAssets(rescaledScenes, { jobId, allowGeneration: opts.allowImageGeneration });
@@ -100,27 +103,6 @@ export async function generatePlan(opts: GenerateOptions): Promise<{ plan: Rende
   await writeJson(jobPath(jobId, "scripts", "cost.json"), { entries: tracker.getEntries(), totalUsd: tracker.totalUsd(), totalJpy: tracker.totalJpy() });
   log(chalk.green(`✅ RenderPlan 保存: ${jobPath(jobId, "scripts", "render-plan.json")}`));
   return { plan, tracker };
-}
-
-function rescaleScenes(scenes: Scene[], targetTotalSec: number): Scene[] {
-  const currentTotal = scenes.reduce((s, sc) => s + sc.durationSec, 0);
-  if (currentTotal === 0) return scenes;
-  const factor = targetTotalSec / currentTotal;
-  return scenes.map((sc) => ({ ...sc, durationSec: Number((sc.durationSec * factor).toFixed(3)) }));
-}
-
-/** scenes の narration を scene 区間に沿って phrase 単位の CaptionSegment に変換する。 */
-function buildCaptionSegments(scenes: Scene[]): CaptionSegment[] {
-  let cursor = 0;
-  return scenes.map((scene) => {
-    const segment: CaptionSegment = {
-      text: scene.narration,
-      startSec: Number(cursor.toFixed(3)),
-      endSec: Number((cursor + scene.durationSec).toFixed(3)),
-    };
-    cursor += scene.durationSec;
-    return segment;
-  });
 }
 
 async function writeJson(p: string, data: unknown): Promise<void> {
