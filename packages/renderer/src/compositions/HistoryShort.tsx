@@ -4,6 +4,7 @@ import type { CaptionSegment, CaptionWord, ImageAsset, Scene } from "@rekishi/sh
 import { KenBurnsImage } from "../components/KenBurnsImage";
 import { Caption } from "../components/Caption";
 import { NarrationAudio } from "../components/NarrationAudio";
+import { KeywordPopup, type KeywordHit } from "../components/KeywordPopup";
 
 export interface HistoryShortProps {
   scenes: Scene[];
@@ -19,6 +20,7 @@ export const HistoryShort: React.FC<HistoryShortProps> = ({
   scenes,
   images,
   audioSrc,
+  captions,
   captionSegments,
   keyTerms = [],
 }) => {
@@ -32,6 +34,10 @@ export const HistoryShort: React.FC<HistoryShortProps> = ({
     const image = images.find((im) => im.sceneIndex === scene.index);
     return { scene, image, startFrame, durationFrames };
   });
+
+  const keywordHits: KeywordHit[] = keyTerms
+    .map((term) => findKeywordHit(captions, term))
+    .filter((h): h is KeywordHit => h !== null);
 
   return (
     <AbsoluteFill style={{ backgroundColor: "#000" }}>
@@ -51,7 +57,28 @@ export const HistoryShort: React.FC<HistoryShortProps> = ({
       ))}
 
       <Caption captionSegments={captionSegments} keyTerms={keyTerms} />
+      <KeywordPopup hits={keywordHits} />
       <NarrationAudio src={audioSrc} />
     </AbsoluteFill>
   );
 };
+
+function findKeywordHit(words: CaptionWord[], term: string): KeywordHit | null {
+  const normalizedTerm = term.replace(/\s+/g, "");
+  if (!normalizedTerm) return null;
+  for (let i = 0; i < words.length; i++) {
+    let combined = "";
+    for (let j = i; j < Math.min(words.length, i + 6); j++) {
+      combined += words[j]!.text;
+      if (combined.includes(normalizedTerm)) {
+        return {
+          term,
+          startSec: words[i]!.startSec,
+          endSec: words[j]!.endSec,
+        };
+      }
+      if (combined.length > normalizedTerm.length * 2) break;
+    }
+  }
+  return null;
+}
