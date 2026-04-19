@@ -18,7 +18,7 @@ export interface HistoryShortProps {
   teaserCaption?: string;
 }
 
-const TEASER_HOLD_SEC = 1.0;
+const TEASER_HOLD_SEC = 2.7;
 const TEASER_FADE_SEC = 0.3;
 
 export const HistoryShort: React.FC<HistoryShortProps> = ({

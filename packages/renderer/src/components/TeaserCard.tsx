@@ -12,7 +12,7 @@ export interface TeaserCardProps {
   fadeSec?: number;
 }
 
-const DEFAULT_HOLD_SEC = 1.0;
+const DEFAULT_HOLD_SEC = 2.7;
 const DEFAULT_FADE_SEC = 0.3;
 
 export const TeaserCard: React.FC<TeaserCardProps> = ({
@@ -43,21 +43,20 @@ export const TeaserCard: React.FC<TeaserCardProps> = ({
     <div
       style={{
         position: "absolute",
-        inset: 0,
+        top: "12%",
+        left: 0,
+        right: 0,
         display: "flex",
-        alignItems: "center",
         justifyContent: "center",
         pointerEvents: "none",
         zIndex: 20,
         opacity,
-        background:
-          "radial-gradient(ellipse at center, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.25) 60%, rgba(0,0,0,0) 100%)",
       }}
     >
       <div
         style={{
           transform: `scale(${popScale})`,
-          maxWidth: "90%",
+          maxWidth: "92%",
           textAlign: "center",
           fontFamily: FONT_FAMILY,
           fontWeight: 900,
@@ -70,7 +69,9 @@ export const TeaserCard: React.FC<TeaserCardProps> = ({
           letterSpacing: "0.02em",
           wordBreak: "break-word",
           overflowWrap: "anywhere",
-          padding: "0 40px",
+          padding: "24px 40px",
+          background: "rgba(0,0,0,0.35)",
+          borderRadius: 24,
         }}
       >
         {trimmed}
