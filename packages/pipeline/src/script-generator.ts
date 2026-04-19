@@ -28,6 +28,17 @@ const responseSchema = {
     closing: { type: Type.STRING },
     mnemonic: { type: Type.STRING },
     keyTerms: { type: Type.ARRAY, items: { type: Type.STRING } },
+    readings: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          term: { type: Type.STRING },
+          reading: { type: Type.STRING },
+        },
+        required: ["term", "reading"],
+      },
+    },
     estimatedDurationSec: { type: Type.NUMBER },
   },
   required: ["narration", "hook", "body", "closing", "keyTerms", "estimatedDurationSec"],
@@ -36,6 +47,15 @@ const responseSchema = {
 export interface ScriptResult {
   script: Script;
   usage: { inputTokens: number; outputTokens: number; model: string };
+}
+
+function readingsArrayToMap(arr: Array<{ term: string; reading: string }> | undefined): Record<string, string> {
+  if (!Array.isArray(arr)) return {};
+  const out: Record<string, string> = {};
+  for (const { term, reading } of arr) {
+    if (term && reading && !out[term]) out[term] = reading;
+  }
+  return out;
 }
 
 export async function generateScript(topic: Topic): Promise<ScriptResult> {
@@ -55,8 +75,9 @@ export async function generateScript(topic: Topic): Promise<ScriptResult> {
   const text = response.text;
   if (!text) throw new Error("Gemini returned empty script response");
 
-  const raw = JSON.parse(text);
-  const script = ScriptSchema.parse({ ...raw, topic });
+  const raw = JSON.parse(text) as { readings?: Array<{ term: string; reading: string }> } & Record<string, unknown>;
+  const readings = readingsArrayToMap(raw.readings);
+  const script = ScriptSchema.parse({ ...raw, readings, topic });
   return {
     script,
     usage: {

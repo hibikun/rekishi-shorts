@@ -4,6 +4,7 @@ import chalk from "chalk";
 import { randomUUID } from "node:crypto";
 import {
   RenderPlanSchema,
+  type CaptionSegment,
   type RenderPlan,
   type Scene,
   type Topic,
@@ -50,6 +51,7 @@ export async function generatePlan(opts: GenerateOptions): Promise<{ plan: Rende
   log(`🎙️  [3/5] Gemini 3.1 Flash TTS でナレーション合成中...`);
   const audioDestPath = jobPath(jobId, "audio", "narration.wav");
   const tts = await synthesizeNarration(script.narration, audioDestPath, {
+    readings: script.readings,
     furigana: FURIGANA_MAP,
   });
   tracker.addGemini("tts", tts.usage.model, tts.usage.inputTokens, tts.usage.outputTokens);
@@ -65,6 +67,7 @@ export async function generatePlan(opts: GenerateOptions): Promise<{ plan: Rende
 
   // シーン時間を実音声 durationSec にリスケール
   const rescaledScenes = rescaleScenes(scenePlan.scenes, totalDurationSec);
+  const captionSegments = buildCaptionSegments(rescaledScenes);
 
   log(`🖼️  [5/5] 画像取得中 (Wikimedia → Nano Banana fallback)...`);
   const resolved = await resolveSceneAssets(rescaledScenes, { jobId, allowGeneration: opts.allowImageGeneration });
@@ -88,6 +91,7 @@ export async function generatePlan(opts: GenerateOptions): Promise<{ plan: Rende
       format: "mp3",
     },
     captions: words,
+    captionSegments,
     totalDurationSec,
     createdAt: new Date().toISOString(),
   });
@@ -103,6 +107,20 @@ function rescaleScenes(scenes: Scene[], targetTotalSec: number): Scene[] {
   if (currentTotal === 0) return scenes;
   const factor = targetTotalSec / currentTotal;
   return scenes.map((sc) => ({ ...sc, durationSec: Number((sc.durationSec * factor).toFixed(3)) }));
+}
+
+/** scenes の narration を scene 区間に沿って phrase 単位の CaptionSegment に変換する。 */
+function buildCaptionSegments(scenes: Scene[]): CaptionSegment[] {
+  let cursor = 0;
+  return scenes.map((scene) => {
+    const segment: CaptionSegment = {
+      text: scene.narration,
+      startSec: Number(cursor.toFixed(3)),
+      endSec: Number((cursor + scene.durationSec).toFixed(3)),
+    };
+    cursor += scene.durationSec;
+    return segment;
+  });
 }
 
 async function writeJson(p: string, data: unknown): Promise<void> {

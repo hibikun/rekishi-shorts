@@ -27,9 +27,16 @@ const SAMPLE_RATE = 24000;
 export async function synthesizeNarration(
   text: string,
   destPath: string,
-  opts: { furigana?: Record<string, string>; voiceName?: string } = {},
+  opts: {
+    /** 台本由来の難読語読みマップ（優先適用） */
+    readings?: Record<string, string>;
+    /** 固定辞書由来のふりがなマップ */
+    furigana?: Record<string, string>;
+    voiceName?: string;
+  } = {},
 ): Promise<TTSResult> {
-  const processed = applyFurigana(text, opts.furigana);
+  const withReadings = applyFurigana(text, opts.readings);
+  const processed = applyFurigana(withReadings, opts.furigana);
   const voiceName = opts.voiceName ?? process.env.GEMINI_TTS_VOICE ?? "Kore";
   const model = process.env.GEMINI_TTS_MODEL ?? "gemini-3.1-flash-tts-preview";
 

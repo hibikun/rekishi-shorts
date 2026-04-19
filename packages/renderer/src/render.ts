@@ -57,6 +57,7 @@ export async function renderHistoryShort(plan: RenderPlan, outputPath: string): 
     images: stagedImages,
     audioSrc,
     captions: plan.captions,
+    captionSegments: plan.captionSegments,
     totalDurationSec: plan.totalDurationSec,
     keyTerms: plan.script.keyTerms,
   };

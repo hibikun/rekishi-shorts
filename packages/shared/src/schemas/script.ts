@@ -24,6 +24,11 @@ export const ScriptSchema = z.object({
   closing: z.string().describe("締めの1文"),
   mnemonic: z.string().optional().describe("年号語呂合わせ"),
   keyTerms: z.array(z.string()).describe("動画に登場する教科書用語"),
+  // 難読な人名・地名・歴史用語の読み仮名マップ。TTS の誤読防止用途で、字幕には反映しない。
+  readings: z
+    .record(z.string())
+    .default({})
+    .describe("難読語の読み仮名。例: { '阿部正弘': 'あべまさひろ' }"),
   estimatedDurationSec: z.number().describe("推定秒数"),
 });
 export type Script = z.infer<typeof ScriptSchema>;

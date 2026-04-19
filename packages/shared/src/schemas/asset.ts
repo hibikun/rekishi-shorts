@@ -33,3 +33,15 @@ export const CaptionTrackSchema = z.object({
   words: z.array(CaptionWordSchema),
 });
 export type CaptionTrack = z.infer<typeof CaptionTrackSchema>;
+
+export const CaptionSegmentSchema = z.object({
+  text: z.string(),
+  startSec: z.number().nonnegative(),
+  endSec: z.number().positive(),
+});
+export type CaptionSegment = z.infer<typeof CaptionSegmentSchema>;
+
+export const CaptionSegmentTrackSchema = z.object({
+  segments: z.array(CaptionSegmentSchema),
+});
+export type CaptionSegmentTrack = z.infer<typeof CaptionSegmentTrackSchema>;

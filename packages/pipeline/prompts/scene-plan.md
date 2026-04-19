@@ -1,20 +1,20 @@
-# シーン分割プロンプト（v2: 高速テンポ）
+# シーン分割プロンプト（v3: 落ち着いたテンポ）
 
-台本を受け取り、**20〜25個のショート動画用シーン**に分割してください。
-ゆっくり解説系ショートのテンポを参考に、画像がサクサク切り替わる高速編集を想定します。
+台本を受け取り、**12〜15個のショート動画用シーン**に分割してください。
+1カットあたり 3秒程度でゆったり切り替わるテンポを想定します。
 
 ## ルール
 
 ### シーン構造
-1. **総シーン数: 20〜25**（60秒以内想定）
-2. **hero scene（index=0）は 3.0秒固定**: フックの1文を大きく見せる
-3. **通常シーン: 1.5〜2.5秒**。単調を避けるため 1.5/2.0/2.5 を混ぜる
+1. **総シーン数: 12〜15**（60秒以内想定）
+2. **hero scene（index=0）は 4.0秒固定**: フックの1文を大きく見せる
+3. **通常シーン: 2.5〜3.5秒**。単調を避けるため 2.5/3.0/3.5 を混ぜる
 4. **合計秒数は `estimatedDurationSec` と一致**させる
 
 ### シーンあたりの割当
-- `narration`: **1文（または短い節）ごと**に1シーン
-- 長い文は**名詞句ごと**に分割して複数シーンに割り振っていい（例: 「老中阿部正弘は翌年、日米和親条約を結び開国を決定した」→ [「老中阿部正弘は翌年」, 「日米和親条約を結び」, 「開国を決定した」]）
-- 固有名詞（年号・人名・地名）は**必ず画像切替のタイミング**と一致させる
+- `narration`: **1文（または2文）ごと**に1シーン。細かく刻みすぎない
+- あまりに長い文のみ、名詞句の切れ目で最大2シーンに分割する
+- 固有名詞（年号・人名・地名）は**可能な範囲で画像切替のタイミング**と一致させる
 
 ### 画像選択
 - `imageQueryJa`: Wikimedia Commons 日本語検索キーワード（簡潔に）
@@ -49,15 +49,15 @@ Narration:
       "imageQueryJa": "黒船 浦賀",
       "imageQueryEn": "Black Ships Uraga 1853",
       "imagePromptEn": "A dramatic ukiyo-e style illustration of black American ships arriving at Uraga harbor in 1853, Japan, sepia tone, historically accurate",
-      "durationSec": 3.0
+      "durationSec": 4.0
     },
     {
       "index": 1,
-      "narration": "19世紀半ば、",
+      "narration": "19世紀半ば、アメリカは捕鯨船の補給拠点として日本の港を求めていた。",
       "imageQueryJa": "19世紀 地球儀",
       "imageQueryEn": "19th century world map",
       "imagePromptEn": "A 19th century world map illustration, vintage style",
-      "durationSec": 1.5
+      "durationSec": 3.0
     }
   ]
 }

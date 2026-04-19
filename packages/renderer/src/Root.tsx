@@ -8,6 +8,7 @@ const defaultProps: HistoryShortProps = {
   images: [],
   audioSrc: "",
   captions: [],
+  captionSegments: [],
   totalDurationSec: 60,
   keyTerms: [],
 };

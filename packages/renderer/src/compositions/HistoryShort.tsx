@@ -1,8 +1,8 @@
 import React from "react";
 import { AbsoluteFill, Sequence, useVideoConfig } from "remotion";
-import type { CaptionWord, ImageAsset, Scene } from "@rekishi/shared";
+import type { CaptionSegment, CaptionWord, ImageAsset, Scene } from "@rekishi/shared";
 import { KenBurnsImage } from "../components/KenBurnsImage";
-import { KaraokeCaption } from "../components/KaraokeCaption";
+import { Caption } from "../components/Caption";
 import { NarrationAudio } from "../components/NarrationAudio";
 import { FlashTransition } from "../components/FlashTransition";
 import { KeywordPopup, type KeywordHit } from "../components/KeywordPopup";
@@ -12,6 +12,7 @@ export interface HistoryShortProps {
   images: ImageAsset[];
   audioSrc: string;
   captions: CaptionWord[];
+  captionSegments: CaptionSegment[];
   totalDurationSec: number;
   keyTerms?: string[];
 }
@@ -21,6 +22,7 @@ export const HistoryShort: React.FC<HistoryShortProps> = ({
   images,
   audioSrc,
   captions,
+  captionSegments,
   keyTerms = [],
 }) => {
   const { fps } = useVideoConfig();
@@ -60,7 +62,7 @@ export const HistoryShort: React.FC<HistoryShortProps> = ({
         </Sequence>
       ))}
 
-      <KaraokeCaption words={captions} />
+      <Caption captionSegments={captionSegments} />
       <KeywordPopup hits={keywordHits} />
       <FlashTransition boundaryFrames={boundaryFrames} />
       <NarrationAudio src={audioSrc} />
