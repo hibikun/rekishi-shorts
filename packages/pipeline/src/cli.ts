@@ -10,6 +10,11 @@ import {
   runDraftStage,
 } from "./orchestrator.js";
 
+function buildOutputFilename(title: string, jobId: string): string {
+  const safe = title.replace(/[\/\\:*?"<>|\s]+/g, "_").replace(/^_+|_+$/g, "");
+  return safe ? `${safe}-${jobId}.mp4` : `${jobId}.mp4`;
+}
+
 const program = new Command();
 
 program
@@ -64,7 +69,7 @@ program
     }
 
     const { renderHistoryShort } = await import("@rekishi/renderer");
-    const outputPath = path.join(getJobOutputDir(), `${plan.id}.mp4`);
+    const outputPath = path.join(getJobOutputDir(), buildOutputFilename(plan.script.topic.title, plan.id));
     console.log(chalk.bold(`\n🎥 Remotion でレンダリング中...`));
     await renderHistoryShort(plan, outputPath);
     console.log(chalk.green(`\n✅ 完成: ${outputPath}`));
@@ -103,7 +108,7 @@ program
     }
 
     const { renderHistoryShort } = await import("@rekishi/renderer");
-    const outputPath = path.join(getJobOutputDir(), `${plan.id}.mp4`);
+    const outputPath = path.join(getJobOutputDir(), buildOutputFilename(plan.script.topic.title, plan.id));
     console.log(chalk.bold(`\n🎥 Remotion でレンダリング中...`));
     await renderHistoryShort(plan, outputPath);
     console.log(chalk.green(`\n✅ 完成: ${outputPath}`));
@@ -123,7 +128,7 @@ program
     const raw = JSON.parse(fs.readFileSync(planPath, "utf-8"));
     const plan = RenderPlanSchema.parse(raw);
     const { renderHistoryShort } = await import("@rekishi/renderer");
-    const outputPath = path.join(getJobOutputDir(), `${plan.id}.mp4`);
+    const outputPath = path.join(getJobOutputDir(), buildOutputFilename(plan.script.topic.title, plan.id));
     console.log(chalk.bold(`🎥 Remotion でレンダリング中: ${plan.id}`));
     await renderHistoryShort(plan, outputPath);
     console.log(chalk.green(`\n✅ 完成: ${outputPath}`));
