@@ -77,15 +77,16 @@ export function alignScenesToAudio(
     const firstWord = words[span.firstWordIdx] ?? lastWordFallback;
     const lastWord = words[span.lastWordIdx] ?? lastWordFallback;
 
-    // scene 境界: 前 scene の lastWord.endSec を開始に、今 scene の lastWord.endSec を終了にする。
-    // ただし firstWord.startSec が前 scene.end より後なら firstWord.startSec を採用（無音を前 scene に含めない）
+    // scene 境界: 前 scene の終端を開始とし、現 scene 末尾 word の endSec を終了とする。
+    // Whisper が冒頭/末尾の短音素を取りこぼしても、字幕を連続させて無表示区間を作らない。
     const prevEnd = alignedScenes.at(-1)
       ? alignedScenes.reduce((acc, s) => acc + s.durationSec, 0)
       : 0;
-    const sceneStart = Math.max(prevEnd, firstWord.startSec);
-    const sceneEnd = lastWord.endSec;
     const isLast = i === scenes.length - 1;
+    const sceneEnd = lastWord.endSec;
     const effectiveEnd = isLast ? Math.max(sceneEnd, totalDurationSec) : sceneEnd;
+    const sceneStart = prevEnd;
+    const captionEnd = isLast ? effectiveEnd : sceneEnd;
     const duration = Math.max(0.01, effectiveEnd - prevEnd);
 
     alignedScenes.push({ ...scene, durationSec: Number(duration.toFixed(3)) });
@@ -93,7 +94,7 @@ export function alignScenesToAudio(
     captionSegments.push({
       text: scene.narration,
       startSec: Number(sceneStart.toFixed(3)),
-      endSec: Number(sceneEnd.toFixed(3)),
+      endSec: Number(captionEnd.toFixed(3)),
     });
   }
 
