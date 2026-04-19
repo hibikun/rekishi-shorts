@@ -34,33 +34,41 @@ function renderPrompt(plan: RenderPlan): string {
     .replace(/\{\{narration\}\}/g, plan.script.narration);
 }
 
+/**
+ * ライセンスが帰属表記（attribution）を法的に要求するかを判定する。
+ * - Public Domain / PD / CC0 系: 不要
+ * - CC-BY / CC-BY-SA / CC-BY-ND / CC-BY-NC 系: 必要
+ * - Gemini（AI生成）: 不要（YouTube Studio 側で「改変コンテンツ」開示で対応）
+ * - 不明: 表記しない（保守運用を優先。疑義があれば元の画像を使わない運用に倒す）
+ */
+function requiresAttribution(license: string | undefined): boolean {
+  if (!license) return false;
+  const l = license.toLowerCase();
+  if (l.includes("public domain") || l === "pd" || l.includes("cc0") || l.includes("cc-0")) return false;
+  if (l.includes("gemini")) return false;
+  if (l.includes("cc-by") || l.includes("cc by")) return true;
+  return false;
+}
+
 function buildAttributionBlock(images: ImageAsset[]): string {
-  const wiki = images.filter((i) => i.source === "wikimedia");
-  const generated = images.filter((i) => i.source === "generated");
+  const requiring = images.filter((i) => i.source === "wikimedia" && requiresAttribution(i.license));
+  if (requiring.length === 0) return "";
 
   const lines: string[] = [];
   lines.push("---");
-  if (wiki.length > 0) {
-    lines.push("### 画像出典（Wikimedia Commons）");
-    // 同じ sourceUrl の重複を除去
-    const seen = new Set<string>();
-    for (const a of wiki) {
-      const key = a.sourceUrl ?? a.attribution ?? a.path;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      const attribution = a.attribution ?? "Wikimedia Commons";
-      const license = a.license ? ` (${a.license})` : "";
-      if (a.sourceUrl) {
-        lines.push(`- ${attribution}${license}: ${a.sourceUrl}`);
-      } else {
-        lines.push(`- ${attribution}${license}`);
-      }
+  lines.push("### 画像出典（Wikimedia Commons）");
+  const seen = new Set<string>();
+  for (const a of requiring) {
+    const key = a.sourceUrl ?? a.attribution ?? a.path;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const attribution = a.attribution ?? "Wikimedia Commons";
+    const license = a.license ? ` (${a.license})` : "";
+    if (a.sourceUrl) {
+      lines.push(`- ${attribution}${license}: ${a.sourceUrl}`);
+    } else {
+      lines.push(`- ${attribution}${license}`);
     }
-  }
-  if (generated.length > 0) {
-    lines.push("");
-    lines.push("### 生成画像");
-    lines.push(`本動画には AI で生成した画像 ${generated.length} 枚を含みます (Google Gemini)。`);
   }
   return lines.join("\n");
 }
@@ -116,7 +124,8 @@ export async function generateYouTubeMetadata(plan: RenderPlan): Promise<Metadat
 
   const title = ensureShortsTag(raw.title);
   const attribution = buildAttributionBlock(plan.images);
-  const description = ensureShortsInDescription(`${raw.description}\n\n${attribution}`).slice(0, 5000);
+  const body = attribution ? `${raw.description}\n\n${attribution}` : raw.description;
+  const description = ensureShortsInDescription(body).slice(0, 5000);
   const tags = capTags(raw.tags);
 
   const metadata = YouTubeMetadataSchema.parse({
