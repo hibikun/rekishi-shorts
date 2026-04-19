@@ -31,6 +31,7 @@ export const config = {
   openai: {
     apiKey: requireEnv("OPENAI_API_KEY"),
     whisperModel: process.env.WHISPER_MODEL ?? "whisper-1",
+    textTranscribeModel: process.env.OPENAI_TEXT_TRANSCRIBE_MODEL ?? "gpt-4o-mini-transcribe",
   },
   paths: {
     /** repo root (rekishi-shorts/) */

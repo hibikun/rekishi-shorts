@@ -105,12 +105,23 @@ export async function runBuildStage(opts: BuildOptions): Promise<{ plan: RenderP
   tracker.addGemini("tts", tts.usage.model, tts.usage.inputTokens, tts.usage.outputTokens);
   log(chalk.dim(`   ${tts.characters}文字 / 合成${tts.approxDurationSec.toFixed(2)}秒 / in=${tts.usage.inputTokens}tok out=${tts.usage.outputTokens}tok`));
 
-  log(`📝 [3/4] Whisper で字幕タイムスタンプ取得中 (台本バイアス付き)...`);
-  const { words, totalDurationSec } = await alignCaptions(tts.path, {
+  log(`📝 [3/4] Whisper + gpt-4o-mini-transcribe で字幕タイムスタンプ取得中...`);
+  const alignResult = await alignCaptions(tts.path, {
     scriptText: script.narration,
   });
-  tracker.addWhisper("whisper", totalDurationSec);
-  await writeJson(jobPath(jobId, "captions", "words.json"), { words, totalDurationSec });
+  const { words, totalDurationSec, usage: asrUsage, brokenByGuard, qualitySignals } = alignResult;
+  tracker.addWhisper("whisper", asrUsage.whisperAudioSec);
+  tracker.addGpt4oMiniTranscribe("transcribe-text", asrUsage.textTranscribeAudioSec);
+  await writeJson(jobPath(jobId, "captions", "words.json"), {
+    words,
+    totalDurationSec,
+    brokenByGuard,
+    qualitySignals,
+  });
+  if (brokenByGuard) {
+    log(chalk.yellow(`   ⚠ whisper-1 が破綻検出: ${qualitySignals.reasons.join(", ")}`));
+    log(chalk.yellow(`     → script.narration を線形配分した words に置換しました`));
+  }
   log(chalk.dim(`   ${words.length}単語 / 実測${totalDurationSec.toFixed(2)}秒`));
 
   const alignment = alignScenesToAudio(scenePlan.scenes, words, totalDurationSec);

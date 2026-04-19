@@ -24,6 +24,9 @@ const ELEVENLABS_PER_CHAR_USD = 22 / 100_000;
 // OpenAI Whisper: $0.006/minute
 const WHISPER_PER_MINUTE_USD = 0.006;
 
+// OpenAI gpt-4o-mini-transcribe: $0.003/minute
+const GPT4O_MINI_TRANSCRIBE_PER_MINUTE_USD = 0.003;
+
 export interface ModelUsage {
   label: string;
   model?: string;
@@ -66,8 +69,18 @@ export class CostTracker {
   addWhisper(label: string, audioSec: number): void {
     this.entries.push({
       label,
+      model: "whisper-1",
       audioSec,
       usdCost: (audioSec / 60) * WHISPER_PER_MINUTE_USD,
+    });
+  }
+
+  addGpt4oMiniTranscribe(label: string, audioSec: number): void {
+    this.entries.push({
+      label,
+      model: "gpt-4o-mini-transcribe",
+      audioSec,
+      usdCost: (audioSec / 60) * GPT4O_MINI_TRANSCRIBE_PER_MINUTE_USD,
     });
   }
 
