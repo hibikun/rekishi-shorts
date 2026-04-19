@@ -21,6 +21,19 @@ export interface AlignmentResult {
   fallbackUsed: boolean;
 }
 
+// bounded window: exact / anchor / LCS の全マッチャが共通で使う探索幅
+const WINDOW_MIN_CHARS = 32;
+const WINDOW_SCENE_MULTIPLIER = 2.5;
+const WINDOW_EXTRA_PAD = 8;
+
+// LCS 採否ゲート: 疎な一致で広い span を拾うのを防ぐ
+const LCS_CONFIDENCE_THRESHOLD = 0.6;
+const LCS_SPAN_EXPANSION = 2.5;
+const LCS_SPAN_EXTRA = 8;
+
+// 次 scene の発話開始直前まで現 scene を延長するときのマージン
+const BOUNDARY_EPSILON_SEC = 0.03;
+
 export function alignScenesToAudio(
   scenes: Scene[],
   words: CaptionWord[],
@@ -74,38 +87,51 @@ export function alignScenesToAudio(
   for (let i = 0; i < scenes.length; i++) {
     const scene = scenes[i]!;
     const span = filledSpans[i]!;
-    const firstWord = words[span.firstWordIdx] ?? lastWordFallback;
     const lastWord = words[span.lastWordIdx] ?? lastWordFallback;
 
-    // scene 境界: 前 scene の終端を開始とし、現 scene 末尾 word の endSec を終了とする。
-    // Whisper が冒頭/末尾の短音素を取りこぼしても、字幕を連続させて無表示区間を作らない。
+    // scene 境界: 前 scene の終端を開始とし、次 scene 先頭 word の直前までこの scene を延ばす。
+    // - 冒頭: 前 scene の lastWord.endSec（初回は 0）から字幕を出し、ASR が取りこぼした mora も埋める。
+    // - 末尾: 中間 scene は「次 scene の firstWord.startSec - ε」まで、最終 scene は totalDurationSec まで。
+    // durationSec(映像側) と captionEnd(字幕側) を同じ boundaryEnd に揃え、映像と字幕のズレを防ぐ。
     const prevEnd = alignedScenes.at(-1)
       ? alignedScenes.reduce((acc, s) => acc + s.durationSec, 0)
       : 0;
     const isLast = i === scenes.length - 1;
     const sceneEnd = lastWord.endSec;
-    const effectiveEnd = isLast ? Math.max(sceneEnd, totalDurationSec) : sceneEnd;
+    const nextFirstWordStart = !isLast
+      ? (words[filledSpans[i + 1]!.firstWordIdx]?.startSec ?? sceneEnd)
+      : sceneEnd;
+    const boundaryEnd = isLast
+      ? Math.max(sceneEnd, totalDurationSec)
+      : Math.max(sceneEnd, nextFirstWordStart - BOUNDARY_EPSILON_SEC);
     const sceneStart = prevEnd;
-    const captionEnd = isLast ? effectiveEnd : sceneEnd;
-    const duration = Math.max(0.01, effectiveEnd - prevEnd);
+    const duration = Math.max(0.01, boundaryEnd - prevEnd);
 
     alignedScenes.push({ ...scene, durationSec: Number(duration.toFixed(3)) });
 
     captionSegments.push({
       text: scene.narration,
       startSec: Number(sceneStart.toFixed(3)),
-      endSec: Number(captionEnd.toFixed(3)),
+      endSec: Number(boundaryEnd.toFixed(3)),
     });
   }
 
   // 合計が totalDurationSec と一致するように最後の scene を微調整
+  // (durationSec と captionSegments[last].endSec を同時に動かして整合を保つ)
   const totalAligned = alignedScenes.reduce((s, sc) => s + sc.durationSec, 0);
   const diff = totalDurationSec - totalAligned;
   if (Math.abs(diff) > 0.01 && alignedScenes.length > 0) {
-    const last = alignedScenes[alignedScenes.length - 1]!;
-    alignedScenes[alignedScenes.length - 1] = {
+    const lastIdx = alignedScenes.length - 1;
+    const last = alignedScenes[lastIdx]!;
+    const adjustedDuration = Math.max(0.01, last.durationSec + diff);
+    alignedScenes[lastIdx] = {
       ...last,
-      durationSec: Number(Math.max(0.01, last.durationSec + diff).toFixed(3)),
+      durationSec: Number(adjustedDuration.toFixed(3)),
+    };
+    const lastCaption = captionSegments[lastIdx]!;
+    captionSegments[lastIdx] = {
+      ...lastCaption,
+      endSec: Number((lastCaption.startSec + adjustedDuration).toFixed(3)),
     };
   }
 
@@ -165,10 +191,18 @@ export function normalize(s: string): string {
 }
 
 /**
- * charStream[streamPos:] から scene を消費し、最後にマッチした word index を返す。
+ * charStream[streamPos:] から scene を消費し、対応 word index の span を返す。
+ *
+ * 全マッチャ (exact / anchor / LCS) は同じ bounded window 内で動作する。
+ * window 幅 = max(WINDOW_MIN_CHARS, ceil(sceneLen × WINDOW_SCENE_MULTIPLIER + WINDOW_EXTRA_PAD))
+ * これにより後続 scene の文字領域まで誤って食い込むのを防ぐ。
+ *
  * 戦略:
- *   1. normalizedScene をそのまま含むか（exact）探す。ウィンドウは streamPos から先 N 文字以内に限定
- *   2. 見つからない場合は、scene の先頭 3 文字／末尾 3 文字で anchor 位置を推定し、その範囲を span とする
+ *   1. exact substring match (window 内)
+ *   2. anchor fuzzy: 先頭3文字 / 末尾3文字の両方が window 内にある区間を採用
+ *   3. LCS fallback: scene と window の LCS を DP で計算し、
+ *      信頼度(lcsLen/sceneLen)と span 幅の両方が閾値を満たす場合のみ採用
+ *   4. いずれも満たさない場合は null を返し、fillMissingSpans に補間を委ねる
  */
 function consumeScene(
   charStream: string,
@@ -176,8 +210,17 @@ function consumeScene(
   streamPos: number,
   normalizedScene: string,
 ): { firstWordIdx: number; lastWordIdx: number } | null {
-  const searchRegion = charStream.slice(streamPos);
-  if (searchRegion.length === 0) return null;
+  const remaining = charStream.length - streamPos;
+  if (remaining <= 0) return null;
+
+  const windowLen = Math.min(
+    remaining,
+    Math.max(
+      WINDOW_MIN_CHARS,
+      Math.ceil(normalizedScene.length * WINDOW_SCENE_MULTIPLIER + WINDOW_EXTRA_PAD),
+    ),
+  );
+  const searchRegion = charStream.slice(streamPos, streamPos + windowLen);
 
   // 1. exact substring match
   const exactIdx = searchRegion.indexOf(normalizedScene);
@@ -190,7 +233,7 @@ function consumeScene(
     };
   }
 
-  // 2. anchor fuzzy: 先頭3文字と末尾3文字が共に検出できる区間を span とする
+  // 2. anchor fuzzy: 先頭3文字と末尾3文字が共に window 内に検出できる区間を span とする
   const headKey = normalizedScene.slice(0, Math.min(3, normalizedScene.length));
   const tailKey = normalizedScene.slice(-Math.min(3, normalizedScene.length));
   const headIdx = searchRegion.indexOf(headKey);
@@ -204,34 +247,74 @@ function consumeScene(
     };
   }
 
-  // 3. 最終手段: normalizedScene の半分以上の文字が含まれる最小 window を見つける
-  // （小さい scene でも壊れないよう軽量 fuzzy）
-  const need = Math.max(2, Math.ceil(normalizedScene.length * 0.5));
-  const charSet = new Set<string>(normalizedScene);
-  let bestStart = -1;
-  let bestEnd = -1;
-  let bestCount = 0;
-  for (let i = streamPos; i < charStream.length; i++) {
-    if (!charSet.has(charStream[i]!)) continue;
-    let count = 0;
-    const windowEnd = Math.min(charStream.length, i + normalizedScene.length + 4);
-    for (let j = i; j < windowEnd; j++) {
-      if (charSet.has(charStream[j]!)) count++;
-    }
-    if (count >= need && count > bestCount) {
-      bestStart = i;
-      bestEnd = windowEnd - 1;
-      bestCount = count;
-    }
+  // 3. LCS fallback (順序保持)。信頼度ゲートを通らないなら null。
+  const lcs = computeLcsSpan(normalizedScene, searchRegion);
+  if (lcs === null) return null;
+  const confidenceRatio = lcs.lcsLen / normalizedScene.length;
+  const spanLen = lcs.lastJ - lcs.firstJ + 1;
+  const maxSpanLen = normalizedScene.length * LCS_SPAN_EXPANSION + LCS_SPAN_EXTRA;
+  if (confidenceRatio < LCS_CONFIDENCE_THRESHOLD || spanLen > maxSpanLen) {
+    return null;
   }
-  if (bestStart !== -1) {
-    return {
-      firstWordIdx: charWordIndex[bestStart]!,
-      lastWordIdx: charWordIndex[bestEnd]!,
-    };
-  }
+  const absStart = streamPos + lcs.firstJ;
+  const absEnd = streamPos + lcs.lastJ;
+  return {
+    firstWordIdx: charWordIndex[absStart]!,
+    lastWordIdx: charWordIndex[absEnd]!,
+  };
+}
 
-  return null;
+/**
+ * 2 文字列の Longest Common Subsequence を DP で計算し、
+ * t 側での最初/最後の一致位置と LCS 長を返す。
+ * 疎な一致 (LCS 長が短い / span が広すぎる) の判定は呼び出し側で行う。
+ */
+export function computeLcsSpan(
+  s: string,
+  t: string,
+): { firstJ: number; lastJ: number; lcsLen: number } | null {
+  const m = s.length;
+  const n = t.length;
+  if (m === 0 || n === 0) return null;
+
+  // dp[i][j] = LCS length of s[:i], t[:j]
+  const dp: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+  for (let i = 1; i <= m; i++) {
+    const si = s[i - 1]!;
+    const row = dp[i]!;
+    const prev = dp[i - 1]!;
+    for (let j = 1; j <= n; j++) {
+      if (si === t[j - 1]) {
+        row[j] = prev[j - 1]! + 1;
+      } else {
+        const a = prev[j]!;
+        const b = row[j - 1]!;
+        row[j] = a >= b ? a : b;
+      }
+    }
+  }
+  const lcsLen = dp[m]![n]!;
+  if (lcsLen === 0) return null;
+
+  // traceback で t 側の match 位置を回収（逆順に得られるので first/last を追跡）
+  let i = m;
+  let j = n;
+  let firstJ = -1;
+  let lastJ = -1;
+  while (i > 0 && j > 0) {
+    if (s[i - 1] === t[j - 1]) {
+      const jIdx = j - 1;
+      if (lastJ === -1) lastJ = jIdx;
+      firstJ = jIdx;
+      i--;
+      j--;
+    } else if (dp[i - 1]![j]! >= dp[i]![j - 1]!) {
+      i--;
+    } else {
+      j--;
+    }
+  }
+  return { firstJ, lastJ, lcsLen };
 }
 
 function charPosAfter(
