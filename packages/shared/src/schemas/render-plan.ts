@@ -17,7 +17,7 @@ export const RenderPlanSchema = z.object({
   scenes: z.array(SceneSchema),
   images: z.array(ImageAssetSchema),
   audio: AudioAssetSchema,
-  // Whisper 由来の word 単位タイムスタンプ（KeywordPopup 用途）
+  // Whisper 由来の word 単位タイムスタンプ（scene aligner 用途）
   captions: z.array(CaptionWordSchema),
   // scene 単位の phrase 字幕（Caption 表示用途）
   captionSegments: z.array(CaptionSegmentSchema).default([]),

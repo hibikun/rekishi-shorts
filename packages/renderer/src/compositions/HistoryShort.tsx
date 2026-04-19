@@ -4,7 +4,6 @@ import type { CaptionSegment, CaptionWord, ImageAsset, Scene } from "@rekishi/sh
 import { KenBurnsImage } from "../components/KenBurnsImage";
 import { Caption } from "../components/Caption";
 import { NarrationAudio } from "../components/NarrationAudio";
-import { KeywordPopup, type KeywordHit } from "../components/KeywordPopup";
 
 export interface HistoryShortProps {
   scenes: Scene[];
@@ -20,13 +19,11 @@ export const HistoryShort: React.FC<HistoryShortProps> = ({
   scenes,
   images,
   audioSrc,
-  captions,
   captionSegments,
   keyTerms = [],
 }) => {
   const { fps } = useVideoConfig();
 
-  // scene layout: from / duration
   let cursor = 0;
   const layout = scenes.map((scene) => {
     const startFrame = Math.round(cursor * fps);
@@ -35,11 +32,6 @@ export const HistoryShort: React.FC<HistoryShortProps> = ({
     const image = images.find((im) => im.sceneIndex === scene.index);
     return { scene, image, startFrame, durationFrames };
   });
-
-  // keyTerm → caption words から最初に出現する時間を検出
-  const keywordHits: KeywordHit[] = keyTerms
-    .map((term) => findKeywordHit(captions, term))
-    .filter((h): h is KeywordHit => h !== null);
 
   return (
     <AbsoluteFill style={{ backgroundColor: "#000" }}>
@@ -58,30 +50,8 @@ export const HistoryShort: React.FC<HistoryShortProps> = ({
         </Sequence>
       ))}
 
-      <Caption captionSegments={captionSegments} />
-      <KeywordPopup hits={keywordHits} />
+      <Caption captionSegments={captionSegments} keyTerms={keyTerms} />
       <NarrationAudio src={audioSrc} />
     </AbsoluteFill>
   );
 };
-
-/** captions の連続window で term 文字列にマッチするものを探す (文字結合で探索) */
-function findKeywordHit(words: CaptionWord[], term: string): KeywordHit | null {
-  const normalizedTerm = term.replace(/\s+/g, "");
-  if (!normalizedTerm) return null;
-  for (let i = 0; i < words.length; i++) {
-    let combined = "";
-    for (let j = i; j < Math.min(words.length, i + 6); j++) {
-      combined += words[j]!.text;
-      if (combined.includes(normalizedTerm)) {
-        return {
-          term,
-          startSec: words[i]!.startSec,
-          endSec: words[j]!.endSec,
-        };
-      }
-      if (combined.length > normalizedTerm.length * 2) break;
-    }
-  }
-  return null;
-}
