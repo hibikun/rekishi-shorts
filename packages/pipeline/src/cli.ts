@@ -3,8 +3,12 @@ import { Command } from "commander";
 import chalk from "chalk";
 import path from "node:path";
 import { TopicSchema } from "@rekishi/shared";
-import { generatePlan, getJobOutputDir } from "./orchestrator.js";
-import { dataPath } from "./config.js";
+import {
+  generatePlan,
+  getJobOutputDir,
+  runBuildStage,
+  runDraftStage,
+} from "./orchestrator.js";
 
 const program = new Command();
 
@@ -14,8 +18,63 @@ program
   .version("0.1.0");
 
 program
+  .command("draft")
+  .description("台本のみ生成して draft.md を出力（人間レビュー用）")
+  .requiredOption("--topic <title>", "トピック名（例: ペリー来航）")
+  .option("--era <era>", "時代（例: 幕末）")
+  .option("--subject <subject>", "科目（日本史 | 世界史）", "日本史")
+  .option("--target <target>", "対象試験（共通テスト | 二次 | 汎用）", "汎用")
+  .action(async (opts) => {
+    const topic = TopicSchema.parse({
+      title: opts.topic,
+      era: opts.era,
+      subject: opts.subject,
+      target: opts.target,
+    });
+    console.log(chalk.bold(`\n🎞️  rekishi-shorts draft: ${topic.title}\n`));
+
+    const { jobId, draftPath, tracker } = await runDraftStage(topic);
+    console.log(chalk.green(`\n✅ draft 保存: ${draftPath}`));
+    console.log(chalk.bold("\n次のステップ:"));
+    console.log(`  1. ${chalk.cyan(draftPath)} を開いて narration / keyTerms / readings / mnemonic を編集`);
+    console.log(`  2. 編集 OK になったら ${chalk.cyan(`pnpm build ${jobId}`)} を実行`);
+    console.log(chalk.bold("\n💰 draft 段階のコスト:"));
+    console.log(tracker.formatTable());
+  });
+
+program
+  .command("build")
+  .description("draft.md を読み込んでシーン分割〜レンダリングまで実行")
+  .argument("<jobId>", "draft で生成したジョブID")
+  .option("--no-generate-images", "Nano Banana 画像生成をスキップし Wikimedia のみ")
+  .option("--plan-only", "RenderPlan 生成まで（レンダリングしない）")
+  .action(async (jobId, opts) => {
+    console.log(chalk.bold(`\n🎞️  rekishi-shorts build: ${jobId}\n`));
+
+    const { plan, tracker } = await runBuildStage({
+      jobId,
+      allowImageGeneration: opts.generateImages !== false,
+    });
+
+    if (opts.planOnly) {
+      console.log(chalk.yellow("\n--plan-only 指定のためレンダリングをスキップします"));
+      console.log(chalk.bold("\n💰 コスト内訳:"));
+      console.log(tracker.formatTable());
+      return;
+    }
+
+    const { renderHistoryShort } = await import("@rekishi/renderer");
+    const outputPath = path.join(getJobOutputDir(), `${plan.id}.mp4`);
+    console.log(chalk.bold(`\n🎥 Remotion でレンダリング中...`));
+    await renderHistoryShort(plan, outputPath);
+    console.log(chalk.green(`\n✅ 完成: ${outputPath}`));
+    console.log(chalk.bold("\n💰 コスト内訳:"));
+    console.log(tracker.formatTable());
+  });
+
+program
   .command("generate")
-  .description("台本生成からレンダリングまで一気通貫で実行")
+  .description("台本生成からレンダリングまで一気通貫で実行（レビューなし）")
   .requiredOption("--topic <title>", "トピック名（例: ペリー来航）")
   .option("--era <era>", "時代（例: 幕末）")
   .option("--subject <subject>", "科目（日本史 | 世界史）", "日本史")

@@ -6,6 +6,8 @@
   "type": "module",
   "scripts": {
     "typecheck": "pnpm -r typecheck",
+    "draft": "pnpm --filter @rekishi/pipeline draft",
+    "build": "pnpm --filter @rekishi/pipeline build",
     "generate": "pnpm --filter @rekishi/pipeline generate",
     "studio": "pnpm --filter @rekishi/renderer studio"
   },

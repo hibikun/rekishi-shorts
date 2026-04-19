@@ -11,6 +11,8 @@
     "./package.json": "./package.json"
   },
   "scripts": {
+    "draft": "tsx src/cli.ts draft",
+    "build": "tsx src/cli.ts build",
     "generate": "tsx src/cli.ts generate",
     "script-only": "tsx src/cli.ts script-only",
     "tts-only": "tsx src/cli.ts tts-only",
