@@ -27,6 +27,7 @@ const singleResponseSchema = {
   properties: {
     narration: { type: Type.STRING },
     hook: { type: Type.STRING },
+    teaserCaption: { type: Type.STRING },
     body: { type: Type.STRING },
     closing: { type: Type.STRING },
     mnemonic: { type: Type.STRING },
@@ -44,7 +45,7 @@ const singleResponseSchema = {
     },
     estimatedDurationSec: { type: Type.NUMBER },
   },
-  required: ["narration", "hook", "body", "closing", "keyTerms", "estimatedDurationSec"],
+  required: ["narration", "hook", "teaserCaption", "body", "closing", "keyTerms", "estimatedDurationSec"],
 };
 
 const threePickResponseSchema = {
@@ -52,6 +53,7 @@ const threePickResponseSchema = {
   properties: {
     narration: { type: Type.STRING },
     hook: { type: Type.STRING },
+    teaserCaption: { type: Type.STRING },
     body: { type: Type.STRING },
     closing: { type: Type.STRING },
     keyTerms: { type: Type.ARRAY, items: { type: Type.STRING } },
@@ -80,7 +82,7 @@ const threePickResponseSchema = {
     },
     estimatedDurationSec: { type: Type.NUMBER },
   },
-  required: ["narration", "hook", "body", "closing", "keyTerms", "items", "estimatedDurationSec"],
+  required: ["narration", "hook", "teaserCaption", "body", "closing", "keyTerms", "items", "estimatedDurationSec"],
 };
 
 const RESPONSE_SCHEMAS = {

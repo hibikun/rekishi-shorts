@@ -31,6 +31,11 @@ export const ScriptSchema = z.object({
   // 60秒 = 約300-400文字を想定
   narration: z.string().min(100).describe("ナレーション全文。句読点込み"),
   hook: z.string().describe("掴みの1-2文"),
+  teaserCaption: z
+    .string()
+    .max(20)
+    .optional()
+    .describe("冒頭1.2秒に表示する巨大テロップ（問いかけ/謎提示、15字以内目安）"),
   body: z.string().describe("本文"),
   closing: z.string().describe("締めの1文"),
   mnemonic: z.string().optional().describe("年号語呂合わせ"),
