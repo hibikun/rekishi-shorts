@@ -30,6 +30,22 @@ pnpm studio
 
 出力は `data/videos/` に格納される。
 
+## YouTube Shorts 自動投稿
+
+```bash
+# 初回だけ: docs/phases/youtube-setup.md に沿って OAuth を設定
+
+# メタデータを LLM で生成 → 人間レビュー
+pnpm post meta <jobId>
+
+# data/scripts/<jobId>/meta-draft.md を必要に応じて編集
+
+# 投稿（デフォルト public）
+pnpm post youtube <jobId>
+pnpm post youtube <jobId> --privacy private   # テスト用
+pnpm post youtube <jobId> --dry-run           # 送信せずペイロード確認
+```
+
 ## ドキュメント
 
 - [docs/README.md](./docs/README.md) - 全体インデックス

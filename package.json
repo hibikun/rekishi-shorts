@@ -9,7 +9,8 @@
     "draft": "pnpm --filter @rekishi/pipeline draft",
     "build": "pnpm --filter @rekishi/pipeline build",
     "generate": "pnpm --filter @rekishi/pipeline generate",
-    "studio": "pnpm --filter @rekishi/renderer studio"
+    "studio": "pnpm --filter @rekishi/renderer studio",
+    "post": "pnpm --filter @rekishi/publisher post"
   },
   "packageManager": "pnpm@10.30.2",
   "engines": {
