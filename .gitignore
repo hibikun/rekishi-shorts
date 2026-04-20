@@ -20,15 +20,12 @@ data/images/*
 data/captions/*
 data/videos/*
 data/uploads/*
-data/bgm/*
 !data/scripts/.gitkeep
 !data/audio/.gitkeep
 !data/images/.gitkeep
 !data/captions/.gitkeep
 !data/videos/.gitkeep
 !data/uploads/.gitkeep
-!data/bgm/.gitkeep
-!data/bgm/README.md
 
 # obsidian workspace
 .obsidian/

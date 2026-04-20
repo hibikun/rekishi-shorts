@@ -12,8 +12,6 @@ const defaultProps: HistoryShortProps = {
   totalDurationSec: 60,
   keyTerms: [],
   title: { top: "", bottom: "" },
-  bgmSrc: "",
-  bgmVolume: 0.12,
 };
 
 const HistoryShortComponent = HistoryShort as unknown as React.FC<Record<string, unknown>>;

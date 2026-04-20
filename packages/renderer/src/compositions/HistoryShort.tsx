@@ -6,7 +6,6 @@ import { Caption } from "../components/Caption";
 import { NarrationAudio } from "../components/NarrationAudio";
 import { KeywordPopup, type KeywordHit } from "../components/KeywordPopup";
 import { TitleBar } from "../components/TitleBar";
-import { BgmAudio } from "../components/BgmAudio";
 
 export interface HistoryShortProps {
   scenes: Scene[];
@@ -17,8 +16,6 @@ export interface HistoryShortProps {
   totalDurationSec: number;
   keyTerms?: string[];
   title?: VideoTitle;
-  bgmSrc?: string;
-  bgmVolume?: number;
 }
 
 const TITLE_BAR_RATIO = 0.25;
@@ -32,8 +29,6 @@ export const HistoryShort: React.FC<HistoryShortProps> = ({
   totalDurationSec,
   keyTerms = [],
   title,
-  bgmSrc,
-  bgmVolume = 0.12,
 }) => {
   const { fps } = useVideoConfig();
 
@@ -84,9 +79,6 @@ export const HistoryShort: React.FC<HistoryShortProps> = ({
 
       {title && <TitleBar top={title.top} bottom={title.bottom} />}
       <NarrationAudio src={audioSrc} />
-      {bgmSrc && (
-        <BgmAudio src={bgmSrc} volume={bgmVolume} totalDurationSec={totalDurationSec} />
-      )}
     </AbsoluteFill>
   );
 };

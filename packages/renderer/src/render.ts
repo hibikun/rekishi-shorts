@@ -37,32 +37,6 @@ function stageAsset(localPath: string, bundleDir: string, name: string): string 
   return name;
 }
 
-function resolveBgmPath(): string | null {
-  const override = process.env.BGM_PATH?.trim();
-  const repoRoot = path.resolve(__dirname, "../../../");
-  const candidates: string[] = [];
-  if (override) {
-    candidates.push(path.isAbsolute(override) ? override : path.resolve(repoRoot, override));
-  }
-  const defaultDir = path.join(repoRoot, "data", "bgm");
-  for (const ext of ["mp3", "wav", "m4a", "ogg"]) {
-    candidates.push(path.join(defaultDir, `default.${ext}`));
-  }
-  for (const candidate of candidates) {
-    if (fs.existsSync(candidate)) return candidate;
-  }
-  return null;
-}
-
-function resolveBgm(bundleDir: string): { src: string; volume: number } {
-  const bgmPath = resolveBgmPath();
-  if (!bgmPath) return { src: "", volume: 0 };
-  const src = stageAsset(bgmPath, bundleDir, `bgm${path.extname(bgmPath)}`);
-  const rawVolume = Number.parseFloat(process.env.BGM_VOLUME ?? "");
-  const volume = Number.isFinite(rawVolume) && rawVolume >= 0 ? Math.min(1, rawVolume) : 0.12;
-  return { src, volume };
-}
-
 export async function renderHistoryShort(plan: RenderPlan, outputPath: string): Promise<void> {
   const bundleDir = await bundle({
     entryPoint: getEntryPoint(),
@@ -75,7 +49,6 @@ export async function renderHistoryShort(plan: RenderPlan, outputPath: string): 
     return { ...img, path: stageAsset(img.path, bundleDir, filename) };
   });
   const audioSrc = stageAsset(plan.audio.path, bundleDir, `narration${path.extname(plan.audio.path) || ".mp3"}`);
-  const { src: bgmSrc, volume: bgmVolume } = resolveBgm(bundleDir);
 
   const durationInFrames = Math.max(1, Math.ceil(plan.totalDurationSec * VIDEO_FPS));
 
@@ -88,8 +61,6 @@ export async function renderHistoryShort(plan: RenderPlan, outputPath: string): 
     totalDurationSec: plan.totalDurationSec,
     keyTerms: plan.script.keyTerms,
     title: plan.script.title,
-    bgmSrc,
-    bgmVolume,
   };
 
   const composition = await selectComposition({
