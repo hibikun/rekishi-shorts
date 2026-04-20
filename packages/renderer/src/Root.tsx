@@ -11,7 +11,7 @@ const defaultProps: HistoryShortProps = {
   captionSegments: [],
   totalDurationSec: 60,
   keyTerms: [],
-  teaserCaption: "",
+  title: { top: "", bottom: "" },
   bgmSrc: "",
   bgmVolume: 0.12,
 };

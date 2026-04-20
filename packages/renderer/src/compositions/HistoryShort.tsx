@@ -1,11 +1,11 @@
 import React from "react";
 import { AbsoluteFill, Sequence, useVideoConfig } from "remotion";
-import type { CaptionSegment, CaptionWord, ImageAsset, Scene } from "@rekishi/shared";
+import type { CaptionSegment, CaptionWord, ImageAsset, Scene, VideoTitle } from "@rekishi/shared";
 import { KenBurnsImage } from "../components/KenBurnsImage";
 import { Caption } from "../components/Caption";
 import { NarrationAudio } from "../components/NarrationAudio";
 import { KeywordPopup, type KeywordHit } from "../components/KeywordPopup";
-import { TeaserCard } from "../components/TeaserCard";
+import { TitleBar } from "../components/TitleBar";
 import { BgmAudio } from "../components/BgmAudio";
 
 export interface HistoryShortProps {
@@ -16,13 +16,12 @@ export interface HistoryShortProps {
   captionSegments: CaptionSegment[];
   totalDurationSec: number;
   keyTerms?: string[];
-  teaserCaption?: string;
+  title?: VideoTitle;
   bgmSrc?: string;
   bgmVolume?: number;
 }
 
-const TEASER_HOLD_SEC = 2.7;
-const TEASER_FADE_SEC = 0.3;
+const TITLE_BAR_RATIO = 0.25;
 
 export const HistoryShort: React.FC<HistoryShortProps> = ({
   scenes,
@@ -32,12 +31,11 @@ export const HistoryShort: React.FC<HistoryShortProps> = ({
   captionSegments,
   totalDurationSec,
   keyTerms = [],
-  teaserCaption,
+  title,
   bgmSrc,
   bgmVolume = 0.12,
 }) => {
   const { fps } = useVideoConfig();
-  const hasTeaser = Boolean(teaserCaption && teaserCaption.trim().length > 0);
 
   let cursor = 0;
   const layout = scenes.map((scene) => {
@@ -54,26 +52,37 @@ export const HistoryShort: React.FC<HistoryShortProps> = ({
 
   return (
     <AbsoluteFill style={{ backgroundColor: "#000" }}>
-      {layout.map(({ scene, image, startFrame, durationFrames }) => (
-        <Sequence
-          key={scene.index}
-          from={startFrame}
-          durationInFrames={durationFrames}
-        >
-          <KenBurnsImage
-            src={image?.path ?? ""}
-            startFrame={0}
-            durationFrames={durationFrames}
-            sceneIndex={scene.index}
-          />
-        </Sequence>
-      ))}
+      {/* 動画本体エリア: 上部25%のタイトル帯を避けて下75%に配置 */}
+      <div
+        style={{
+          position: "absolute",
+          top: `${TITLE_BAR_RATIO * 100}%`,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          overflow: "hidden",
+        }}
+      >
+        {layout.map(({ scene, image, startFrame, durationFrames }) => (
+          <Sequence
+            key={scene.index}
+            from={startFrame}
+            durationInFrames={durationFrames}
+          >
+            <KenBurnsImage
+              src={image?.path ?? ""}
+              startFrame={0}
+              durationFrames={durationFrames}
+              sceneIndex={scene.index}
+            />
+          </Sequence>
+        ))}
 
-      <Caption captionSegments={captionSegments} keyTerms={keyTerms} />
-      <KeywordPopup hits={keywordHits} />
-      {hasTeaser && (
-        <TeaserCard text={teaserCaption!} holdSec={TEASER_HOLD_SEC} fadeSec={TEASER_FADE_SEC} />
-      )}
+        <Caption captionSegments={captionSegments} keyTerms={keyTerms} />
+        <KeywordPopup hits={keywordHits} />
+      </div>
+
+      {title && <TitleBar top={title.top} bottom={title.bottom} />}
       <NarrationAudio src={audioSrc} />
       {bgmSrc && (
         <BgmAudio src={bgmSrc} volume={bgmVolume} totalDurationSec={totalDurationSec} />
