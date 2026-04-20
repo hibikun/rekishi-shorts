@@ -39,20 +39,19 @@ export async function synthesizeNarration(
     /** 固定辞書由来のふりがなマップ */
     furigana?: Record<string, string>;
     voiceName?: string;
-    /** 冒頭フック文。渡された場合、TTS入力内の該当箇所を [intense] タグで囲み、勢いを強調する */
+    /** 冒頭フック文。Kore 方針では未使用（将来 Algenib 的なdocumentary調に戻す際用） */
     hook?: string;
   } = {},
 ): Promise<TTSResult> {
   const withReadings = applyFurigana(text, opts.readings);
   const processed = applyFurigana(withReadings, opts.furigana);
-  const tagged = opts.hook ? injectHookTag(processed, applyFurigana(applyFurigana(opts.hook, opts.readings), opts.furigana)) : processed;
-  const voiceName = opts.voiceName ?? process.env.GEMINI_TTS_VOICE ?? "Algenib";
+  const voiceName = opts.voiceName ?? process.env.GEMINI_TTS_VOICE ?? "Kore";
   const model = process.env.GEMINI_TTS_MODEL ?? "gemini-3.1-flash-tts-preview";
 
   const ai = new GoogleGenAI({ apiKey: config.gemini.apiKey });
 
   // ショート動画用の指示を prompt に含める (Gemini TTS は prompt でスタイル制御可能)
-  const styledPrompt = `Deliver this Japanese history short like a dramatic documentary narrator — gravelly, low-register, urgent. Very fast, rapid-fire tempo with minimal pauses between sentences. Heavy emphasis on dates, proper nouns, and turning points. Short, decisive, breathless delivery. No casual classroom tone — every sentence must pull the viewer in. Inline tags like [intense] denote delivery cues, not spoken words.\n${tagged}`;
+  const styledPrompt = `Say the following in natural, clear Japanese with a confident educational narrator's voice, slightly fast pace (suitable for a YouTube Shorts video for students):\n${processed}`;
 
   const response = await ai.models.generateContent({
     model,
@@ -102,13 +101,6 @@ function applyFurigana(text: string, map?: Record<string, string>): string {
   let out = text;
   for (const [k, v] of Object.entries(map)) out = out.split(k).join(v);
   return out;
-}
-
-function injectHookTag(narration: string, hook: string): string {
-  if (!hook) return narration;
-  const idx = narration.indexOf(hook);
-  if (idx < 0) return narration;
-  return narration.slice(0, idx) + `[intense] ${hook}` + narration.slice(idx + hook.length);
 }
 
 async function loudnormInPlace(wavPath: string): Promise<void> {
