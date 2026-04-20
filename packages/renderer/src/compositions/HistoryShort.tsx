@@ -6,6 +6,7 @@ import { Caption } from "../components/Caption";
 import { NarrationAudio } from "../components/NarrationAudio";
 import { KeywordPopup, type KeywordHit } from "../components/KeywordPopup";
 import { TeaserCard } from "../components/TeaserCard";
+import { BgmAudio } from "../components/BgmAudio";
 
 export interface HistoryShortProps {
   scenes: Scene[];
@@ -16,6 +17,8 @@ export interface HistoryShortProps {
   totalDurationSec: number;
   keyTerms?: string[];
   teaserCaption?: string;
+  bgmSrc?: string;
+  bgmVolume?: number;
 }
 
 const TEASER_HOLD_SEC = 2.7;
@@ -27,8 +30,11 @@ export const HistoryShort: React.FC<HistoryShortProps> = ({
   audioSrc,
   captions,
   captionSegments,
+  totalDurationSec,
   keyTerms = [],
   teaserCaption,
+  bgmSrc,
+  bgmVolume = 0.12,
 }) => {
   const { fps } = useVideoConfig();
   const hasTeaser = Boolean(teaserCaption && teaserCaption.trim().length > 0);
@@ -69,6 +75,9 @@ export const HistoryShort: React.FC<HistoryShortProps> = ({
         <TeaserCard text={teaserCaption!} holdSec={TEASER_HOLD_SEC} fadeSec={TEASER_FADE_SEC} />
       )}
       <NarrationAudio src={audioSrc} />
+      {bgmSrc && (
+        <BgmAudio src={bgmSrc} volume={bgmVolume} totalDurationSec={totalDurationSec} />
+      )}
     </AbsoluteFill>
   );
 };
