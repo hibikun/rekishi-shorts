@@ -1,5 +1,5 @@
 import React from "react";
-import { spring, useCurrentFrame, useVideoConfig } from "remotion";
+import { useVideoConfig } from "remotion";
 
 const FONT_FAMILY =
   '"Noto Sans CJK JP", "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif';
@@ -10,21 +10,31 @@ export interface TitleBarProps {
 }
 
 const BAR_HEIGHT_RATIO = 0.25;
+const HORIZONTAL_PADDING = 30;
 const YELLOW = "#FFEB3B";
 const RED = "#E53935";
 
+// 日本語は正方形に近いが、縁取り太さ分の余白を持たせるため保守的な係数を使う
+const JA_CHAR_WIDTH_RATIO = 1.02;
+const TOP_BASE_FONT_SIZE = 95;
+const BOTTOM_BASE_FONT_SIZE = 140;
+
+function fitFontSize(text: string, baseSize: number, availableWidth: number): number {
+  if (!text) return baseSize;
+  const maxByWidth = availableWidth / (text.length * JA_CHAR_WIDTH_RATIO);
+  return Math.floor(Math.min(baseSize, maxByWidth));
+}
+
 export const TitleBar: React.FC<TitleBarProps> = ({ top, bottom }) => {
-  const frame = useCurrentFrame();
-  const { fps } = useVideoConfig();
+  const { width: videoWidth } = useVideoConfig();
 
   const topText = top?.trim() ?? "";
   const bottomText = bottom?.trim() ?? "";
   if (!topText && !bottomText) return null;
 
-  const popScale = spring({ frame, fps, config: { damping: 16, stiffness: 200 } });
-
-  const topFontSize = topText.length <= 10 ? 90 : 76;
-  const bottomFontSize = bottomText.length <= 10 ? 130 : bottomText.length <= 13 ? 112 : 96;
+  const availableWidth = videoWidth - HORIZONTAL_PADDING * 2;
+  const topFontSize = fitFontSize(topText, TOP_BASE_FONT_SIZE, availableWidth);
+  const bottomFontSize = fitFontSize(bottomText, BOTTOM_BASE_FONT_SIZE, availableWidth);
 
   return (
     <div
@@ -42,9 +52,7 @@ export const TitleBar: React.FC<TitleBarProps> = ({ top, bottom }) => {
         zIndex: 30,
         pointerEvents: "none",
         gap: 24,
-        padding: "0 48px",
-        transform: `scale(${popScale})`,
-        transformOrigin: "center center",
+        padding: `0 ${HORIZONTAL_PADDING}px`,
       }}
     >
       {topText && (
