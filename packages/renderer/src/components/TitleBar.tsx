@@ -10,18 +10,28 @@ export interface TitleBarProps {
 }
 
 const BAR_HEIGHT_RATIO = 0.25;
-const HORIZONTAL_PADDING = 30;
+const HORIZONTAL_PADDING = 60;
+const TOP_CONTENT_PADDING = 180;
 const YELLOW = "#FFEB3B";
 const RED = "#E53935";
 
-// 日本語は正方形に近いが、縁取り太さ分の余白を持たせるため保守的な係数を使う
-const JA_CHAR_WIDTH_RATIO = 1.02;
+// letterSpacing と縁取りを踏まえた保守的な係数
+const JA_CHAR_WIDTH_RATIO = 1.1;
 const TOP_BASE_FONT_SIZE = 95;
 const BOTTOM_BASE_FONT_SIZE = 140;
+const TOP_STROKE_WIDTH = 6;
+const BOTTOM_STROKE_WIDTH = 8;
 
-function fitFontSize(text: string, baseSize: number, availableWidth: number): number {
+function fitFontSize(
+  text: string,
+  baseSize: number,
+  availableWidth: number,
+  strokeWidth: number,
+): number {
   if (!text) return baseSize;
-  const maxByWidth = availableWidth / (text.length * JA_CHAR_WIDTH_RATIO);
+  // stroke は文字の外側に張り出すので、両端分を幅から差し引く
+  const usable = Math.max(0, availableWidth - strokeWidth * 2);
+  const maxByWidth = usable / (text.length * JA_CHAR_WIDTH_RATIO);
   return Math.floor(Math.min(baseSize, maxByWidth));
 }
 
@@ -33,8 +43,13 @@ export const TitleBar: React.FC<TitleBarProps> = ({ top, bottom }) => {
   if (!topText && !bottomText) return null;
 
   const availableWidth = videoWidth - HORIZONTAL_PADDING * 2;
-  const topFontSize = fitFontSize(topText, TOP_BASE_FONT_SIZE, availableWidth);
-  const bottomFontSize = fitFontSize(bottomText, BOTTOM_BASE_FONT_SIZE, availableWidth);
+  const topFontSize = fitFontSize(topText, TOP_BASE_FONT_SIZE, availableWidth, TOP_STROKE_WIDTH);
+  const bottomFontSize = fitFontSize(
+    bottomText,
+    BOTTOM_BASE_FONT_SIZE,
+    availableWidth,
+    BOTTOM_STROKE_WIDTH,
+  );
 
   return (
     <div
@@ -48,11 +63,11 @@ export const TitleBar: React.FC<TitleBarProps> = ({ top, bottom }) => {
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
-        justifyContent: "center",
+        justifyContent: "flex-start",
         zIndex: 30,
         pointerEvents: "none",
         gap: 24,
-        padding: `0 ${HORIZONTAL_PADDING}px`,
+        padding: `${TOP_CONTENT_PADDING}px ${HORIZONTAL_PADDING}px 0`,
       }}
     >
       {topText && (
