@@ -11,6 +11,7 @@ const defaultProps: HistoryShortProps = {
   captionSegments: [],
   totalDurationSec: 60,
   keyTerms: [],
+  title: { top: "", bottom: "" },
 };
 
 const HistoryShortComponent = HistoryShort as unknown as React.FC<Record<string, unknown>>;

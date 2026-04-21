@@ -1,5 +1,5 @@
 import React from "react";
-import { Img, interpolate, useCurrentFrame, useVideoConfig } from "remotion";
+import { Img, interpolate, useCurrentFrame } from "remotion";
 
 export interface KenBurnsImageProps {
   src: string;
@@ -19,7 +19,6 @@ export const KenBurnsImage: React.FC<KenBurnsImageProps> = ({
   sceneIndex,
 }) => {
   const frame = useCurrentFrame();
-  const { width: videoWidth, height: videoHeight } = useVideoConfig();
   const localFrame = frame - startFrame;
 
   // 控えめな pan/zoom パターン
@@ -69,8 +68,8 @@ export const KenBurnsImage: React.FC<KenBurnsImageProps> = ({
           position: "absolute",
           left: 0,
           top: 0,
-          width: videoWidth,
-          height: videoHeight,
+          width: "100%",
+          height: "100%",
           objectFit: "cover",
           transform: `translate(${translateX}px, ${translateY}px) scale(${scale})`,
           transformOrigin: "center center",

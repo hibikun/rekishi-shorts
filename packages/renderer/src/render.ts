@@ -60,6 +60,7 @@ export async function renderHistoryShort(plan: RenderPlan, outputPath: string): 
     captionSegments: plan.captionSegments,
     totalDurationSec: plan.totalDurationSec,
     keyTerms: plan.script.keyTerms,
+    title: plan.script.title,
   };
 
   const composition = await selectComposition({

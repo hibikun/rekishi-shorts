@@ -27,9 +27,21 @@ interface QualitySignals {
   zeroLengthRatio: number;
   englishTokenCount: number;
   firstWordStartSec: number;
+  lastWordEndSec: number;
+  coverageRatio: number;
+  monotonic: boolean;
+  wordCountRatio: number;
   jaccardToScript: number;
   broken: boolean;
   reasons: string[];
+}
+
+export interface AlignCaptionsOptions {
+  scriptText: string;
+  /** 難読語の「漢字表記: ひらがな読み」マップ。Whisper prompt に表記 bias として注入 */
+  readings?: Record<string, string>;
+  /** keyTerms も難読語として bias に含める */
+  keyTerms?: string[];
 }
 
 /**
@@ -47,10 +59,11 @@ interface QualitySignals {
  */
 export async function alignCaptions(
   audioPath: string,
-  opts: { scriptText: string },
+  opts: AlignCaptionsOptions,
 ): Promise<AlignCaptionsResult> {
+  const whisperPrompt = buildWhisperBiasPrompt(opts);
   const [whisperResult, textResult] = await Promise.all([
-    runWhisperWords(audioPath, opts.scriptText),
+    runWhisperWords(audioPath, whisperPrompt),
     runGpt4oMiniTranscribe(audioPath, opts.scriptText),
   ]);
 
@@ -59,6 +72,7 @@ export async function alignCaptions(
     whisperResult.words,
     opts.scriptText,
     textResult.text,
+    totalDurationSec,
   );
 
   if (signals.broken) {
@@ -91,7 +105,7 @@ export async function alignCaptions(
 
 async function runWhisperWords(
   audioPath: string,
-  scriptText: string,
+  prompt: string,
 ): Promise<{ words: CaptionWord[]; durationSec: number }> {
   const openai = new OpenAI({ apiKey: config.openai.apiKey });
 
@@ -106,7 +120,7 @@ async function runWhisperWords(
     response_format: "verbose_json",
     timestamp_granularities: ["word"],
     language: "ja",
-    prompt: scriptText.slice(0, 500),
+    prompt,
   })) as unknown as { words?: WhisperWord[]; duration?: number };
 
   const rawWords = transcription.words ?? [];
@@ -153,39 +167,111 @@ async function runGpt4oMiniTranscribe(
 
 /**
  * Whisper word 出力が破綻しているかを複数シグナルで判定する。
- * いずれか 1 つでも閾値を越えたら `broken = true`。
+ *
+ * 判定方針（Codex レビュー反映）:
+ * - 強シグナル（単独で broken）: zeroLengthRatio が高い / 単調性破綻 / coverage が極端に低い
+ * - 弱シグナル（複数合致で broken）: firstWordStart 遅延、英字混入、jaccard 低下、word数比ズレ
+ * - jaccard は補助。日本語は漢字/かな揺れで下がりやすいため単独棄却は避ける
  */
 function assessWhisperQuality(
   words: CaptionWord[],
   scriptText: string,
   referenceText: string,
+  totalDurationSec: number,
 ): QualitySignals {
-  const reasons: string[] = [];
+  const strongReasons: string[] = [];
+  const weakReasons: string[] = [];
 
   const zeroLengthRatio =
     words.length === 0 ? 1 : words.filter((w) => w.endSec - w.startSec < 0.001).length / words.length;
-  if (zeroLengthRatio > 0.3) reasons.push(`zeroLengthRatio=${(zeroLengthRatio * 100).toFixed(0)}%`);
+  if (zeroLengthRatio > 0.3) strongReasons.push(`zeroLengthRatio=${(zeroLengthRatio * 100).toFixed(0)}%`);
+
+  // 単調性: startSec が逆戻りしていないか
+  let monotonic = true;
+  for (let i = 1; i < words.length; i++) {
+    if (words[i]!.startSec < words[i - 1]!.startSec - 0.01) {
+      monotonic = false;
+      break;
+    }
+  }
+  if (!monotonic) strongReasons.push("timestamps not monotonic");
+
+  // 終端 coverage: 最後の word が totalDuration の何%地点で終わっているか
+  const lastWordEndSec = words[words.length - 1]?.endSec ?? 0;
+  const coverageRatio = totalDurationSec > 0 ? lastWordEndSec / totalDurationSec : 0;
+  if (totalDurationSec > 0 && coverageRatio < 0.6) {
+    strongReasons.push(`coverage=${(coverageRatio * 100).toFixed(0)}%`);
+  }
 
   const englishTokenCount = words.filter((w) => /^[A-Za-z]{2,}/.test(w.text)).length;
-  if (englishTokenCount > 2) reasons.push(`englishTokens=${englishTokenCount}`);
+  if (englishTokenCount > 2) weakReasons.push(`englishTokens=${englishTokenCount}`);
 
   const firstWordStartSec = words[0]?.startSec ?? 0;
-  if (firstWordStartSec > 2.0) reasons.push(`firstWordStart=${firstWordStartSec.toFixed(2)}s`);
+  if (firstWordStartSec > 2.0) weakReasons.push(`firstWordStart=${firstWordStartSec.toFixed(2)}s`);
+
+  // word count 比率: Whisper は各モーラ/短単位で切るので日本語なら原文文字数の 0.5〜1.5 倍が目安
+  const scriptCharCount = normalizeForSimilarity(scriptText).length;
+  const wordCountRatio = scriptCharCount > 0 ? words.length / scriptCharCount : 1;
+  if (wordCountRatio < 0.3 || wordCountRatio > 2.5) {
+    weakReasons.push(`wordCountRatio=${wordCountRatio.toFixed(2)}`);
+  }
 
   const whisperText = words.map((w) => w.text).join("");
   // reference は gpt-4o-mini の出力（正しい転写）を使う。空なら script にフォールバック
   const reference = referenceText.trim().length > 0 ? referenceText : scriptText;
   const jaccard = jaccardSimilarity(whisperText, reference);
-  if (jaccard < 0.7) reasons.push(`jaccardToReference=${jaccard.toFixed(2)}`);
+  if (jaccard < 0.5) weakReasons.push(`jaccardToReference=${jaccard.toFixed(2)}`);
+
+  // 判定: 強シグナル1つ or 弱シグナル2つ以上で broken
+  const broken = strongReasons.length > 0 || weakReasons.length >= 2;
+  const reasons = [...strongReasons, ...weakReasons];
 
   return {
     zeroLengthRatio,
     englishTokenCount,
     firstWordStartSec,
+    lastWordEndSec,
+    coverageRatio,
+    monotonic,
+    wordCountRatio,
     jaccardToScript: jaccard,
-    broken: reasons.length > 0,
+    broken,
     reasons,
   };
+}
+
+/**
+ * Whisper の prompt は ~224 token の語彙 bias ヒント。日本語は NFC で ~1token/char なので
+ * 200 chars を超えないよう、語彙辞書を優先で入れ、余った分だけ narration 先頭を足す。
+ *
+ * 形式（Codex 推奨）: 「用語: 三下り半（みくだりはん）、公事方御定書（くじかたおさだめがき）、…」
+ * 「表記（読み）」を並べて、Whisper に「この音はこの漢字で出してほしい」を bias する。
+ */
+export function buildWhisperBiasPrompt(opts: AlignCaptionsOptions): string {
+  const MAX_CHARS = 200;
+  const entries: string[] = [];
+  const seen = new Set<string>();
+
+  if (opts.readings) {
+    for (const [term, reading] of Object.entries(opts.readings)) {
+      if (!term || seen.has(term)) continue;
+      entries.push(`${term}（${reading}）`);
+      seen.add(term);
+    }
+  }
+  if (opts.keyTerms) {
+    for (const term of opts.keyTerms) {
+      if (!term || seen.has(term)) continue;
+      // keyTerms は読み不明なのでそのまま足す
+      entries.push(term);
+      seen.add(term);
+    }
+  }
+
+  const header = entries.length > 0 ? `日本史。用語: ${entries.join("、")}。` : "";
+  const remaining = Math.max(0, MAX_CHARS - header.length);
+  const narrationExcerpt = opts.scriptText.slice(0, remaining);
+  return (header + narrationExcerpt).slice(0, MAX_CHARS);
 }
 
 /**

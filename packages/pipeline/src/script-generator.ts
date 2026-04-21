@@ -22,11 +22,21 @@ function renderPrompt(topic: Topic): string {
     .replace(/\{\{topic\.target\}\}/g, topic.target);
 }
 
+const titleResponseSchema = {
+  type: Type.OBJECT,
+  properties: {
+    top: { type: Type.STRING },
+    bottom: { type: Type.STRING },
+  },
+  required: ["top", "bottom"],
+};
+
 const singleResponseSchema = {
   type: Type.OBJECT,
   properties: {
     narration: { type: Type.STRING },
     hook: { type: Type.STRING },
+    title: titleResponseSchema,
     body: { type: Type.STRING },
     closing: { type: Type.STRING },
     mnemonic: { type: Type.STRING },
@@ -44,7 +54,7 @@ const singleResponseSchema = {
     },
     estimatedDurationSec: { type: Type.NUMBER },
   },
-  required: ["narration", "hook", "body", "closing", "keyTerms", "estimatedDurationSec"],
+  required: ["narration", "hook", "title", "body", "closing", "keyTerms", "estimatedDurationSec"],
 };
 
 const threePickResponseSchema = {
@@ -52,6 +62,7 @@ const threePickResponseSchema = {
   properties: {
     narration: { type: Type.STRING },
     hook: { type: Type.STRING },
+    title: titleResponseSchema,
     body: { type: Type.STRING },
     closing: { type: Type.STRING },
     keyTerms: { type: Type.ARRAY, items: { type: Type.STRING } },
@@ -80,7 +91,7 @@ const threePickResponseSchema = {
     },
     estimatedDurationSec: { type: Type.NUMBER },
   },
-  required: ["narration", "hook", "body", "closing", "keyTerms", "items", "estimatedDurationSec"],
+  required: ["narration", "hook", "title", "body", "closing", "keyTerms", "items", "estimatedDurationSec"],
 };
 
 const RESPONSE_SCHEMAS = {

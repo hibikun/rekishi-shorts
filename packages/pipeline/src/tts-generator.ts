@@ -2,6 +2,7 @@ import { GoogleGenAI } from "@google/genai";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { Buffer } from "node:buffer";
+import { spawn } from "node:child_process";
 import { config } from "./config.js";
 
 export interface TTSResult {
@@ -19,6 +20,11 @@ export interface TTSResult {
 }
 
 const SAMPLE_RATE = 24000;
+// loudnorm で -14 LUFS (YouTube 標準) に揃えた後、+4dB のメイクアップゲインと
+// alimiter でショート向けに「攻めた」音圧 (~-10 dB mean) まで押し上げる。
+// Remotion → AAC エンコード時に約 -3dB 落ちる傾向があるため、この程度を目安にする。
+const LOUDNESS_FILTER =
+  "loudnorm=I=-14:TP=-1:LRA=7,volume=4dB,alimiter=limit=0.95:attack=5:release=50";
 
 /**
  * Gemini 3.1 Flash TTS で日本語ナレーションを合成し、WAV として保存する。
@@ -33,20 +39,19 @@ export async function synthesizeNarration(
     /** 固定辞書由来のふりがなマップ */
     furigana?: Record<string, string>;
     voiceName?: string;
-    /** 冒頭フック文。渡された場合、TTS入力内の該当箇所を [intense] タグで囲み、勢いを強調する */
+    /** 冒頭フック文。Kore 方針では未使用（将来 Algenib 的なdocumentary調に戻す際用） */
     hook?: string;
   } = {},
 ): Promise<TTSResult> {
   const withReadings = applyFurigana(text, opts.readings);
   const processed = applyFurigana(withReadings, opts.furigana);
-  const tagged = opts.hook ? injectHookTag(processed, applyFurigana(applyFurigana(opts.hook, opts.readings), opts.furigana)) : processed;
-  const voiceName = opts.voiceName ?? process.env.GEMINI_TTS_VOICE ?? "Algenib";
+  const voiceName = opts.voiceName ?? process.env.GEMINI_TTS_VOICE ?? "Kore";
   const model = process.env.GEMINI_TTS_MODEL ?? "gemini-3.1-flash-tts-preview";
 
   const ai = new GoogleGenAI({ apiKey: config.gemini.apiKey });
 
   // ショート動画用の指示を prompt に含める (Gemini TTS は prompt でスタイル制御可能)
-  const styledPrompt = `Deliver this Japanese history short like a dramatic documentary narrator — gravelly, low-register, urgent. Very fast, rapid-fire tempo with minimal pauses between sentences. Heavy emphasis on dates, proper nouns, and turning points. Short, decisive, breathless delivery. No casual classroom tone — every sentence must pull the viewer in. Inline tags like [intense] denote delivery cues, not spoken words.\n${tagged}`;
+  const styledPrompt = `Say the following in natural, clear Japanese with a confident educational narrator's voice, slightly fast pace (suitable for a YouTube Shorts video for students):\n${processed}`;
 
   const response = await ai.models.generateContent({
     model,
@@ -75,6 +80,7 @@ export async function synthesizeNarration(
 
   await fs.mkdir(path.dirname(destPath), { recursive: true });
   await fs.writeFile(destPath, wav);
+  await loudnormInPlace(destPath);
 
   const durationSec = pcm.length / (SAMPLE_RATE * 2); // 16-bit mono
 
@@ -97,11 +103,41 @@ function applyFurigana(text: string, map?: Record<string, string>): string {
   return out;
 }
 
-function injectHookTag(narration: string, hook: string): string {
-  if (!hook) return narration;
-  const idx = narration.indexOf(hook);
-  if (idx < 0) return narration;
-  return narration.slice(0, idx) + `[intense] ${hook}` + narration.slice(idx + hook.length);
+async function loudnormInPlace(wavPath: string): Promise<void> {
+  const tmpPath = `${wavPath}.norm.wav`;
+  await runFfmpeg([
+    "-y",
+    "-hide_banner",
+    "-loglevel",
+    "error",
+    "-i",
+    wavPath,
+    "-af",
+    LOUDNESS_FILTER,
+    "-ar",
+    String(SAMPLE_RATE),
+    "-ac",
+    "1",
+    "-c:a",
+    "pcm_s16le",
+    tmpPath,
+  ]);
+  await fs.rename(tmpPath, wavPath);
+}
+
+function runFfmpeg(args: string[]): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const proc = spawn("ffmpeg", args, { stdio: ["ignore", "ignore", "pipe"] });
+    let stderr = "";
+    proc.stderr.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
+    proc.on("error", reject);
+    proc.on("close", (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`ffmpeg exited ${code}: ${stderr}`));
+    });
+  });
 }
 
 function wrapPcmAsWav(pcm: Buffer, sampleRate: number, channels: number, bits: number): Buffer {

@@ -5,10 +5,17 @@ import { randomUUID } from "node:crypto";
 import {
   RenderPlanSchema,
   ScriptSchema,
+  ScenePlanSchema,
+  ImageAssetSchema,
+  CaptionWordSchema,
   type RenderPlan,
+  type ScenePlan,
+  type ImageAsset,
+  type CaptionWord,
   type Script,
   type Topic,
 } from "@rekishi/shared";
+import { z } from "zod";
 import { generateScript } from "./script-generator.js";
 import { planScenes } from "./scene-planner.js";
 import { resolveSceneAssets } from "./asset-resolver.js";
@@ -109,6 +116,8 @@ export async function runBuildStage(opts: BuildOptions): Promise<{ plan: RenderP
   log(`📝 [3/4] Whisper + gpt-4o-mini-transcribe で字幕タイムスタンプ取得中...`);
   const alignResult = await alignCaptions(tts.path, {
     scriptText: script.narration,
+    readings: script.readings,
+    keyTerms: script.keyTerms,
   });
   const { words, totalDurationSec, usage: asrUsage, brokenByGuard, qualitySignals } = alignResult;
   tracker.addWhisper("whisper", asrUsage.whisperAudioSec);
@@ -125,10 +134,15 @@ export async function runBuildStage(opts: BuildOptions): Promise<{ plan: RenderP
   }
   log(chalk.dim(`   ${words.length}単語 / 実測${totalDurationSec.toFixed(2)}秒`));
 
-  const alignment = alignScenesToAudio(scenePlan.scenes, words, totalDurationSec);
+  const alignment = alignScenesToAudio(scenePlan.scenes, words, totalDurationSec, {
+    audioPath: tts.path,
+    brokenAsr: brokenByGuard,
+  });
   const rescaledScenes = alignment.scenes;
   const captionSegments = alignment.captionSegments;
-  if (alignment.fallbackUsed) {
+  if (alignment.vadUsed) {
+    log(chalk.cyan(`   🎯 VAD-based scene boundaries: ${alignment.matchedByVad}/${scenePlan.scenes.length - 1} 境界が無音マッチ`));
+  } else if (alignment.fallbackUsed) {
     log(chalk.yellow(`   ⚠ scene alignment fallback used — 実発話とシーン境界がズレる可能性あり`));
   }
 
@@ -162,6 +176,120 @@ export async function runBuildStage(opts: BuildOptions): Promise<{ plan: RenderP
   await writeJson(jobPath(jobId, "scripts", "render-plan.json"), plan);
   await writeJson(jobPath(jobId, "scripts", "cost.json"), { entries: tracker.getEntries(), totalUsd: tracker.totalUsd(), totalJpy: tracker.totalJpy() });
   log(chalk.green(`✅ RenderPlan 保存: ${jobPath(jobId, "scripts", "render-plan.json")}`));
+  return { plan, tracker };
+}
+
+export interface RealignOptions {
+  jobId: string;
+  /** Whisper を再実行する（既存 words.json があっても無視） */
+  freshAsr?: boolean;
+  /** Remotion レンダリングをスキップして render-plan.json だけ更新 */
+  skipRender?: boolean;
+  /** VAD フォールバックを無効化（比較検証用: main ブランチ相当の線形配分を再現） */
+  disableVad?: boolean;
+  /** 出力 render-plan のファイル名サフィックス（複数バリアント共存用） */
+  planSuffix?: string;
+  tracker?: CostTracker;
+}
+
+/**
+ * 既存ジョブの script / scene-plan / narration.wav / images を再利用し、
+ * ASR + scene alignment + render-plan 再生成 + レンダリングを行う。
+ *
+ * 目的: VAD/scene-aligner の調整を TTS・画像生成コストをかけずに回す。
+ */
+export async function runRealignStage(opts: RealignOptions): Promise<{ plan: RenderPlan; tracker: CostTracker }> {
+  const jobId = opts.jobId;
+  const tracker = opts.tracker ?? new CostTracker();
+
+  log(`🔁 [realign] 既存ジョブ ${jobId} の再整列`);
+
+  const script = await loadScriptFromJob(jobId);
+  const scenePlan = await readJson(jobPath(jobId, "scripts", "scene-plan.json"), ScenePlanSchema);
+  const images = await readJson(jobPath(jobId, "scripts", "images.json"), z.array(ImageAssetSchema));
+
+  const audioPath = jobPath(jobId, "audio", "narration.wav");
+  try {
+    await fs.access(audioPath);
+  } catch {
+    throw new Error(`narration.wav が見つかりません: ${audioPath}`);
+  }
+
+  const wordsJsonPath = jobPath(jobId, "captions", "words.json");
+  let words: CaptionWord[];
+  let totalDurationSec: number;
+  let brokenByGuard: boolean;
+  let qualitySignals: unknown;
+
+  const canReuse = !opts.freshAsr && (await fileExists(wordsJsonPath));
+  if (canReuse) {
+    log(`📝 [realign] 既存 words.json を再利用 (--fresh-asr で再実行可)`);
+    const raw = await fs.readFile(wordsJsonPath, "utf-8");
+    const parsed = z
+      .object({
+        words: z.array(CaptionWordSchema),
+        totalDurationSec: z.number(),
+        brokenByGuard: z.boolean().default(false),
+        qualitySignals: z.unknown().optional(),
+      })
+      .parse(JSON.parse(raw));
+    words = parsed.words;
+    totalDurationSec = parsed.totalDurationSec;
+    brokenByGuard = parsed.brokenByGuard;
+    qualitySignals = parsed.qualitySignals;
+  } else {
+    log(`📝 [realign] Whisper + gpt-4o-mini-transcribe 実行中...`);
+    const alignResult = await alignCaptions(audioPath, {
+      scriptText: script.narration,
+      readings: script.readings,
+      keyTerms: script.keyTerms,
+    });
+    tracker.addWhisper("whisper", alignResult.usage.whisperAudioSec);
+    tracker.addGpt4oMiniTranscribe("transcribe-text", alignResult.usage.textTranscribeAudioSec);
+    words = alignResult.words;
+    totalDurationSec = alignResult.totalDurationSec;
+    brokenByGuard = alignResult.brokenByGuard;
+    qualitySignals = alignResult.qualitySignals;
+    await writeJson(wordsJsonPath, { words, totalDurationSec, brokenByGuard, qualitySignals });
+  }
+  if (brokenByGuard) {
+    log(chalk.yellow(`   ⚠ whisper-1 破綻検出 (保存済みメタ): ${JSON.stringify(qualitySignals)}`));
+  }
+  log(chalk.dim(`   ${words.length}単語 / 実測${totalDurationSec.toFixed(2)}秒`));
+
+  const alignment = alignScenesToAudio(scenePlan.scenes, words, totalDurationSec, {
+    audioPath,
+    brokenAsr: brokenByGuard && !opts.disableVad,
+  });
+  if (alignment.fallbackUsed) {
+    log(chalk.yellow(`   ⚠ scene alignment fallback used`));
+  }
+  if (alignment.vadUsed) {
+    log(chalk.cyan(`   🎯 VAD-based scene boundaries used`));
+  }
+  if (opts.disableVad) {
+    log(chalk.yellow(`   (--no-vad: VAD は無効化されています)`));
+  }
+
+  const plan = RenderPlanSchema.parse({
+    id: jobId,
+    script,
+    scenes: alignment.scenes,
+    images,
+    audio: {
+      path: audioPath,
+      durationSec: totalDurationSec,
+      format: "mp3",
+    },
+    captions: words,
+    captionSegments: alignment.captionSegments,
+    totalDurationSec,
+    createdAt: new Date().toISOString(),
+  });
+  const planFileName = opts.planSuffix ? `render-plan-${opts.planSuffix}.json` : "render-plan.json";
+  await writeJson(jobPath(jobId, "scripts", planFileName), plan);
+  log(chalk.green(`✅ ${planFileName} 更新完了`));
+
   return { plan, tracker };
 }
 
@@ -199,6 +327,20 @@ export async function loadScriptFromJob(jobId: string): Promise<Script> {
 async function writeJson(p: string, data: unknown): Promise<void> {
   await fs.mkdir(path.dirname(p), { recursive: true });
   await fs.writeFile(p, JSON.stringify(data, null, 2), "utf-8");
+}
+
+async function readJson<T>(p: string, schema: z.ZodType<T>): Promise<T> {
+  const raw = await fs.readFile(p, "utf-8");
+  return schema.parse(JSON.parse(raw));
+}
+
+async function fileExists(p: string): Promise<boolean> {
+  try {
+    await fs.access(p);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function shortId(): string {

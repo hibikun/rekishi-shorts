@@ -9,8 +9,12 @@ import { generateYouTubeMetadata } from "./metadata-generator.js";
 import { metadataToDraftMd, draftMdToMetadata } from "./meta-draft-io.js";
 import { uploadToYouTube, formatUploadError } from "./youtube/uploader.js";
 import { runOAuthFlow } from "./youtube/oauth-flow.js";
-import { appendUploadLog, hasBeenUploaded } from "./upload-log.js";
+import { appendUploadLog, hasBeenUploaded, readAllUploads } from "./upload-log.js";
 import { YouTubeMetadataSchema, type YouTubeMetadata } from "./index.js";
+import { fetchStatsForVideos } from "./analytics/fetch-stats.js";
+import { appendSnapshots } from "./analytics/store.js";
+import { runResearch } from "./research/youtube-research.js";
+import { renderMarkdownReport } from "./research/report.js";
 
 function log(msg: string): void {
   console.log(msg);
@@ -82,12 +86,16 @@ program
 
 program
   .command("auth")
-  .description("YouTube OAuth 認可フローを起動し refresh_token を取得する（初回1回だけ）")
+  .description("YouTube OAuth 認可フローを起動し refresh_token を取得する（初回 / スコープ追加時）")
   .action(async () => {
     const clientId = process.env.YOUTUBE_CLIENT_ID;
     const clientSecret = process.env.YOUTUBE_CLIENT_SECRET;
     const redirectUri = process.env.YOUTUBE_REDIRECT_URI ?? "http://localhost:53682/oauth2callback";
-    const scope = "https://www.googleapis.com/auth/youtube.upload";
+    const scopes = [
+      "https://www.googleapis.com/auth/youtube.upload",
+      "https://www.googleapis.com/auth/youtube.readonly",
+      "https://www.googleapis.com/auth/yt-analytics.readonly",
+    ];
 
     if (!clientId || !clientSecret) {
       console.error(chalk.red("❌ YOUTUBE_CLIENT_ID / YOUTUBE_CLIENT_SECRET が .env.local に未設定です。"));
@@ -95,7 +103,7 @@ program
       process.exit(1);
     }
 
-    await runOAuthFlow({ clientId, clientSecret, redirectUri, scope });
+    await runOAuthFlow({ clientId, clientSecret, redirectUri, scopes });
   });
 
 program
@@ -171,6 +179,123 @@ program
       log(chalk.red(`   ${formatUploadError(err)}`));
       process.exit(1);
     }
+  });
+
+program
+  .command("stats")
+  .description("アップロード済み動画の実績データ（統計＋分析指標）を取得して JSONL に追記")
+  .option("--only <jobId>", "特定の jobId だけ取得")
+  .option("--include-private", "private 動画も対象にする（通常は public/unlisted のみ）", false)
+  .option("--dry-run", "取得結果を表示するだけで保存しない", false)
+  .action(async (opts) => {
+    log(chalk.bold("\n📊 YouTube stats 取得\n"));
+
+    const allUploads = await readAllUploads();
+    let targets = allUploads;
+    if (opts.only) {
+      targets = targets.filter((u) => u.jobId === opts.only);
+      if (targets.length === 0) {
+        log(chalk.yellow(`⚠ jobId=${opts.only} に該当する投稿が log.jsonl にありません`));
+        process.exit(1);
+      }
+    }
+    if (!opts.includePrivate) {
+      targets = targets.filter((u) => u.privacy !== "private");
+    }
+
+    if (targets.length === 0) {
+      log(chalk.yellow("⚠ 対象の動画がありません。--include-private で private も対象にできます。"));
+      return;
+    }
+
+    log(chalk.dim(`   対象: ${targets.length} 本`));
+    for (const t of targets) {
+      log(chalk.dim(`   - ${t.videoId} ${t.privacy.padEnd(8)} ${t.title}`));
+    }
+
+    const snapshots = await fetchStatsForVideos(targets);
+
+    log("");
+    for (const s of snapshots) {
+      const ageDays = (s.ageHours / 24).toFixed(1);
+      const a = s.analytics;
+      const base = `${chalk.bold(s.videoId)} (${ageDays}d)  views=${s.statistics.viewCount}  👍${s.statistics.likeCount}  💬${s.statistics.commentCount}`;
+      if (a) {
+        log(`${base}  視聴率=${a.averageViewPercentage.toFixed(1)}%  平均=${a.averageViewDuration.toFixed(1)}s  登録+${a.subscribersGained}/-${a.subscribersLost}  shares=${a.shares}`);
+      } else {
+        log(`${base}  ${chalk.red(`analytics取得失敗: ${s.analyticsError ?? "unknown"}`)}`);
+      }
+    }
+
+    if (opts.dryRun) {
+      log(chalk.yellow("\n--dry-run 指定。保存しません。"));
+      return;
+    }
+
+    const file = await appendSnapshots(snapshots);
+    log(chalk.green(`\n✅ ${snapshots.length} 件のスナップショットを追記: ${file}`));
+  });
+
+const DEFAULT_RESEARCH_QUERIES = [
+  "日本史 shorts",
+  "世界史 shorts",
+  "歴史 ショート",
+  "戦国武将 shorts",
+  "幕末 shorts",
+  "偉人 歴史 shorts",
+  "日本史 受験 shorts",
+  "歴史 解説 shorts",
+  "古代史 shorts",
+  "世界史 偉人 shorts",
+];
+
+program
+  .command("research")
+  .description("競合の日本史/世界史系 YouTube Shorts を調査しMarkdownレポートを生成")
+  .option("-q, --queries <list>", "検索クエリ（カンマ区切り）。未指定時はデフォルトセットを使用")
+  .option("--channels <n>", "深掘りするチャンネル数", "12")
+  .option("--candidates <n>", "検索から拾うチャンネル候補の上限", "80")
+  .option("--uploads <n>", "各チャンネルから取得する直近アップロード数", "50")
+  .option("--window <days>", "集計対象とする日数（投稿日起算）", "90")
+  .option("--max-duration <sec>", "Shorts と見なす最大秒数", "75")
+  .option("--out <path>", "レポート出力先（Markdown）", "")
+  .action(async (opts) => {
+    log(chalk.bold("\n🕵️  競合Shortsリサーチ\n"));
+
+    const queries = opts.queries
+      ? String(opts.queries).split(",").map((s: string) => s.trim()).filter(Boolean)
+      : DEFAULT_RESEARCH_QUERIES;
+
+    const topChannels = parseInt(opts.channels, 10);
+    const candidateLimit = parseInt(opts.candidates, 10);
+    const recentUploadsPerChannel = parseInt(opts.uploads, 10);
+    const windowDays = parseInt(opts.window, 10);
+    const shortsMaxDurationSec = parseInt(opts.maxDuration, 10);
+
+    const result = await runResearch({
+      queries,
+      channelCandidateLimit: candidateLimit,
+      topChannels,
+      recentUploadsPerChannel,
+      shortsMaxDurationSec,
+      windowDays,
+      onLog: (m) => console.error(chalk.dim(m)),
+    });
+
+    const today = result.generatedAt.slice(0, 10);
+    const defaultOut = path.resolve(path.dirname(dataPath("")), "docs", `competitor-report-${today}.md`);
+    const outMd = opts.out ? path.resolve(String(opts.out)) : defaultOut;
+    const outJson = outMd.replace(/\.md$/, ".json");
+
+    const md = renderMarkdownReport(result, { windowDays });
+    await fs.mkdir(path.dirname(outMd), { recursive: true });
+    await fs.writeFile(outMd, md, "utf-8");
+    await fs.writeFile(outJson, JSON.stringify(result, null, 2), "utf-8");
+
+    log("");
+    log(chalk.green(`✅ Markdown: ${outMd}`));
+    log(chalk.green(`✅ JSON    : ${outJson}`));
+    log(chalk.dim(`   分析 ${result.channelsAnalyzed.length}ch / ${result.shorts.length}本 / quota ${result.quotaEstimate}units`));
   });
 
 program.parseAsync().catch((err) => {

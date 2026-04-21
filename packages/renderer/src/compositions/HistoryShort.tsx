@@ -1,10 +1,11 @@
 import React from "react";
 import { AbsoluteFill, Sequence, useVideoConfig } from "remotion";
-import type { CaptionSegment, CaptionWord, ImageAsset, Scene } from "@rekishi/shared";
+import type { CaptionSegment, CaptionWord, ImageAsset, Scene, VideoTitle } from "@rekishi/shared";
 import { KenBurnsImage } from "../components/KenBurnsImage";
 import { Caption } from "../components/Caption";
 import { NarrationAudio } from "../components/NarrationAudio";
 import { KeywordPopup, type KeywordHit } from "../components/KeywordPopup";
+import { TitleBar } from "../components/TitleBar";
 
 export interface HistoryShortProps {
   scenes: Scene[];
@@ -14,7 +15,10 @@ export interface HistoryShortProps {
   captionSegments: CaptionSegment[];
   totalDurationSec: number;
   keyTerms?: string[];
+  title?: VideoTitle;
 }
+
+const TITLE_BAR_RATIO = 0.25;
 
 export const HistoryShort: React.FC<HistoryShortProps> = ({
   scenes,
@@ -22,7 +26,9 @@ export const HistoryShort: React.FC<HistoryShortProps> = ({
   audioSrc,
   captions,
   captionSegments,
+  totalDurationSec,
   keyTerms = [],
+  title,
 }) => {
   const { fps } = useVideoConfig();
 
@@ -41,23 +47,37 @@ export const HistoryShort: React.FC<HistoryShortProps> = ({
 
   return (
     <AbsoluteFill style={{ backgroundColor: "#000" }}>
-      {layout.map(({ scene, image, startFrame, durationFrames }) => (
-        <Sequence
-          key={scene.index}
-          from={startFrame}
-          durationInFrames={durationFrames}
-        >
-          <KenBurnsImage
-            src={image?.path ?? ""}
-            startFrame={0}
-            durationFrames={durationFrames}
-            sceneIndex={scene.index}
-          />
-        </Sequence>
-      ))}
+      {/* 動画本体エリア: 上部25%のタイトル帯を避けて下75%に配置 */}
+      <div
+        style={{
+          position: "absolute",
+          top: `${TITLE_BAR_RATIO * 100}%`,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          overflow: "hidden",
+        }}
+      >
+        {layout.map(({ scene, image, startFrame, durationFrames }) => (
+          <Sequence
+            key={scene.index}
+            from={startFrame}
+            durationInFrames={durationFrames}
+          >
+            <KenBurnsImage
+              src={image?.path ?? ""}
+              startFrame={0}
+              durationFrames={durationFrames}
+              sceneIndex={scene.index}
+            />
+          </Sequence>
+        ))}
 
-      <Caption captionSegments={captionSegments} keyTerms={keyTerms} />
-      <KeywordPopup hits={keywordHits} />
+        <Caption captionSegments={captionSegments} keyTerms={keyTerms} />
+        <KeywordPopup hits={keywordHits} />
+      </div>
+
+      {title && <TitleBar top={title.top} bottom={title.bottom} />}
       <NarrationAudio src={audioSrc} />
     </AbsoluteFill>
   );

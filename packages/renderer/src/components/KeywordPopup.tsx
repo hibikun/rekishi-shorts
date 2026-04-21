@@ -24,7 +24,7 @@ const FADE_OUT_SEC = 0.3;
 
 export const KeywordPopup: React.FC<KeywordPopupProps> = ({ hits }) => {
   const frame = useCurrentFrame();
-  const { fps, height: videoHeight } = useVideoConfig();
+  const { fps } = useVideoConfig();
   const currentSec = frame / fps;
 
   const active = hits.find((h) => {
@@ -49,7 +49,7 @@ export const KeywordPopup: React.FC<KeywordPopupProps> = ({ hits }) => {
         position: "absolute",
         left: 0,
         right: 0,
-        top: videoHeight * 0.18,
+        top: "8%",
         display: "flex",
         justifyContent: "center",
         pointerEvents: "none",

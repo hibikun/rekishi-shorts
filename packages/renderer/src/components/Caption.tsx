@@ -1,5 +1,6 @@
 import React from "react";
 import { useCurrentFrame, useVideoConfig } from "remotion";
+import { loadDefaultJapaneseParser } from "budoux";
 import type { CaptionSegment } from "@rekishi/shared";
 
 const FONT_FAMILY =
@@ -7,6 +8,8 @@ const FONT_FAMILY =
 
 const KEY_TERM_COLOR = "#FFD54F";
 const TEXT_COLOR = "#FFFFFF";
+
+const parser = loadDefaultJapaneseParser();
 
 export interface CaptionProps {
   captionSegments: CaptionSegment[];
@@ -21,12 +24,16 @@ export const Caption: React.FC<CaptionProps> = ({ captionSegments, keyTerms = []
   const active = captionSegments.find(
     (c) => currentSec >= c.startSec && currentSec < c.endSec,
   );
-  if (!active) return null;
 
-  const text = active.text.trim();
-  if (text.length === 0) return null;
+  const text = active?.text.trim() ?? "";
+  const keyTermsKey = keyTerms.join("|");
 
-  const parts = highlightKeyTerms(text, keyTerms);
+  const elements = React.useMemo(
+    () => (text.length === 0 ? [] : buildElements(text, keyTerms)),
+    [text, keyTermsKey],
+  );
+
+  if (!active || elements.length === 0) return null;
 
   return (
     <div
@@ -53,19 +60,11 @@ export const Caption: React.FC<CaptionProps> = ({ captionSegments, keyTerms = []
           padding: "16px 28px",
           textShadow: "0 0 10px #000, 0 0 6px #000, 0 0 4px #000",
           lineHeight: 1.2,
-          wordBreak: "break-word",
+          wordBreak: "keep-all",
           overflowWrap: "anywhere",
         }}
       >
-        {parts.map((part, i) =>
-          part.isKeyTerm ? (
-            <span key={i} style={{ color: KEY_TERM_COLOR }}>
-              {part.text}
-            </span>
-          ) : (
-            <React.Fragment key={i}>{part.text}</React.Fragment>
-          ),
-        )}
+        {elements}
       </div>
     </div>
   );
@@ -107,4 +106,42 @@ function highlightKeyTerms(text: string, keyTerms: string[]): TextPart[] {
     }
   }
   return parts;
+}
+
+function buildElements(text: string, keyTerms: string[]): React.ReactNode[] {
+  const parts = highlightKeyTerms(text, keyTerms);
+  const breakOffsets = new Set(parser.parseBoundaries(text));
+
+  const nodes: React.ReactNode[] = [];
+  let offset = 0;
+  let keyIdx = 0;
+
+  for (const part of parts) {
+    let buf = "";
+    for (const ch of part.text) {
+      buf += ch;
+      offset += ch.length;
+      if (breakOffsets.has(offset) && offset < text.length) {
+        nodes.push(renderChunk(buf, part.isKeyTerm, keyIdx++));
+        nodes.push(<wbr key={`wbr-${keyIdx++}`} />);
+        buf = "";
+      }
+    }
+    if (buf.length > 0) {
+      nodes.push(renderChunk(buf, part.isKeyTerm, keyIdx++));
+    }
+  }
+
+  return nodes;
+}
+
+function renderChunk(text: string, isKeyTerm: boolean, key: number): React.ReactNode {
+  if (isKeyTerm) {
+    return (
+      <span key={`kt-${key}`} style={{ color: KEY_TERM_COLOR }}>
+        {text}
+      </span>
+    );
+  }
+  return <React.Fragment key={`t-${key}`}>{text}</React.Fragment>;
 }

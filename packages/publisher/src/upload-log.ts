@@ -34,3 +34,23 @@ export async function hasBeenUploaded(jobId: string): Promise<UploadLogEntry | n
   }
   return null;
 }
+
+export async function readAllUploads(): Promise<UploadLogEntry[]> {
+  const file = logFilePath();
+  let content: string;
+  try {
+    content = await fs.readFile(file, "utf-8");
+  } catch {
+    return [];
+  }
+  const entries: UploadLogEntry[] = [];
+  for (const line of content.split(/\r?\n/)) {
+    if (!line.trim()) continue;
+    try {
+      entries.push(UploadLogEntrySchema.parse(JSON.parse(line)));
+    } catch {
+      // 壊れた行はスキップ
+    }
+  }
+  return entries;
+}

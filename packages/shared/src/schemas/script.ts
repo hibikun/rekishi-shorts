@@ -25,12 +25,19 @@ export const ThreePickItemSchema = z.object({
 });
 export type ThreePickItem = z.infer<typeof ThreePickItemSchema>;
 
+export const VideoTitleSchema = z.object({
+  top: z.string().min(1).max(15).describe("タイトル上段（小）— 主語/前振り。例: 年収200億の男が / なぜ信長は"),
+  bottom: z.string().min(1).max(15).describe("タイトル下段（大）— 核/オチ。体言止め推奨。例: 毎朝行う2つの習慣。 / 裏切られた真相。"),
+});
+export type VideoTitle = z.infer<typeof VideoTitleSchema>;
+
 // AI が生成する台本本体
 export const ScriptSchema = z.object({
   topic: TopicSchema,
   // 60秒 = 約300-400文字を想定
   narration: z.string().min(100).describe("ナレーション全文。句読点込み"),
   hook: z.string().describe("掴みの1-2文"),
+  title: VideoTitleSchema.describe("動画全編に常時表示する2行タイトル。上段(前振り)+下段(核/オチ)"),
   body: z.string().describe("本文"),
   closing: z.string().describe("締めの1文"),
   mnemonic: z.string().optional().describe("年号語呂合わせ"),

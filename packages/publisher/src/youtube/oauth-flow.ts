@@ -14,14 +14,14 @@ export async function runOAuthFlow(opts: {
   clientId: string;
   clientSecret: string;
   redirectUri: string;
-  scope: string;
+  scopes: string[];
 }): Promise<void> {
   const oauth2 = new google.auth.OAuth2(opts.clientId, opts.clientSecret, opts.redirectUri);
 
   const authUrl = oauth2.generateAuthUrl({
     access_type: "offline",
     prompt: "consent",
-    scope: [opts.scope],
+    scope: opts.scopes,
   });
 
   const port = Number(new URL(opts.redirectUri).port || 53682);

@@ -1,4 +1,5 @@
 import type { CaptionSegment, CaptionWord, Scene } from "@rekishi/shared";
+import { alignScenesByVad } from "./vad-aligner.js";
 
 /**
  * Whisper の word タイムスタンプに対して、Gemini 由来の scenes を単調アラインする。
@@ -19,6 +20,17 @@ export interface AlignmentResult {
   scenes: Scene[];
   captionSegments: CaptionSegment[];
   fallbackUsed: boolean;
+  /** VAD フォールバックで境界を決めたか（asr-aligner の brokenByGuard と連動） */
+  vadUsed?: boolean;
+  /** VAD で何個の境界が実際に無音から取れたか（補間された個数は boundaries.length-1 - matchedByVad） */
+  matchedByVad?: number;
+}
+
+export interface AlignOptions {
+  /** WAV ファイルパス。指定があり brokenAsr=true なら VAD フォールバックを使う */
+  audioPath?: string;
+  /** Whisper の品質ガードで破綻検知されたか */
+  brokenAsr?: boolean;
 }
 
 // bounded window: exact / anchor / LCS の全マッチャが共通で使う探索幅
@@ -38,6 +50,7 @@ export function alignScenesToAudio(
   scenes: Scene[],
   words: CaptionWord[],
   totalDurationSec: number,
+  opts: AlignOptions = {},
 ): AlignmentResult {
   if (scenes.length === 0 || words.length === 0) {
     return {
@@ -45,6 +58,20 @@ export function alignScenesToAudio(
       captionSegments: [],
       fallbackUsed: scenes.length > 0,
     };
+  }
+
+  // Whisper が破綻検知されている場合は、文字マッチベースのアライナが
+  // 線形配分された "疑似 words" に対して動いても意味が薄いので、
+  // VAD ベースで scene 境界を直接決める。
+  if (opts.brokenAsr && opts.audioPath) {
+    const vad = alignScenesByVad({
+      scenes,
+      audioPath: opts.audioPath,
+      totalDurationSec,
+    });
+    if (vad && vad.boundaries.length === scenes.length) {
+      return buildAlignmentFromBoundaries(scenes, vad.boundaries, vad.matchedCount);
+    }
   }
 
   const { charStream, charWordIndex } = buildCharStream(words);
@@ -360,6 +387,38 @@ function fillMissingSpans(
     result[i] = { firstWordIdx, lastWordIdx };
   }
   return result;
+}
+
+/**
+ * VAD から得た境界（各 scene の endSec）を scene durations と captionSegments に変換する。
+ * scene 境界は [prevEnd, endSec] の区間を占める。
+ */
+function buildAlignmentFromBoundaries(
+  scenes: Scene[],
+  boundaries: { endSec: number; fromVad: boolean }[],
+  matchedByVad: number,
+): AlignmentResult {
+  const alignedScenes: Scene[] = [];
+  const captionSegments: CaptionSegment[] = [];
+  let prevEnd = 0;
+  for (let i = 0; i < scenes.length; i++) {
+    const endSec = boundaries[i]!.endSec;
+    const duration = Math.max(0.01, endSec - prevEnd);
+    alignedScenes.push({ ...scenes[i]!, durationSec: Number(duration.toFixed(3)) });
+    captionSegments.push({
+      text: scenes[i]!.narration,
+      startSec: Number(prevEnd.toFixed(3)),
+      endSec: Number(endSec.toFixed(3)),
+    });
+    prevEnd = endSec;
+  }
+  return {
+    scenes: alignedScenes,
+    captionSegments,
+    fallbackUsed: false,
+    vadUsed: true,
+    matchedByVad,
+  };
 }
 
 function fallbackLinear(scenes: Scene[], totalDurationSec: number): AlignmentResult {
