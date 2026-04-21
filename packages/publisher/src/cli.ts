@@ -13,6 +13,7 @@ import { appendUploadLog, hasBeenUploaded, readAllUploads } from "./upload-log.j
 import { YouTubeMetadataSchema, type YouTubeMetadata } from "./index.js";
 import { fetchStatsForVideos } from "./analytics/fetch-stats.js";
 import { appendSnapshots } from "./analytics/store.js";
+import { buildSummary, renderSummaryTable, type SortKey } from "./analytics/summary.js";
 import { runResearch } from "./research/youtube-research.js";
 import { renderMarkdownReport } from "./research/report.js";
 
@@ -230,6 +231,35 @@ program
 
     const file = await appendSnapshots(snapshots);
     log(chalk.green(`\n✅ ${snapshots.length} 件のスナップショットを追記: ${file}`));
+  });
+
+function parseMinAge(raw: string | undefined): number | undefined {
+  if (!raw) return undefined;
+  const m = /^(\d+(?:\.\d+)?)([hd]?)$/.exec(raw.trim());
+  if (!m || !m[1]) throw new Error(`--min-age の書式が不正です: "${raw}" (例: 24h, 2d)`);
+  const n = parseFloat(m[1]);
+  return m[2] === "d" ? n * 24 : n;
+}
+
+const SORT_KEYS: SortKey[] = ["views", "likeRate", "retention", "subs", "age"];
+
+program
+  .command("summary")
+  .description("snapshots.jsonl から動画別KPIサマリをターミナルに表示")
+  .option("--sort <key>", `並び順 (${SORT_KEYS.join("|")})`, "views")
+  .option("--min-age <duration>", "経過時間の下限で絞り込み（例: 24h, 2d）")
+  .action((opts) => {
+    const sort = opts.sort as SortKey;
+    if (!SORT_KEYS.includes(sort)) {
+      console.error(chalk.red(`❌ --sort は ${SORT_KEYS.join("|")} のいずれかです。受け取った値: ${sort}`));
+      process.exit(1);
+    }
+    const minAgeHours = parseMinAge(opts.minAge);
+    return buildSummary({ sort, minAgeHours }).then((rows) => {
+      log("");
+      log(renderSummaryTable(rows));
+      log("");
+    });
   });
 
 const DEFAULT_RESEARCH_QUERIES = [
