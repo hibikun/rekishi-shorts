@@ -49,14 +49,21 @@ const HOP_SEC = 0.01; // 10ms hop
 const MIN_SILENCE_SEC = 0.08;
 
 // 境界位置を silence 先頭からどれくらい遅らせるか
-const BOUNDARY_OFFSET_SEC = 0.05;
+const BOUNDARY_OFFSET_SEC = 0.08;
 
 // scene 句読点タイプ別の「要求する無音の最短長」
-const MIN_SILENCE_PERIOD_SEC = 0.22; // 。/！/？: 文末
-const MIN_SILENCE_COMMA_SEC = 0.09; // 、: 文中
+const MIN_SILENCE_PERIOD_SEC = 0.20; // 。/！/？: 文末
+const MIN_SILENCE_COMMA_SEC = 0.09; // 、: 文中（TTS の息継ぎも通すが、DP が大域最適化で正しい無音を選ぶ）
 
-// 期待時刻からどれだけ離れた silence まで候補にするか
-const SEARCH_WINDOW_SEC = 1.0;
+// DP で「境界をスキップ / 無音を余らせる」ときのコスト（秒単位の距離として加算）
+// 3.5s → 期待時刻から 3.5s 以上離れた無音を当てるくらいなら、その境界はスキップする
+// TTS は文字数ベース期待から 1〜2s ズレうるので、3.5s は充分な余裕
+const SKIP_BOUNDARY_COST = 3.5;
+
+// post-process で「異常に速い/短い scene」を検出して unmatch する
+// 日本語 TTS の通常発話速度は 6〜8 cps。8.5 以上は内部 、を scene-end 、と誤認した可能性が高い
+const MAX_CPS = 8.5;
+const MIN_SCENE_DURATION_SEC = 0.7;
 
 // =================== WAV パーサ ===================
 
@@ -248,48 +255,114 @@ function normalizeForLength(s: string): string {
 }
 
 /**
- * 期待時刻の近傍で最適な silence を選ぶ。
+ * DP で境界↔無音の大域最適割り当てを求める。
  *
- * 評価基準: 最短長を満たす silence のうち、期待時刻との時間距離が近いものを選ぶ。
- * 候補が窓内に無ければ null（補間にまわす）。
+ * 状態: dp[i][j] = 最初 i 個の境界と最初 j 個の無音を処理したときの最小総コスト
+ * 遷移:
+ *   1. 無音 j をスキップ       : dp[i][j] = dp[i][j-1]
+ *   2. 境界 i をスキップ       : dp[i][j] = dp[i-1][j] + SKIP_BOUNDARY_COST
+ *   3. 境界 i を無音 j にマッチ : dp[i][j] = dp[i-1][j-1] + |S_j.startSec - E_i|
+ *        （無音 j の durationSec が境界 i の kind 最短長を満たす場合のみ）
+ *
+ * 単調性は DP 構造そのもので保証される（i, j が単調増加）。
+ * 期待時刻と実時刻の差の総和を最小化するので、1つの境界で誤マッチしても
+ * 他の境界が引きずられにくい（局所的な最適解に陥らない）。
  */
-function pickSilenceForBoundary(
+interface BoundaryInfo {
+  expectedSec: number;
+  kind: BoundaryKind;
+}
+
+interface AssignResult {
+  /** 各境界に対する無音 index（-1 は未マッチ = 補間対象） */
+  silenceIdx: number[];
+}
+
+function dpAssignSilencesToBoundaries(
+  boundaries: BoundaryInfo[],
   silences: SilenceRegion[],
-  expectedSec: number,
-  kind: BoundaryKind,
-  usedIndices: Set<number>,
-  earliestSec: number,
-): { index: number; boundarySec: number } | null {
-  const minLen = minSilenceFor(kind);
-  let bestIdx = -1;
-  let bestDist = SEARCH_WINDOW_SEC + 1;
-  for (let i = 0; i < silences.length; i++) {
-    if (usedIndices.has(i)) continue;
-    const s = silences[i]!;
-    if (s.durationSec < minLen) continue;
-    // 単調性: 直前の境界より後ろ（少なくとも marginSec 以上先）
-    if (s.startSec < earliestSec) continue;
-    const dist = Math.abs(s.startSec - expectedSec);
-    if (dist > SEARCH_WINDOW_SEC) continue;
-    if (dist < bestDist) {
-      bestDist = dist;
-      bestIdx = i;
+): AssignResult {
+  const N = boundaries.length;
+  const M = silences.length;
+  const INF = 1e9;
+
+  type Action = "skip-silence" | "skip-boundary" | "match";
+  const dp: number[][] = Array.from({ length: N + 1 }, () => new Array(M + 1).fill(INF));
+  const act: Action[][] = Array.from({ length: N + 1 }, () => new Array<Action>(M + 1).fill("skip-boundary"));
+
+  // 基底: 境界 0 個の場合、任意の数の無音をスキップしてコスト 0
+  for (let j = 0; j <= M; j++) {
+    dp[0]![j] = 0;
+    act[0]![j] = "skip-silence";
+  }
+
+  for (let i = 1; i <= N; i++) {
+    const b = boundaries[i - 1]!;
+    const minDur = minSilenceFor(b.kind);
+
+    // dp[i][0] = 境界 i をスキップするしかない
+    dp[i]![0] = dp[i - 1]![0]! + SKIP_BOUNDARY_COST;
+    act[i]![0] = "skip-boundary";
+
+    for (let j = 1; j <= M; j++) {
+      const s = silences[j - 1]!;
+
+      // 1. 無音 j をスキップ
+      let best = dp[i]![j - 1]!;
+      let bestAct: Action = "skip-silence";
+
+      // 2. 境界 i をスキップ
+      const costSkipBoundary = dp[i - 1]![j]! + SKIP_BOUNDARY_COST;
+      if (costSkipBoundary < best) {
+        best = costSkipBoundary;
+        bestAct = "skip-boundary";
+      }
+
+      // 3. 境界 i を無音 j にマッチ（kind 最短長を満たす場合のみ）
+      if (s.durationSec >= minDur) {
+        const costMatch = dp[i - 1]![j - 1]! + Math.abs(s.startSec - b.expectedSec);
+        if (costMatch < best) {
+          best = costMatch;
+          bestAct = "match";
+        }
+      }
+
+      dp[i]![j] = best;
+      act[i]![j] = bestAct;
     }
   }
-  if (bestIdx === -1) return null;
-  const chosen = silences[bestIdx]!;
-  return {
-    index: bestIdx,
-    boundarySec: Math.min(
-      chosen.endSec - 0.01,
-      chosen.startSec + BOUNDARY_OFFSET_SEC,
-    ),
-  };
+
+  // backtrack
+  const silenceIdx: number[] = new Array(N).fill(-1);
+  let i = N;
+  let j = M;
+  while (i > 0 && j >= 0) {
+    const action = act[i]![j]!;
+    if (action === "match") {
+      silenceIdx[i - 1] = j - 1;
+      i--;
+      j--;
+    } else if (action === "skip-silence") {
+      if (j === 0) break;
+      j--;
+    } else {
+      // skip-boundary
+      i--;
+    }
+  }
+
+  return { silenceIdx };
 }
 
 /**
  * scenes + silences から、scenes.length 個の境界（= 各 scene の endSec）を決定する。
  * 最終要素は必ず totalDurationSec。
+ *
+ * Algorithm:
+ *   1. 文字数ベースの期待時刻を計算
+ *   2. DP で境界×無音の最適割り当て
+ *   3. 単調性を後処理で保証（DP は単調だが、割り当て済み境界が前の補間より前に来た場合のケア）
+ *   4. 未マッチ境界は前後の既知境界で線形補間
  */
 export function matchScenesToSilences(
   scenes: Scene[],
@@ -302,31 +375,30 @@ export function matchScenesToSilences(
   }
 
   const expected = computeExpectedBoundaries(scenes, totalDurationSec);
-  const usedIndices = new Set<number>();
-  const matched: (number | null)[] = new Array(n - 1).fill(null);
-  let earliestSec = 0;
+  const boundaries: BoundaryInfo[] = expected.map((expectedSec, i) => ({
+    expectedSec,
+    kind: classifyBoundary(scenes[i]!.narration),
+  }));
 
-  // 1pass: period を優先してマッチ（無音が強く、誤マッチしにくい）
-  const order = [
-    ...Array.from({ length: n - 1 }, (_, i) => ({ i, kind: classifyBoundary(scenes[i]!.narration) })),
-  ];
-  const periodFirst = [...order].sort((a, b) => {
-    if (a.kind === b.kind) return a.i - b.i;
-    return a.kind === "period" ? -1 : 1;
+  const { silenceIdx } = dpAssignSilencesToBoundaries(boundaries, silences);
+
+  // 各境界に対してマッチした無音から実時刻を算出
+  const matched: (number | null)[] = silenceIdx.map((idx) => {
+    if (idx < 0) return null;
+    const s = silences[idx]!;
+    return Math.min(s.endSec - 0.01, s.startSec + BOUNDARY_OFFSET_SEC);
   });
 
-  for (const { i, kind } of periodFirst) {
-    const pick = pickSilenceForBoundary(silences, expected[i]!, kind, usedIndices, earliestSec);
-    if (pick) {
-      matched[i] = pick.boundarySec;
-      usedIndices.add(pick.index);
-    }
-  }
+  // post-process: DP が近接する無音 2 つを連続境界に割り当てたり、
+  // 内部 、 を scene-end 、 と誤認した結果、極端に短い/速い scene を生むことがある。
+  // 発話速度 > MAX_CPS または duration < MIN_SCENE_DURATION なら unmatch し、補間に委ねる。
+  rejectImplausibleMatches(matched, scenes, totalDurationSec);
 
-  // 単調性を整えるため index 順に並べ直し、逆戻りや隙間を埋める
+  // 単調性を後処理で保証 + 未マッチは「文字数重み」で前後の既知境界から補間する
   const finalBoundaries: SceneBoundary[] = [];
   let prevEnd = 0;
   let matchedCount = 0;
+  const normalizedChars = scenes.map((s) => normalizeForLength(s.narration).length || 1);
   for (let i = 0; i < n - 1; i++) {
     const picked = matched[i] ?? null;
     if (picked !== null && picked > prevEnd + 0.05) {
@@ -334,11 +406,19 @@ export function matchScenesToSilences(
       prevEnd = picked;
       matchedCount++;
     } else {
-      // 補間: 期待時刻と前後の既知境界を使う
-      const nextMatched = findNextMatched(matched, i);
-      const nextSec = nextMatched !== null ? (matched[nextMatched] ?? totalDurationSec) : totalDurationSec;
-      const gap = nextMatched !== null ? nextMatched - i + 1 : n - i;
-      const interp = prevEnd + (nextSec - prevEnd) / gap;
+      // 次に matched な境界 nextMatchedIdx を探す。なければ totalDurationSec までを gap とする。
+      const nextMatchedIdx = findNextMatched(matched, i);
+      const nextSec = nextMatchedIdx !== null ? (matched[nextMatchedIdx] ?? totalDurationSec) : totalDurationSec;
+      // gap の中に収まる scene は [i .. lastSceneIdx]:
+      //   - nextMatchedIdx が matched なら、その境界は scene nextMatchedIdx の END なので
+      //     scene nextMatchedIdx までが gap に含まれる。
+      //   - 末尾（マッチなし）なら gap は最後の scene (n-1) まで含む。
+      const lastSceneIdx = nextMatchedIdx !== null ? nextMatchedIdx : n - 1;
+      let charsInGap = 0;
+      for (let k = i; k <= lastSceneIdx; k++) charsInGap += normalizedChars[k]!;
+      const thisChars = normalizedChars[i]!;
+      const gap = nextSec - prevEnd;
+      const interp = prevEnd + (thisChars / charsInGap) * gap;
       finalBoundaries.push({ endSec: Number(interp.toFixed(3)), fromVad: false });
       prevEnd = interp;
     }
@@ -351,6 +431,64 @@ export function matchScenesToSilences(
     silencesFound: silences.length,
     matchedCount,
   };
+}
+
+/**
+ * マッチ結果をチェックし、発話速度が高すぎるか尺が短すぎる scene は unmatch する。
+ * DP のコスト関数は絶対時間距離のみを見るので、近接無音への過剰割当を発見的に弾く。
+ * 2 連続 scene が問題の場合は、期待時刻から遠い方を優先的に unmatch する（単純ヒューリスティック）。
+ */
+function rejectImplausibleMatches(
+  matched: (number | null)[],
+  scenes: Scene[],
+  totalDurationSec: number,
+): void {
+  const n = scenes.length;
+  const getPrevEnd = (i: number): number => {
+    for (let k = i - 1; k >= 0; k--) {
+      const m = matched[k];
+      if (m !== null && m !== undefined) return m;
+    }
+    return 0;
+  };
+  const getNextEnd = (i: number): number => {
+    for (let k = i + 1; k < n - 1; k++) {
+      const m = matched[k];
+      if (m !== null && m !== undefined) return m;
+    }
+    return totalDurationSec;
+  };
+
+  // 複数パスで安定化（1つ unmatch で隣の scene の duration が変わるため）
+  for (let pass = 0; pass < 3; pass++) {
+    let changed = false;
+    for (let i = 0; i < n - 1; i++) {
+      const m = matched[i];
+      if (m === null || m === undefined) continue;
+      const prevEnd = getPrevEnd(i);
+      const dur = m - prevEnd;
+      const chars = normalizeForLength(scenes[i]!.narration).length || 1;
+      const cps = chars / Math.max(0.001, dur);
+      if (dur < MIN_SCENE_DURATION_SEC || cps > MAX_CPS) {
+        matched[i] = null;
+        changed = true;
+      }
+    }
+    // 次 scene 側もチェック: scene i+1 が短すぎるなら scene i を unmatch する方が筋が良い
+    for (let i = 0; i < n - 2; i++) {
+      const m = matched[i];
+      const mNext = matched[i + 1];
+      if (m === null || m === undefined || mNext === null || mNext === undefined) continue;
+      const nextDur = mNext - m;
+      const nextChars = normalizeForLength(scenes[i + 1]!.narration).length || 1;
+      const nextCps = nextChars / Math.max(0.001, nextDur);
+      if (nextDur < MIN_SCENE_DURATION_SEC || nextCps > MAX_CPS) {
+        matched[i] = null;
+        changed = true;
+      }
+    }
+    if (!changed) break;
+  }
 }
 
 function findNextMatched(matched: (number | null)[], from: number): number | null {
