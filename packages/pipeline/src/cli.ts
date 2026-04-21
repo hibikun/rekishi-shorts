@@ -126,13 +126,17 @@ program
   .description("既存の narration.wav を使って ASR+シーン整列+レンダリングのみ再実行（TTS/画像は再利用）")
   .argument("<jobId>", "既存のジョブID")
   .option("--fresh-asr", "既存 words.json があっても Whisper を再実行する", false)
+  .option("--no-vad", "VAD フォールバックを無効化（線形配分＝main 相当の挙動を再現）")
+  .option("--suffix <name>", "出力ファイル名にサフィックスを付与（比較用に並列保存）", "")
   .option("--no-render", "Remotion レンダリングをスキップして render-plan.json だけ更新")
   .action(async (jobId, opts) => {
-    console.log(chalk.bold(`\n🔁 rekishi-shorts realign: ${jobId}\n`));
+    console.log(chalk.bold(`\n🔁 rekishi-shorts realign: ${jobId}${opts.suffix ? ` [${opts.suffix}]` : ""}\n`));
 
     const { plan, tracker } = await runRealignStage({
       jobId,
       freshAsr: opts.freshAsr,
+      disableVad: opts.vad === false,
+      planSuffix: opts.suffix || undefined,
     });
 
     if (opts.render === false) {
@@ -143,7 +147,11 @@ program
     }
 
     const { renderHistoryShort } = await import("@rekishi/renderer");
-    const outputPath = path.join(getJobOutputDir(), buildOutputFilename(plan.script.topic.title, plan.id));
+    const baseName = buildOutputFilename(plan.script.topic.title, plan.id);
+    const finalName = opts.suffix
+      ? baseName.replace(/(\.mp4)$/i, `-${opts.suffix}$1`)
+      : baseName;
+    const outputPath = path.join(getJobOutputDir(), finalName);
     console.log(chalk.bold(`\n🎥 Remotion でレンダリング中...`));
     await renderHistoryShort(plan, outputPath);
     console.log(chalk.green(`\n✅ 完成: ${outputPath}`));

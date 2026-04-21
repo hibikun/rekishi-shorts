@@ -185,6 +185,10 @@ export interface RealignOptions {
   freshAsr?: boolean;
   /** Remotion レンダリングをスキップして render-plan.json だけ更新 */
   skipRender?: boolean;
+  /** VAD フォールバックを無効化（比較検証用: main ブランチ相当の線形配分を再現） */
+  disableVad?: boolean;
+  /** 出力 render-plan のファイル名サフィックス（複数バリアント共存用） */
+  planSuffix?: string;
   tracker?: CostTracker;
 }
 
@@ -255,13 +259,16 @@ export async function runRealignStage(opts: RealignOptions): Promise<{ plan: Ren
 
   const alignment = alignScenesToAudio(scenePlan.scenes, words, totalDurationSec, {
     audioPath,
-    brokenAsr: brokenByGuard,
+    brokenAsr: brokenByGuard && !opts.disableVad,
   });
   if (alignment.fallbackUsed) {
     log(chalk.yellow(`   ⚠ scene alignment fallback used`));
   }
   if (alignment.vadUsed) {
     log(chalk.cyan(`   🎯 VAD-based scene boundaries used`));
+  }
+  if (opts.disableVad) {
+    log(chalk.yellow(`   (--no-vad: VAD は無効化されています)`));
   }
 
   const plan = RenderPlanSchema.parse({
@@ -279,8 +286,9 @@ export async function runRealignStage(opts: RealignOptions): Promise<{ plan: Ren
     totalDurationSec,
     createdAt: new Date().toISOString(),
   });
-  await writeJson(jobPath(jobId, "scripts", "render-plan.json"), plan);
-  log(chalk.green(`✅ render-plan.json 更新完了`));
+  const planFileName = opts.planSuffix ? `render-plan-${opts.planSuffix}.json` : "render-plan.json";
+  await writeJson(jobPath(jobId, "scripts", planFileName), plan);
+  log(chalk.green(`✅ ${planFileName} 更新完了`));
 
   return { plan, tracker };
 }
