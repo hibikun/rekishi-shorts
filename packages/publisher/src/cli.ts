@@ -185,7 +185,6 @@ program
   .command("stats")
   .description("アップロード済み動画の実績データ（統計＋分析指標）を取得して JSONL に追記")
   .option("--only <jobId>", "特定の jobId だけ取得")
-  .option("--include-private", "private 動画も対象にする（通常は public/unlisted のみ）", false)
   .option("--dry-run", "取得結果を表示するだけで保存しない", false)
   .action(async (opts) => {
     log(chalk.bold("\n📊 YouTube stats 取得\n"));
@@ -199,12 +198,9 @@ program
         process.exit(1);
       }
     }
-    if (!opts.includePrivate) {
-      targets = targets.filter((u) => u.privacy !== "private");
-    }
 
     if (targets.length === 0) {
-      log(chalk.yellow("⚠ 対象の動画がありません。--include-private で private も対象にできます。"));
+      log(chalk.yellow("⚠ 対象の動画がありません。"));
       return;
     }
 
