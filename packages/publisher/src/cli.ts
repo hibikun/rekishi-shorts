@@ -9,8 +9,10 @@ import { generateYouTubeMetadata } from "./metadata-generator.js";
 import { metadataToDraftMd, draftMdToMetadata } from "./meta-draft-io.js";
 import { uploadToYouTube, formatUploadError } from "./youtube/uploader.js";
 import { runOAuthFlow } from "./youtube/oauth-flow.js";
-import { appendUploadLog, hasBeenUploaded } from "./upload-log.js";
+import { appendUploadLog, hasBeenUploaded, readAllUploads } from "./upload-log.js";
 import { YouTubeMetadataSchema, type YouTubeMetadata } from "./index.js";
+import { fetchStatsForVideos } from "./analytics/fetch-stats.js";
+import { appendSnapshots } from "./analytics/store.js";
 
 function log(msg: string): void {
   console.log(msg);
@@ -82,12 +84,15 @@ program
 
 program
   .command("auth")
-  .description("YouTube OAuth 認可フローを起動し refresh_token を取得する（初回1回だけ）")
+  .description("YouTube OAuth 認可フローを起動し refresh_token を取得する（初回 / スコープ追加時）")
   .action(async () => {
     const clientId = process.env.YOUTUBE_CLIENT_ID;
     const clientSecret = process.env.YOUTUBE_CLIENT_SECRET;
     const redirectUri = process.env.YOUTUBE_REDIRECT_URI ?? "http://localhost:53682/oauth2callback";
-    const scope = "https://www.googleapis.com/auth/youtube.upload";
+    const scopes = [
+      "https://www.googleapis.com/auth/youtube.upload",
+      "https://www.googleapis.com/auth/yt-analytics.readonly",
+    ];
 
     if (!clientId || !clientSecret) {
       console.error(chalk.red("❌ YOUTUBE_CLIENT_ID / YOUTUBE_CLIENT_SECRET が .env.local に未設定です。"));
@@ -95,7 +100,7 @@ program
       process.exit(1);
     }
 
-    await runOAuthFlow({ clientId, clientSecret, redirectUri, scope });
+    await runOAuthFlow({ clientId, clientSecret, redirectUri, scopes });
   });
 
 program
@@ -171,6 +176,61 @@ program
       log(chalk.red(`   ${formatUploadError(err)}`));
       process.exit(1);
     }
+  });
+
+program
+  .command("stats")
+  .description("アップロード済み動画の実績データ（統計＋分析指標）を取得して JSONL に追記")
+  .option("--only <jobId>", "特定の jobId だけ取得")
+  .option("--include-private", "private 動画も対象にする（通常は public/unlisted のみ）", false)
+  .option("--dry-run", "取得結果を表示するだけで保存しない", false)
+  .action(async (opts) => {
+    log(chalk.bold("\n📊 YouTube stats 取得\n"));
+
+    const allUploads = await readAllUploads();
+    let targets = allUploads;
+    if (opts.only) {
+      targets = targets.filter((u) => u.jobId === opts.only);
+      if (targets.length === 0) {
+        log(chalk.yellow(`⚠ jobId=${opts.only} に該当する投稿が log.jsonl にありません`));
+        process.exit(1);
+      }
+    }
+    if (!opts.includePrivate) {
+      targets = targets.filter((u) => u.privacy !== "private");
+    }
+
+    if (targets.length === 0) {
+      log(chalk.yellow("⚠ 対象の動画がありません。--include-private で private も対象にできます。"));
+      return;
+    }
+
+    log(chalk.dim(`   対象: ${targets.length} 本`));
+    for (const t of targets) {
+      log(chalk.dim(`   - ${t.videoId} ${t.privacy.padEnd(8)} ${t.title}`));
+    }
+
+    const snapshots = await fetchStatsForVideos(targets);
+
+    log("");
+    for (const s of snapshots) {
+      const ageDays = (s.ageHours / 24).toFixed(1);
+      const a = s.analytics;
+      const base = `${chalk.bold(s.videoId)} (${ageDays}d)  views=${s.statistics.viewCount}  👍${s.statistics.likeCount}  💬${s.statistics.commentCount}`;
+      if (a) {
+        log(`${base}  視聴率=${a.averageViewPercentage.toFixed(1)}%  平均=${a.averageViewDuration.toFixed(1)}s  登録+${a.subscribersGained}/-${a.subscribersLost}  shares=${a.shares}`);
+      } else {
+        log(`${base}  ${chalk.red(`analytics取得失敗: ${s.analyticsError ?? "unknown"}`)}`);
+      }
+    }
+
+    if (opts.dryRun) {
+      log(chalk.yellow("\n--dry-run 指定。保存しません。"));
+      return;
+    }
+
+    const file = await appendSnapshots(snapshots);
+    log(chalk.green(`\n✅ ${snapshots.length} 件のスナップショットを追記: ${file}`));
   });
 
 program.parseAsync().catch((err) => {

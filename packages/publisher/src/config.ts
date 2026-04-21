@@ -29,6 +29,7 @@ export const config = {
     get channelId(): string | undefined { return optionalEnv("YOUTUBE_CHANNEL_ID"); },
     redirectUri: process.env.YOUTUBE_REDIRECT_URI ?? "http://localhost:53682/oauth2callback",
     uploadScope: "https://www.googleapis.com/auth/youtube.upload",
+    analyticsScope: "https://www.googleapis.com/auth/yt-analytics.readonly",
   },
   gemini: {
     get apiKey(): string { return requireEnv("GEMINI_API_KEY"); },
