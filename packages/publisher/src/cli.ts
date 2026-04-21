@@ -91,6 +91,7 @@ program
     const redirectUri = process.env.YOUTUBE_REDIRECT_URI ?? "http://localhost:53682/oauth2callback";
     const scopes = [
       "https://www.googleapis.com/auth/youtube.upload",
+      "https://www.googleapis.com/auth/youtube.readonly",
       "https://www.googleapis.com/auth/yt-analytics.readonly",
     ];
 

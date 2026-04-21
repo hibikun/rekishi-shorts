@@ -99,18 +99,8 @@ export async function fetchStatsForVideos(uploads: UploadLogEntry[]): Promise<St
           subscribersLost: values.subscribersLost ?? 0,
         };
       } else {
-        // データ無し（公開直後など）。ゼロで埋める
-        analytics = {
-          views: 0,
-          estimatedMinutesWatched: 0,
-          averageViewDuration: 0,
-          averageViewPercentage: 0,
-          likes: 0,
-          comments: 0,
-          shares: 0,
-          subscribersGained: 0,
-          subscribersLost: 0,
-        };
+        // Analytics API は動画ごと24〜72時間のラグがある。rows 空は「まだ集計前」のサイン。
+        analyticsError = "no rows (集計ラグの可能性 / 通常24〜72時間後に反映)";
       }
     } catch (err) {
       analyticsError = err instanceof Error ? err.message : String(err);
