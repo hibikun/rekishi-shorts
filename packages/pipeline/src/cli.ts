@@ -8,6 +8,7 @@ import {
   getJobOutputDir,
   runBuildStage,
   runDraftStage,
+  runRealignStage,
 } from "./orchestrator.js";
 
 function buildOutputFilename(title: string, jobId: string): string {
@@ -106,6 +107,36 @@ program
 
     if (opts.planOnly) {
       console.log(chalk.yellow("\n--plan-only 指定のためレンダリングをスキップします"));
+      console.log(chalk.bold("\n💰 コスト内訳:"));
+      console.log(tracker.formatTable());
+      return;
+    }
+
+    const { renderHistoryShort } = await import("@rekishi/renderer");
+    const outputPath = path.join(getJobOutputDir(), buildOutputFilename(plan.script.topic.title, plan.id));
+    console.log(chalk.bold(`\n🎥 Remotion でレンダリング中...`));
+    await renderHistoryShort(plan, outputPath);
+    console.log(chalk.green(`\n✅ 完成: ${outputPath}`));
+    console.log(chalk.bold("\n💰 コスト内訳:"));
+    console.log(tracker.formatTable());
+  });
+
+program
+  .command("realign")
+  .description("既存の narration.wav を使って ASR+シーン整列+レンダリングのみ再実行（TTS/画像は再利用）")
+  .argument("<jobId>", "既存のジョブID")
+  .option("--fresh-asr", "既存 words.json があっても Whisper を再実行する", false)
+  .option("--no-render", "Remotion レンダリングをスキップして render-plan.json だけ更新")
+  .action(async (jobId, opts) => {
+    console.log(chalk.bold(`\n🔁 rekishi-shorts realign: ${jobId}\n`));
+
+    const { plan, tracker } = await runRealignStage({
+      jobId,
+      freshAsr: opts.freshAsr,
+    });
+
+    if (opts.render === false) {
+      console.log(chalk.yellow("\n--no-render 指定のためレンダリングをスキップします"));
       console.log(chalk.bold("\n💰 コスト内訳:"));
       console.log(tracker.formatTable());
       return;
