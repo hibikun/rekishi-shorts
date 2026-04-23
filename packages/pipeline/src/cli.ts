@@ -2,7 +2,8 @@
 import { Command, Option } from "commander";
 import chalk from "chalk";
 import path from "node:path";
-import { DEFAULT_CHANNEL, TopicSchema, setChannel } from "@rekishi/shared";
+import { TopicSchema } from "@rekishi/shared";
+import { DEFAULT_CHANNEL, setChannel } from "@rekishi/shared/channel";
 import {
   generatePlan,
   getJobOutputDir,

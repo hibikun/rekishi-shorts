@@ -1,6 +1,7 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import fs from "node:fs";
-import { ScriptSchema, promptPath, type Script, type Topic } from "@rekishi/shared";
+import { ScriptSchema, type Script, type Topic } from "@rekishi/shared";
+import { promptPath } from "@rekishi/shared/channel";
 import { config } from "./config.js";
 
 const PROMPT_NAMES = {

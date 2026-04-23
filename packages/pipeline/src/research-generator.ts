@@ -1,6 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
 import fs from "node:fs";
-import { promptPath, type Topic } from "@rekishi/shared";
+import { type Topic } from "@rekishi/shared";
+import { promptPath } from "@rekishi/shared/channel";
 import { config } from "./config.js";
 
 export interface ResearchSource {

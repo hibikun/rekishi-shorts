@@ -3,13 +3,8 @@ import { Command, Option } from "commander";
 import chalk from "chalk";
 import fs from "node:fs/promises";
 import path from "node:path";
-import {
-  DEFAULT_CHANNEL,
-  RenderPlanSchema,
-  channelDocsDir,
-  setChannel,
-  type RenderPlan,
-} from "@rekishi/shared";
+import { RenderPlanSchema, type RenderPlan } from "@rekishi/shared";
+import { DEFAULT_CHANNEL, channelDocsDir, setChannel } from "@rekishi/shared/channel";
 import { dataPath } from "./config.js";
 
 function channelOption(): Option {
