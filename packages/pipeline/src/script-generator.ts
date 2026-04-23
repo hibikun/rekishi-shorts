@@ -13,13 +13,14 @@ const PROMPT_TEMPLATE_PATHS = {
   "three-pick": path.resolve(__dirname, "../prompts/script-three-pick.md"),
 } as const;
 
-function renderPrompt(topic: Topic): string {
+function renderPrompt(topic: Topic, researchMd?: string): string {
   const tpl = fs.readFileSync(PROMPT_TEMPLATE_PATHS[topic.format], "utf-8");
   return tpl
     .replace(/\{\{topic\.title\}\}/g, topic.title)
     .replace(/\{\{topic\.era\}\}/g, topic.era ?? "指定なし")
     .replace(/\{\{topic\.subject\}\}/g, topic.subject)
-    .replace(/\{\{topic\.target\}\}/g, topic.target);
+    .replace(/\{\{topic\.target\}\}/g, topic.target)
+    .replace(/\{\{research\}\}/g, researchMd?.trim() || "（リサーチ資料なし — 自身の知識で慎重に書くこと）");
 }
 
 const titleResponseSchema = {
@@ -113,9 +114,9 @@ function readingsArrayToMap(arr: Array<{ term: string; reading: string }> | unde
   return out;
 }
 
-export async function generateScript(topic: Topic): Promise<ScriptResult> {
+export async function generateScript(topic: Topic, researchMd?: string): Promise<ScriptResult> {
   const ai = new GoogleGenAI({ apiKey: config.gemini.apiKey });
-  const prompt = renderPrompt(topic);
+  const prompt = renderPrompt(topic, researchMd);
 
   const response = await ai.models.generateContent({
     model: config.gemini.scriptModel,

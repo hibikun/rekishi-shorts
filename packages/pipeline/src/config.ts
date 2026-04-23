@@ -22,6 +22,7 @@ export const config = {
     scriptModel: process.env.GEMINI_SCRIPT_MODEL ?? "gemini-3.1-pro-preview",
     sceneModel: process.env.GEMINI_SCENE_MODEL ?? "gemini-3.1-flash-lite-preview",
     imageModel: process.env.GEMINI_IMAGE_MODEL ?? "gemini-3.1-flash-image-preview",
+    researchModel: process.env.GEMINI_RESEARCH_MODEL ?? "gemini-3.1-pro-preview",
   },
   elevenlabs: {
     apiKey: requireEnv("ELEVENLABS_API_KEY"),

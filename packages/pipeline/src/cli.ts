@@ -9,6 +9,7 @@ import {
   runBuildStage,
   runDraftStage,
   runRealignStage,
+  runResearchStage,
 } from "./orchestrator.js";
 
 function buildOutputFilename(title: string, jobId: string): string {
@@ -24,10 +25,10 @@ program
   .version("0.1.0");
 
 program
-  .command("draft")
-  .description("台本のみ生成して draft.md を出力（人間レビュー用）")
-  .requiredOption("--topic <title>", "トピック名（例: ペリー来航）")
-  .option("--era <era>", "時代（例: 幕末）")
+  .command("research")
+  .description("Gemini + Google Search でトピックのリサーチ資料（research.md）を生成。draft の前段")
+  .requiredOption("--topic <title>", "トピック名（例: 生類憐みの令）")
+  .option("--era <era>", "時代（例: 江戸）")
   .option("--subject <subject>", "科目（日本史 | 世界史）", "日本史")
   .option("--target <target>", "対象試験（共通テスト | 二次 | 汎用）", "汎用")
   .option("--format <format>", "台本フォーマット（single | three-pick）", "single")
@@ -39,9 +40,38 @@ program
       target: opts.target,
       format: opts.format,
     });
-    console.log(chalk.bold(`\n🎞️  rekishi-shorts draft: ${topic.title}\n`));
+    console.log(chalk.bold(`\n🔎 rekishi-shorts research: ${topic.title}\n`));
 
-    const { jobId, draftPath, tracker } = await runDraftStage(topic);
+    const { jobId, researchPath, tracker, sourceCount, queryCount } = await runResearchStage(topic);
+    console.log(chalk.green(`\n✅ research 保存: ${researchPath}`));
+    console.log(chalk.dim(`   jobId=${jobId} / sources=${sourceCount} / queries=${queryCount}`));
+    console.log(chalk.bold("\n次のステップ:"));
+    console.log(`  1. ${chalk.cyan(researchPath)} を開いて内容確認（必要なら編集）`);
+    console.log(`  2. ${chalk.cyan(`pnpm draft --job ${jobId} --topic "${topic.title}"${topic.era ? ` --era "${topic.era}"` : ""}`)} で台本生成`);
+    console.log(chalk.bold("\n💰 research 段階のコスト:"));
+    console.log(tracker.formatTable());
+  });
+
+program
+  .command("draft")
+  .description("台本のみ生成して draft.md を出力（人間レビュー用）")
+  .requiredOption("--topic <title>", "トピック名（例: ペリー来航）")
+  .option("--era <era>", "時代（例: 幕末）")
+  .option("--subject <subject>", "科目（日本史 | 世界史）", "日本史")
+  .option("--target <target>", "対象試験（共通テスト | 二次 | 汎用）", "汎用")
+  .option("--format <format>", "台本フォーマット（single | three-pick）", "single")
+  .option("--job <jobId>", "既存の research ジョブを引き継ぐ（research.md をプロンプトに注入）")
+  .action(async (opts) => {
+    const topic = TopicSchema.parse({
+      title: opts.topic,
+      era: opts.era,
+      subject: opts.subject,
+      target: opts.target,
+      format: opts.format,
+    });
+    console.log(chalk.bold(`\n🎞️  rekishi-shorts draft: ${topic.title}${opts.job ? ` (job=${opts.job})` : ""}\n`));
+
+    const { jobId, draftPath, tracker } = await runDraftStage(topic, opts.job);
     console.log(chalk.green(`\n✅ draft 保存: ${draftPath}`));
     console.log(chalk.bold("\n次のステップ:"));
     console.log(`  1. ${chalk.cyan(draftPath)} を開いて narration / keyTerms / readings / mnemonic を編集`);

@@ -11,6 +11,7 @@
     "./package.json": "./package.json"
   },
   "scripts": {
+    "research": "tsx src/cli.ts research",
     "draft": "tsx src/cli.ts draft",
     "build": "tsx src/cli.ts build",
     "realign": "tsx src/cli.ts realign",

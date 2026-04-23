@@ -17,6 +17,7 @@ import {
 } from "@rekishi/shared";
 import { z } from "zod";
 import { generateScript } from "./script-generator.js";
+import { generateResearch } from "./research-generator.js";
 import { planScenes } from "./scene-planner.js";
 import { resolveSceneAssets } from "./asset-resolver.js";
 import { synthesizeNarration } from "./tts-generator.js";
@@ -39,6 +40,14 @@ export interface DraftResult {
   tracker: CostTracker;
 }
 
+export interface ResearchStageResult {
+  jobId: string;
+  researchPath: string;
+  tracker: CostTracker;
+  sourceCount: number;
+  queryCount: number;
+}
+
 export interface BuildOptions {
   jobId: string;
   /** 事前にロードされた Script（draft.md ベース）を使う場合 */
@@ -54,8 +63,37 @@ export interface GenerateOptions {
 }
 
 /**
+ * Stage 0: Gemini + Google Search でリサーチ資料 (research.md) を生成する。
+ * draft の前段として任意で実行。人間がレビューしてから draft に引き継ぐ。
+ */
+export async function runResearchStage(topic: Topic, jobId?: string): Promise<ResearchStageResult> {
+  const id = jobId ?? shortId();
+  const tracker = new CostTracker();
+  const storage = new LocalStorageAdapter();
+  await storage.ensureJobDir(id, "scripts");
+
+  log(`🔎 [research] Gemini Pro + Google Search でリサーチ中...`);
+  const res = await generateResearch(topic);
+  tracker.addGemini("research", res.usage.model, res.usage.inputTokens, res.usage.outputTokens);
+
+  const researchPath = jobPath(id, "scripts", "research.md");
+  await fs.mkdir(path.dirname(researchPath), { recursive: true });
+  await fs.writeFile(researchPath, res.markdown, "utf-8");
+  await writeJson(jobPath(id, "scripts", "research-sources.json"), {
+    queries: res.queries,
+    sources: res.sources,
+    generatedAt: new Date().toISOString(),
+    topic,
+  });
+
+  log(chalk.dim(`   ${res.sources.length}件のソース / ${res.queries.length}件の検索クエリ / in=${res.usage.inputTokens}tok out=${res.usage.outputTokens}tok`));
+
+  return { jobId: id, researchPath, tracker, sourceCount: res.sources.length, queryCount: res.queries.length };
+}
+
+/**
  * Stage 1: 台本のみ生成し、人間レビュー用の draft.md を出力する。
- * build は呼ばない。
+ * build は呼ばない。jobId を指定すると既存ジョブの research.md を読み込んで注入する。
  */
 export async function runDraftStage(topic: Topic, jobId?: string): Promise<DraftResult> {
   const id = jobId ?? shortId();
@@ -63,8 +101,10 @@ export async function runDraftStage(topic: Topic, jobId?: string): Promise<Draft
   const storage = new LocalStorageAdapter();
   await storage.ensureJobDir(id, "scripts");
 
+  const researchMd = await tryReadResearch(id);
+
   log(`📝 [draft] Gemini Pro で台本生成中...`);
-  const { script, usage } = await generateScript(topic);
+  const { script, usage } = await generateScript(topic, researchMd);
   tracker.addGemini("script", usage.model, usage.inputTokens, usage.outputTokens);
   await writeJson(jobPath(id, "scripts", "script.json"), script);
   log(chalk.dim(`   ${script.narration.length}文字 / 推定${script.estimatedDurationSec}秒 / in=${usage.inputTokens}tok out=${usage.outputTokens}tok`));
@@ -340,6 +380,21 @@ async function fileExists(p: string): Promise<boolean> {
     return true;
   } catch {
     return false;
+  }
+}
+
+/**
+ * 指定 jobId に research.md があれば読み込んで返す。無ければ警告ログを出して undefined を返す。
+ */
+async function tryReadResearch(jobId: string): Promise<string | undefined> {
+  const p = jobPath(jobId, "scripts", "research.md");
+  try {
+    const md = await fs.readFile(p, "utf-8");
+    log(chalk.dim(`   📎 research.md を読み込み (${md.length}字) → プロンプトに注入`));
+    return md;
+  } catch {
+    log(chalk.yellow(`   ⚠ research.md なし — モデル内部知識のみで生成します (pnpm research で事前に資料生成可)`));
+    return undefined;
   }
 }
 
