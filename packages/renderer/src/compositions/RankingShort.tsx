@@ -1,12 +1,15 @@
 import React from "react";
 import {
   AbsoluteFill,
+  Audio,
   Img,
+  Loop,
   Sequence,
   interpolate,
   useCurrentFrame,
   useVideoConfig,
 } from "remotion";
+import { NarrationAudio } from "../components/NarrationAudio";
 
 // ========================================================================
 // 型
@@ -33,6 +36,17 @@ export interface RankingShortProps {
   backgroundImagePath: string;
   closing: { text: string };
   totalDurationSec: number;
+  /** ナレーション音声（動画全体に流す） */
+  audioSrc?: string;
+  /** BGM。ループ再生・低音量（デフォルト 0.18） */
+  bgmSrc?: string;
+  bgmVolume?: number;
+  /** ランク登場時の効果音（第3位/第2位/第1位の intro 冒頭に鳴る） */
+  rankSfxSrc?: string;
+  rankSfxVolume?: number;
+  /** オープニングのフック直後に鳴らす SFX（和太鼓 "ドン！" 等） */
+  hookSfxSrc?: string;
+  hookSfxVolume?: number;
 }
 
 // ========================================================================
@@ -714,6 +728,13 @@ export const RankingShort: React.FC<RankingShortProps> = ({
   items,
   backgroundImagePath,
   closing,
+  audioSrc,
+  bgmSrc,
+  bgmVolume = 0.18,
+  rankSfxSrc,
+  rankSfxVolume = 0.7,
+  hookSfxSrc,
+  hookSfxVolume = 0.8,
 }) => {
   const { fps } = useVideoConfig();
   const blocks = buildSceneBlocks(items);
@@ -725,6 +746,13 @@ export const RankingShort: React.FC<RankingShortProps> = ({
     cursor += block.durationSec;
     return { block, startFrame, durationFrames };
   });
+
+  // hookSfx は opening 冒頭で鳴らす
+  const hookSfxStart = 0;
+  // rankSfx は各 rank-intro の冒頭で鳴らす
+  const rankIntroStarts = layout
+    .filter((l) => l.block.kind === "rank-intro")
+    .map((l) => l.startFrame);
 
   return (
     <AbsoluteFill style={{ backgroundColor: "#000" }}>
@@ -745,6 +773,25 @@ export const RankingShort: React.FC<RankingShortProps> = ({
           )}
         </Sequence>
       ))}
+
+      {/* 音声レイヤー */}
+      {audioSrc && <NarrationAudio src={audioSrc} />}
+      {bgmSrc && (
+        <Loop durationInFrames={fps * 60}>
+          <Audio src={bgmSrc} volume={bgmVolume} />
+        </Loop>
+      )}
+      {hookSfxSrc && (
+        <Sequence from={hookSfxStart}>
+          <Audio src={hookSfxSrc} volume={hookSfxVolume} />
+        </Sequence>
+      )}
+      {rankSfxSrc &&
+        rankIntroStarts.map((startFrame, i) => (
+          <Sequence key={`rank-sfx-${i}`} from={startFrame}>
+            <Audio src={rankSfxSrc} volume={rankSfxVolume} />
+          </Sequence>
+        ))}
     </AbsoluteFill>
   );
 };
