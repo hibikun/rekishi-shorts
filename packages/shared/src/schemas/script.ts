@@ -1,6 +1,7 @@
 import { z } from "zod";
 
-export const SubjectSchema = z.enum(["日本史", "世界史"]);
+// チャンネル横断で自由入力。例: 日本史 / 世界史 / 生物 / 化学 / 物理 / 地学 / 政治経済
+export const SubjectSchema = z.string().min(1).default("日本史");
 export type Subject = z.infer<typeof SubjectSchema>;
 
 export const TargetSchema = z.enum(["共通テスト", "二次", "汎用"]);
