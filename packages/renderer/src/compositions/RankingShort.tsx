@@ -1,5 +1,12 @@
 import React from "react";
-import { AbsoluteFill, Img, Sequence, useVideoConfig } from "remotion";
+import {
+  AbsoluteFill,
+  Img,
+  Sequence,
+  interpolate,
+  useCurrentFrame,
+  useVideoConfig,
+} from "remotion";
 
 // ========================================================================
 // 型
@@ -16,6 +23,8 @@ export interface RankingItem {
 export interface RankingOpening {
   // 表示する行。サイズ/色バリアントを行ごとに指定
   lines: Array<{ text: string; variant: "small-white" | "red" | "gold" | "tiny-white" }>;
+  // 下部アイコン行。src を指定すれば画像（いらすとや等）、emoji 指定で絵文字プレースホルダ
+  icons?: Array<{ src?: string; emoji?: string; size?: number }>;
 }
 
 export interface RankingShortProps {
@@ -164,6 +173,75 @@ const StrokedSolidText: React.FC<StrokedSolidTextProps> = ({
     {text}
   </div>
 );
+
+// ========================================================================
+// トランジションラッパー
+// ========================================================================
+
+/** シーン冒頭の短いフェードイン（0.15秒） */
+const FadeIn: React.FC<{ children: React.ReactNode; durationFrames?: number }> = ({
+  children,
+  durationFrames = 4,
+}) => {
+  const frame = useCurrentFrame();
+  const opacity = interpolate(frame, [0, durationFrames], [0, 1], {
+    extrapolateRight: "clamp",
+  });
+  return <AbsoluteFill style={{ opacity }}>{children}</AbsoluteFill>;
+};
+
+/** バッジ等の "パンチイン"。スケール1.35→0.95→1.0 でワンバウンド */
+const PunchIn: React.FC<{
+  children: React.ReactNode;
+  durationFrames?: number;
+}> = ({ children, durationFrames = 9 }) => {
+  const frame = useCurrentFrame();
+  const scale = interpolate(
+    frame,
+    [0, durationFrames * 0.55, durationFrames],
+    [1.35, 0.95, 1.0],
+    { extrapolateRight: "clamp" },
+  );
+  const opacity = interpolate(frame, [0, durationFrames * 0.4], [0, 1], {
+    extrapolateRight: "clamp",
+  });
+  return (
+    <div
+      style={{
+        transform: `scale(${scale})`,
+        opacity,
+        transformOrigin: "center center",
+        display: "inline-block",
+      }}
+    >
+      {children}
+    </div>
+  );
+};
+
+/** ケン・バーンズ風の軽いズームイン（商品カード用） */
+const SubtleZoom: React.FC<{
+  children: React.ReactNode;
+  durationInFrames: number;
+  from?: number;
+  to?: number;
+}> = ({ children, durationInFrames, from = 1.02, to = 1.08 }) => {
+  const frame = useCurrentFrame();
+  const scale = interpolate(frame, [0, durationInFrames], [from, to], {
+    extrapolateRight: "clamp",
+  });
+  return (
+    <div
+      style={{
+        transform: `scale(${scale})`,
+        transformOrigin: "center center",
+        display: "inline-block",
+      }}
+    >
+      {children}
+    </div>
+  );
+};
 
 // ========================================================================
 // ブラー背景（共通）
@@ -355,6 +433,10 @@ const ReviewBubble: React.FC<{ text: string; colorIndex: number }> = ({
 // ========================================================================
 
 const OpeningScene: React.FC<{ opening: RankingOpening }> = ({ opening }) => {
+  const frame = useCurrentFrame();
+  const introProgress = interpolate(frame, [0, 5], [0, 1], {
+    extrapolateRight: "clamp",
+  });
   const renderLine = (
     line: RankingOpening["lines"][number],
     idx: number,
@@ -409,36 +491,100 @@ const OpeningScene: React.FC<{ opening: RankingOpening }> = ({ opening }) => {
   };
 
   return (
-    <AbsoluteFill
-      style={{
-        alignItems: "center",
-        justifyContent: "flex-start",
-        paddingTop: 120,
-        gap: 14,
-      }}
-    >
-      {opening.lines.map(renderLine)}
+    <AbsoluteFill style={{ opacity: introProgress }}>
+      <AbsoluteFill
+        style={{
+          alignItems: "center",
+          justifyContent: "flex-start",
+          paddingTop: 120,
+          gap: 14,
+        }}
+      >
+        {opening.lines.map(renderLine)}
+      </AbsoluteFill>
+      {opening.icons && opening.icons.length > 0 && (
+        <OpeningIconRow icons={opening.icons} />
+      )}
     </AbsoluteFill>
   );
 };
+
+const OpeningIconRow: React.FC<{ icons: NonNullable<RankingOpening["icons"]> }> = ({
+  icons,
+}) => (
+  <div
+    style={{
+      position: "absolute",
+      bottom: 80,
+      left: 0,
+      right: 0,
+      display: "flex",
+      alignItems: "flex-end",
+      justifyContent: "center",
+      gap: 12,
+      padding: "0 40px",
+    }}
+  >
+    {icons.map((icon, idx) => {
+      const size = icon.size ?? 240;
+      if (icon.src) {
+        return (
+          <Img
+            key={idx}
+            src={icon.src}
+            style={{
+              width: size,
+              height: size,
+              objectFit: "contain",
+            }}
+          />
+        );
+      }
+      if (icon.emoji) {
+        return (
+          <div
+            key={idx}
+            style={{
+              fontSize: size * 0.9,
+              lineHeight: 1,
+              filter: "drop-shadow(0 4px 12px rgba(0,0,0,0.6))",
+            }}
+          >
+            {icon.emoji}
+          </div>
+        );
+      }
+      return null;
+    })}
+  </div>
+);
 
 // ========================================================================
 // シーン: ランク 商品紹介
 // ========================================================================
 
-const RankIntroScene: React.FC<{ item: RankingItem }> = ({ item }) => (
-  <AbsoluteFill
-    style={{
-      alignItems: "center",
-      justifyContent: "flex-start",
-      paddingTop: 140,
-      gap: 60,
-    }}
-  >
-    <RankBadge rank={item.rank} size="large" />
-    <BrandText text={item.category} />
-    <ProductCard src={item.productImagePath} width={720} height={720} />
-  </AbsoluteFill>
+const RankIntroScene: React.FC<{
+  item: RankingItem;
+  durationInFrames: number;
+}> = ({ item, durationInFrames }) => (
+  <FadeIn>
+    <AbsoluteFill
+      style={{
+        alignItems: "center",
+        justifyContent: "flex-start",
+        paddingTop: 140,
+        gap: 60,
+      }}
+    >
+      <PunchIn>
+        <RankBadge rank={item.rank} size="large" />
+      </PunchIn>
+      <BrandText text={item.category} />
+      <SubtleZoom durationInFrames={durationInFrames}>
+        <ProductCard src={item.productImagePath} width={720} height={720} />
+      </SubtleZoom>
+    </AbsoluteFill>
+  </FadeIn>
 );
 
 // ========================================================================
@@ -446,7 +592,7 @@ const RankIntroScene: React.FC<{ item: RankingItem }> = ({ item }) => (
 // ========================================================================
 
 const RankReviewScene: React.FC<{ item: RankingItem }> = ({ item }) => (
-  <AbsoluteFill>
+  <FadeIn>
     {/* 背景レイヤー: 第◯位 + 商品画像（intro と同じ位置・サイズ） */}
     <AbsoluteFill
       style={{
@@ -461,7 +607,7 @@ const RankReviewScene: React.FC<{ item: RankingItem }> = ({ item }) => (
       <div style={{ height: 165 }} />
       <ProductCard src={item.productImagePath} width={720} height={720} faded />
     </AbsoluteFill>
-    {/* 前景レイヤー: レビュー吹き出し 3枚、商品画像にオーバーレイ */}
+    {/* 前景レイヤー: レビュー吹き出し 3枚、商品画像にオーバーレイ。順番に pop-in */}
     <AbsoluteFill
       style={{
         alignItems: "center",
@@ -472,33 +618,63 @@ const RankReviewScene: React.FC<{ item: RankingItem }> = ({ item }) => (
       }}
     >
       {item.reviews.map((text, i) => (
-        <ReviewBubble key={i} text={text} colorIndex={i} />
+        <StaggeredAppear key={i} delayFrames={4 + i * 6}>
+          <ReviewBubble text={text} colorIndex={i} />
+        </StaggeredAppear>
       ))}
     </AbsoluteFill>
-  </AbsoluteFill>
+  </FadeIn>
 );
+
+/** 指定フレーム遅延後にフェード+軽くスライドアップして登場 */
+const StaggeredAppear: React.FC<{
+  children: React.ReactNode;
+  delayFrames: number;
+  fadeDurationFrames?: number;
+}> = ({ children, delayFrames, fadeDurationFrames = 6 }) => {
+  const frame = useCurrentFrame();
+  const progress = interpolate(
+    frame,
+    [delayFrames, delayFrames + fadeDurationFrames],
+    [0, 1],
+    { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
+  );
+  const translateY = (1 - progress) * 24;
+  return (
+    <div
+      style={{
+        opacity: progress,
+        transform: `translateY(${translateY}px)`,
+      }}
+    >
+      {children}
+    </div>
+  );
+};
 
 // ========================================================================
 // シーン: 締め
 // ========================================================================
 
 const ClosingScene: React.FC<{ text: string }> = ({ text }) => (
-  <AbsoluteFill
-    style={{
-      alignItems: "center",
-      justifyContent: "center",
-      padding: 60,
-    }}
-  >
-    <StrokedSolidText
-      text={text}
-      fontSize={140}
-      color="#ffffff"
-      strokeWidth={8}
-      lineHeight={1.2}
-      dropShadow="0 6px 18px rgba(0,0,0,0.9)"
-    />
-  </AbsoluteFill>
+  <FadeIn>
+    <AbsoluteFill
+      style={{
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 60,
+      }}
+    >
+      <StrokedSolidText
+        text={text}
+        fontSize={140}
+        color="#ffffff"
+        strokeWidth={8}
+        lineHeight={1.2}
+        dropShadow="0 6px 18px rgba(0,0,0,0.9)"
+      />
+    </AbsoluteFill>
+  </FadeIn>
 );
 
 // ========================================================================
@@ -558,7 +734,10 @@ export const RankingShort: React.FC<RankingShortProps> = ({
           {block.kind === "opening" ? (
             <OpeningScene opening={opening} />
           ) : block.kind === "rank-intro" ? (
-            <RankIntroScene item={block.item} />
+            <RankIntroScene
+              item={block.item}
+              durationInFrames={durationFrames}
+            />
           ) : block.kind === "rank-review" ? (
             <RankReviewScene item={block.item} />
           ) : (

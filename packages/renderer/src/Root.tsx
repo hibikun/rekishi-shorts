@@ -1,5 +1,5 @@
 import React from "react";
-import { Composition } from "remotion";
+import { Composition, staticFile } from "remotion";
 import { VIDEO_FPS, VIDEO_HEIGHT, VIDEO_WIDTH } from "@rekishi/shared";
 import { HistoryShort, type HistoryShortProps } from "./compositions/HistoryShort";
 import { RankingShort, type RankingShortProps } from "./compositions/RankingShort";
@@ -29,13 +29,21 @@ const rankingDefaultProps: RankingShortProps = {
       { text: "神商品", variant: "gold" },
       { text: "挙げてくw", variant: "tiny-white" },
     ],
+    icons: [
+      { emoji: "📱", size: 180 },
+      { emoji: "🧥", size: 200 },
+      { emoji: "🧑‍💼", size: 260 },
+      { emoji: "👩", size: 260 },
+      { emoji: "📻", size: 180 },
+      { emoji: "✨", size: 160 },
+    ],
   },
   items: [
     {
       rank: 3,
       brand: "サンプル",
       category: "電動爪切り",
-      productImagePath: "",
+      productImagePath: staticFile("ranking-samples/product-3.jpg"),
       reviews: [
         "爪切りが超苦手な私を救ってくれた神商品",
         "想像よりも綺麗になってビックリしたわ",
@@ -46,7 +54,7 @@ const rankingDefaultProps: RankingShortProps = {
       rank: 2,
       brand: "サンプル",
       category: "モバイルバッテリー",
-      productImagePath: "",
+      productImagePath: staticFile("ranking-samples/product-2.jpg"),
       reviews: [
         "ケーブル不要で充電できるのまじ革命",
         "薄くて邪魔にならない",
@@ -57,7 +65,7 @@ const rankingDefaultProps: RankingShortProps = {
       rank: 1,
       brand: "サンプル",
       category: "スマート延長コード",
-      productImagePath: "",
+      productImagePath: staticFile("ranking-samples/product-1.jpg"),
       reviews: [
         "デスク周りがスッキリしすぎて感動",
         "一度使うと普通の延長コードに戻れない",
@@ -65,7 +73,7 @@ const rankingDefaultProps: RankingShortProps = {
       ],
     },
   ],
-  backgroundImagePath: "",
+  backgroundImagePath: staticFile("ranking-samples/background.jpg"),
   closing: { text: "詳細は\n概要欄にまとめた" },
   totalDurationSec: 30,
 };
