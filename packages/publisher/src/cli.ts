@@ -96,9 +96,9 @@ program
 
 program
   .command("auth")
-  .description("YouTube OAuth 認可フローを起動し refresh_token を取得する（初回 / スコープ追加時）")
+  .description("YouTube OAuth 認可フローを起動し refresh_token を取得する（初回 / チャンネル追加時）")
   .addOption(channelOption())
-  .action(async () => {
+  .action(async (opts) => {
     const clientId = process.env.YOUTUBE_CLIENT_ID;
     const clientSecret = process.env.YOUTUBE_CLIENT_SECRET;
     const redirectUri = process.env.YOUTUBE_REDIRECT_URI ?? "http://localhost:53682/oauth2callback";
@@ -114,7 +114,16 @@ program
       process.exit(1);
     }
 
-    await runOAuthFlow({ clientId, clientSecret, redirectUri, scopes });
+    const channel = (opts.channel as string | undefined) ?? DEFAULT_CHANNEL;
+    const envVarName = channel === DEFAULT_CHANNEL ? "YOUTUBE_REFRESH_TOKEN" : `YOUTUBE_REFRESH_TOKEN_${channel.toUpperCase()}`;
+
+    log(chalk.bold(`\n🔐 channel=${channel} の OAuth を実行します。`));
+    if (channel !== DEFAULT_CHANNEL) {
+      log(chalk.yellow("   ブラウザでは必ず投稿先のブランドチャンネルを選択してください。"));
+    }
+    log("");
+
+    await runOAuthFlow({ clientId, clientSecret, redirectUri, scopes, envVarName });
   });
 
 program
