@@ -1,14 +1,8 @@
 import { GoogleGenAI } from "@google/genai";
 import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-import type { Topic } from "@rekishi/shared";
+import { type Topic } from "@rekishi/shared";
+import { promptPath } from "@rekishi/shared/channel";
 import { config } from "./config.js";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-const PROMPT_TEMPLATE_PATH = path.resolve(__dirname, "../prompts/research.md");
 
 export interface ResearchSource {
   uri: string;
@@ -24,7 +18,7 @@ export interface ResearchResult {
 }
 
 function renderPrompt(topic: Topic): string {
-  const tpl = fs.readFileSync(PROMPT_TEMPLATE_PATH, "utf-8");
+  const tpl = fs.readFileSync(promptPath("research"), "utf-8");
   return tpl
     .replace(/\{\{topic\.title\}\}/g, topic.title)
     .replace(/\{\{topic\.era\}\}/g, topic.era ?? "指定なし")

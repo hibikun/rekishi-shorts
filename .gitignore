@@ -13,22 +13,26 @@ dist/
 out/
 *.tsbuildinfo
 
-# generated artifacts (Phase 0 local outputs)
-data/scripts/*
-data/audio/*
-data/images/*
-data/captions/*
-data/videos/*
-data/uploads/*
-!data/scripts/.gitkeep
-!data/audio/.gitkeep
-!data/images/.gitkeep
-!data/captions/.gitkeep
-!data/videos/.gitkeep
-!data/uploads/.gitkeep
+# generated artifacts (Phase 0 local outputs, per channel)
+data/*/scripts/*
+data/*/audio/*
+data/*/images/*
+data/*/captions/*
+data/*/videos/*
+data/*/uploads/*
+data/sfx/*
+!data/*/scripts/.gitkeep
+!data/*/audio/.gitkeep
+!data/*/images/.gitkeep
+!data/*/captions/.gitkeep
+!data/*/videos/.gitkeep
+!data/*/uploads/.gitkeep
+!data/sfx/.gitkeep
+!data/sfx/README.md
 
 # obsidian workspace
 .obsidian/
 
 # remotion
 packages/renderer/out/
+packages/renderer/public/
