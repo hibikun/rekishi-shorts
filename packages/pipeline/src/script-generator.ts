@@ -82,6 +82,15 @@ const threePickResponseSchema = {
           rank: { type: Type.NUMBER },
           name: { type: Type.STRING },
           summary: { type: Type.STRING },
+          // ranking 用フィールド。rekishi / kosei では LLM が省略してよい。
+          brand: { type: Type.STRING },
+          category: { type: Type.STRING },
+          reviews: {
+            type: Type.ARRAY,
+            items: { type: Type.STRING },
+          },
+          priceRangeJpy: { type: Type.STRING },
+          affiliateUrl: { type: Type.STRING },
         },
         required: ["rank", "name", "summary"],
       },
