@@ -231,6 +231,7 @@ program
   .option("--subject <subject>", "", "日本史")
   .option("--target <target>", "", "汎用")
   .option("--format <format>", "", "single")
+  .option("--out <path>", "script.json の書き出し先。省略時は stdout")
   .addOption(channelOption())
   .action(async (opts) => {
     const { generateScript } = await import("./script-generator.js");
@@ -242,7 +243,75 @@ program
       format: opts.format,
     });
     const { script } = await generateScript(topic);
-    console.log(JSON.stringify(script, null, 2));
+    const json = JSON.stringify(script, null, 2);
+    if (opts.out) {
+      fs.mkdirSync(path.dirname(opts.out), { recursive: true });
+      fs.writeFileSync(opts.out, json);
+      console.log(chalk.green(`✅ script 保存: ${opts.out}`));
+    } else {
+      console.log(json);
+    }
+  });
+
+program
+  .command("build-ranking-plan")
+  .description(
+    "script.json と手動アセットから ranking-plan.json を組み立てる（Step B 手動フロー用）",
+  )
+  .requiredOption("--script <path>", "script-only で生成した script.json")
+  .requiredOption("--background <path>", "ブラー背景画像")
+  .requiredOption(
+    "--images <csv>",
+    "商品画像 3枚のパスをカンマ区切りで rank1,rank2,rank3 の順に指定",
+  )
+  .option("--narration <path>", "ナレーション音声（mp3/wav）")
+  .option("--bgm <path>", "BGM（mp3）")
+  .option("--rank-sfx <path>", "ランク登場SFX")
+  .option("--hook-sfx <path>", "オープニング冒頭SFX")
+  .option("--id <string>", "ranking-plan.id。省略時は ranking-<timestamp>")
+  .option("--out <path>", "ranking-plan.json の書き出し先")
+  .addOption(channelOption())
+  .action(async (opts) => {
+    const { buildRankingPlan, readScriptFile, writeRankingPlan } = await import(
+      "./ranking-plan-builder.js"
+    );
+    const images = (opts.images as string)
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (images.length !== 3) {
+      throw new Error(
+        `--images は rank1,rank2,rank3 の順で 3件必要です（got ${images.length}）`,
+      );
+    }
+    const script = readScriptFile(opts.script);
+    const plan = buildRankingPlan({
+      script,
+      backgroundImagePath: path.resolve(opts.background),
+      itemImagePaths: [
+        path.resolve(images[0]!),
+        path.resolve(images[1]!),
+        path.resolve(images[2]!),
+      ],
+      audioPath: opts.narration ? path.resolve(opts.narration) : undefined,
+      bgmPath: opts.bgm ? path.resolve(opts.bgm) : undefined,
+      rankSfxPath: opts.rankSfx ? path.resolve(opts.rankSfx) : undefined,
+      hookSfxPath: opts.hookSfx ? path.resolve(opts.hookSfx) : undefined,
+      id: opts.id,
+    });
+    const outPath =
+      opts.out ??
+      path.join(
+        (await import("./config.js")).dataPath("ranking-plans"),
+        `${plan.id}.json`,
+      );
+    writeRankingPlan(plan, outPath);
+    console.log(chalk.green(`✅ ranking-plan 保存: ${outPath}`));
+    console.log(chalk.dim(`   id=${plan.id} / duration=${plan.totalDurationSec}s`));
+    console.log(chalk.bold("\n次のステップ:"));
+    console.log(
+      `  ${chalk.cyan(`pnpm --filter @rekishi/pipeline exec tsx src/cli.ts render-ranking --plan ${outPath}`)}`,
+    );
   });
 
 program
