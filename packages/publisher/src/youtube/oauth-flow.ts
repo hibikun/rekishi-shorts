@@ -15,7 +15,10 @@ export async function runOAuthFlow(opts: {
   clientSecret: string;
   redirectUri: string;
   scopes: string[];
+  /** 取得した refresh_token を保存する env 変数名（例: "YOUTUBE_REFRESH_TOKEN" / "YOUTUBE_REFRESH_TOKEN_KOSEI"） */
+  envVarName?: string;
 }): Promise<void> {
+  const envVarName = opts.envVarName ?? "YOUTUBE_REFRESH_TOKEN";
   const oauth2 = new google.auth.OAuth2(opts.clientId, opts.clientSecret, opts.redirectUri);
 
   const authUrl = oauth2.generateAuthUrl({
@@ -61,7 +64,7 @@ export async function runOAuthFlow(opts: {
         } else {
           console.log(chalk.green("\n✅ refresh_token を取得しました。\n"));
           console.log(chalk.bold("以下の行を .env.local に追記してください:\n"));
-          console.log(chalk.cyan(`YOUTUBE_REFRESH_TOKEN=${tokens.refresh_token}`));
+          console.log(chalk.cyan(`${envVarName}=${tokens.refresh_token}`));
           console.log("");
         }
       } catch (e) {

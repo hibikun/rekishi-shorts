@@ -1,20 +1,16 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { ScenePlanSchema, type Script, type ScenePlan } from "@rekishi/shared";
+import { promptPath } from "@rekishi/shared/channel";
 import { config } from "./config.js";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-const PROMPT_TEMPLATE_PATHS = {
-  single: path.resolve(__dirname, "../prompts/scene-plan.md"),
-  "three-pick": path.resolve(__dirname, "../prompts/scene-plan-three-pick.md"),
+const PROMPT_NAMES = {
+  single: "scene-plan",
+  "three-pick": "scene-plan-three-pick",
 } as const;
 
 function renderPrompt(script: Script): string {
-  const tpl = fs.readFileSync(PROMPT_TEMPLATE_PATHS[script.topic.format], "utf-8");
+  const tpl = fs.readFileSync(promptPath(PROMPT_NAMES[script.topic.format]), "utf-8");
   return tpl
     .replace(/\{\{topic\.title\}\}/g, script.topic.title)
     .replace(/\{\{topic\.era\}\}/g, script.topic.era ?? "指定なし")

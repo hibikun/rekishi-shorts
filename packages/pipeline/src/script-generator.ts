@@ -1,20 +1,16 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { ScriptSchema, type Script, type Topic } from "@rekishi/shared";
+import { promptPath } from "@rekishi/shared/channel";
 import { config } from "./config.js";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-const PROMPT_TEMPLATE_PATHS = {
-  single: path.resolve(__dirname, "../prompts/script.md"),
-  "three-pick": path.resolve(__dirname, "../prompts/script-three-pick.md"),
+const PROMPT_NAMES = {
+  single: "script",
+  "three-pick": "script-three-pick",
 } as const;
 
 function renderPrompt(topic: Topic, researchMd?: string): string {
-  const tpl = fs.readFileSync(PROMPT_TEMPLATE_PATHS[topic.format], "utf-8");
+  const tpl = fs.readFileSync(promptPath(PROMPT_NAMES[topic.format]), "utf-8");
   return tpl
     .replace(/\{\{topic\.title\}\}/g, topic.title)
     .replace(/\{\{topic\.era\}\}/g, topic.era ?? "指定なし")

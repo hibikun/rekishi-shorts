@@ -1,6 +1,7 @@
 import dotenv from "dotenv";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { channelDataPath } from "@rekishi/shared/channel";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -36,11 +37,10 @@ export const config = {
   },
   paths: {
     /** repo root (rekishi-shorts/) */
-    repoRoot: path.resolve(__dirname, "../../../"),
-    dataRoot: path.resolve(__dirname, "../../../data"),
+    repoRoot: REPO_ROOT,
   },
 } as const;
 
 export function dataPath(...segments: string[]): string {
-  return path.join(config.paths.dataRoot, ...segments);
+  return channelDataPath(...segments);
 }

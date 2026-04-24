@@ -1,10 +1,15 @@
 #!/usr/bin/env node
-import { Command } from "commander";
+import { Command, Option } from "commander";
 import chalk from "chalk";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { RenderPlanSchema, type RenderPlan } from "@rekishi/shared";
+import { DEFAULT_CHANNEL, channelDocsDir, setChannel } from "@rekishi/shared/channel";
 import { dataPath } from "./config.js";
+
+function channelOption(): Option {
+  return new Option("--channel <id>", "チャンネルID (rekishi | kosei ...)").default(DEFAULT_CHANNEL);
+}
 import { generateYouTubeMetadata } from "./metadata-generator.js";
 import { metadataToDraftMd, draftMdToMetadata } from "./meta-draft-io.js";
 import { uploadToYouTube, formatUploadError } from "./youtube/uploader.js";
@@ -83,12 +88,17 @@ const program = new Command();
 program
   .name("rekishi-publisher")
   .description("生成済みショート動画を YouTube 等へ投稿する CLI")
-  .version("0.1.0");
+  .version("0.1.0")
+  .hook("preAction", (_thisCommand, actionCommand) => {
+    const ch = actionCommand.opts().channel as string | undefined;
+    if (ch) setChannel(ch);
+  });
 
 program
   .command("auth")
-  .description("YouTube OAuth 認可フローを起動し refresh_token を取得する（初回 / スコープ追加時）")
-  .action(async () => {
+  .description("YouTube OAuth 認可フローを起動し refresh_token を取得する（初回 / チャンネル追加時）")
+  .addOption(channelOption())
+  .action(async (opts) => {
     const clientId = process.env.YOUTUBE_CLIENT_ID;
     const clientSecret = process.env.YOUTUBE_CLIENT_SECRET;
     const redirectUri = process.env.YOUTUBE_REDIRECT_URI ?? "http://localhost:53682/oauth2callback";
@@ -104,14 +114,24 @@ program
       process.exit(1);
     }
 
-    await runOAuthFlow({ clientId, clientSecret, redirectUri, scopes });
+    const channel = (opts.channel as string | undefined) ?? DEFAULT_CHANNEL;
+    const envVarName = channel === DEFAULT_CHANNEL ? "YOUTUBE_REFRESH_TOKEN" : `YOUTUBE_REFRESH_TOKEN_${channel.toUpperCase()}`;
+
+    log(chalk.bold(`\n🔐 channel=${channel} の OAuth を実行します。`));
+    if (channel !== DEFAULT_CHANNEL) {
+      log(chalk.yellow("   ブラウザでは必ず投稿先のブランドチャンネルを選択してください。"));
+    }
+    log("");
+
+    await runOAuthFlow({ clientId, clientSecret, redirectUri, scopes, envVarName });
   });
 
 program
   .command("meta")
   .description("meta-draft.md を生成（人間レビュー用）")
-  .argument("<jobId>", "ジョブID (data/scripts/<jobId>/)")
+  .argument("<jobId>", "ジョブID (data/<channel>/scripts/<jobId>/)")
   .option("--regenerate", "既存 meta-draft.md があっても LLM で再生成する", false)
+  .addOption(channelOption())
   .action(async (jobId, opts) => {
     log(chalk.bold(`\n📝 meta-draft 生成: ${jobId}\n`));
     const plan = await loadRenderPlan(jobId);
@@ -129,6 +149,7 @@ program
   .option("--privacy <status>", "公開状態 (public | unlisted | private)")
   .option("--force", "同一 jobId の投稿履歴があっても続行", false)
   .option("--dry-run", "送信せずペイロードだけ表示", false)
+  .addOption(channelOption())
   .action(async (jobId, opts) => {
     log(chalk.bold(`\n🚀 YouTube upload: ${jobId}\n`));
 
@@ -187,6 +208,7 @@ program
   .description("アップロード済み動画の実績データ（統計＋分析指標）を取得して JSONL に追記")
   .option("--only <jobId>", "特定の jobId だけ取得")
   .option("--dry-run", "取得結果を表示するだけで保存しない", false)
+  .addOption(channelOption())
   .action(async (opts) => {
     log(chalk.bold("\n📊 YouTube stats 取得\n"));
 
@@ -248,6 +270,7 @@ program
   .description("snapshots.jsonl から動画別KPIサマリをターミナルに表示")
   .option("--sort <key>", `並び順 (${SORT_KEYS.join("|")})`, "views")
   .option("--min-age <duration>", "経過時間の下限で絞り込み（例: 24h, 2d）")
+  .addOption(channelOption())
   .action((opts) => {
     const sort = opts.sort as SortKey;
     if (!SORT_KEYS.includes(sort)) {
@@ -277,7 +300,7 @@ const DEFAULT_RESEARCH_QUERIES = [
 
 program
   .command("research")
-  .description("競合の日本史/世界史系 YouTube Shorts を調査しMarkdownレポートを生成")
+  .description("競合の YouTube Shorts を調査しMarkdownレポートを生成")
   .option("-q, --queries <list>", "検索クエリ（カンマ区切り）。未指定時はデフォルトセットを使用")
   .option("--channels <n>", "深掘りするチャンネル数", "12")
   .option("--candidates <n>", "検索から拾うチャンネル候補の上限", "80")
@@ -285,6 +308,7 @@ program
   .option("--window <days>", "集計対象とする日数（投稿日起算）", "90")
   .option("--max-duration <sec>", "Shorts と見なす最大秒数", "75")
   .option("--out <path>", "レポート出力先（Markdown）", "")
+  .addOption(channelOption())
   .action(async (opts) => {
     log(chalk.bold("\n🕵️  競合Shortsリサーチ\n"));
 
@@ -309,7 +333,7 @@ program
     });
 
     const today = result.generatedAt.slice(0, 10);
-    const defaultOut = path.resolve(path.dirname(dataPath("")), "docs", `competitor-report-${today}.md`);
+    const defaultOut = path.join(channelDocsDir(), `competitor-report-${today}.md`);
     const outMd = opts.out ? path.resolve(String(opts.out)) : defaultOut;
     const outJson = outMd.replace(/\.md$/, ".json");
 

@@ -1,8 +1,9 @@
 #!/usr/bin/env node
-import { Command } from "commander";
+import { Command, Option } from "commander";
 import chalk from "chalk";
 import path from "node:path";
 import { TopicSchema } from "@rekishi/shared";
+import { DEFAULT_CHANNEL, setChannel } from "@rekishi/shared/channel";
 import {
   generatePlan,
   getJobOutputDir,
@@ -11,6 +12,10 @@ import {
   runRealignStage,
   runResearchStage,
 } from "./orchestrator.js";
+
+function channelOption(): Option {
+  return new Option("--channel <id>", "チャンネルID (rekishi | kosei ...)").default(DEFAULT_CHANNEL);
+}
 
 function buildOutputFilename(title: string, jobId: string): string {
   const safe = title.replace(/[\/\\:*?"<>|\s]+/g, "_").replace(/^_+|_+$/g, "");
@@ -22,7 +27,11 @@ const program = new Command();
 program
   .name("rekishi-shorts")
   .description("受験生向け歴史ショート動画の自動生成 CLI")
-  .version("0.1.0");
+  .version("0.1.0")
+  .hook("preAction", (_thisCommand, actionCommand) => {
+    const ch = actionCommand.opts().channel as string | undefined;
+    if (ch) setChannel(ch);
+  });
 
 program
   .command("research")
@@ -32,6 +41,7 @@ program
   .option("--subject <subject>", "科目（日本史 | 世界史）", "日本史")
   .option("--target <target>", "対象試験（共通テスト | 二次 | 汎用）", "汎用")
   .option("--format <format>", "台本フォーマット（single | three-pick）", "single")
+  .addOption(channelOption())
   .action(async (opts) => {
     const topic = TopicSchema.parse({
       title: opts.topic,
@@ -61,6 +71,7 @@ program
   .option("--target <target>", "対象試験（共通テスト | 二次 | 汎用）", "汎用")
   .option("--format <format>", "台本フォーマット（single | three-pick）", "single")
   .option("--job <jobId>", "既存の research ジョブを引き継ぐ（research.md をプロンプトに注入）")
+  .addOption(channelOption())
   .action(async (opts) => {
     const topic = TopicSchema.parse({
       title: opts.topic,
@@ -86,6 +97,7 @@ program
   .argument("<jobId>", "draft で生成したジョブID")
   .option("--no-generate-images", "Nano Banana 画像生成をスキップし Wikimedia のみ")
   .option("--plan-only", "RenderPlan 生成まで（レンダリングしない）")
+  .addOption(channelOption())
   .action(async (jobId, opts) => {
     console.log(chalk.bold(`\n🎞️  rekishi-shorts build: ${jobId}\n`));
 
@@ -120,6 +132,7 @@ program
   .option("--format <format>", "台本フォーマット（single | three-pick）", "single")
   .option("--no-generate-images", "Nano Banana 画像生成をスキップし Wikimedia のみ")
   .option("--plan-only", "RenderPlan 生成まで（レンダリングしない）")
+  .addOption(channelOption())
   .action(async (opts) => {
     const topic = TopicSchema.parse({
       title: opts.topic,
@@ -159,6 +172,7 @@ program
   .option("--no-vad", "VAD フォールバックを無効化（線形配分＝main 相当の挙動を再現）")
   .option("--suffix <name>", "出力ファイル名にサフィックスを付与（比較用に並列保存）", "")
   .option("--no-render", "Remotion レンダリングをスキップして render-plan.json だけ更新")
+  .addOption(channelOption())
   .action(async (jobId, opts) => {
     console.log(chalk.bold(`\n🔁 rekishi-shorts realign: ${jobId}${opts.suffix ? ` [${opts.suffix}]` : ""}\n`));
 
@@ -192,7 +206,8 @@ program
 program
   .command("render")
   .description("既存の render-plan.json を使ってレンダリングのみ実行（再費用なし）")
-  .requiredOption("--plan-id <id>", "ジョブID（data/scripts/<id>/ 配下）")
+  .requiredOption("--plan-id <id>", "ジョブID（data/<channel>/scripts/<id>/ 配下）")
+  .addOption(channelOption())
   .action(async (opts) => {
     const { default: fs } = await import("node:fs");
     const { RenderPlanSchema } = await import("@rekishi/shared");
@@ -215,6 +230,7 @@ program
   .option("--subject <subject>", "", "日本史")
   .option("--target <target>", "", "汎用")
   .option("--format <format>", "", "single")
+  .addOption(channelOption())
   .action(async (opts) => {
     const { generateScript } = await import("./script-generator.js");
     const topic = TopicSchema.parse({
