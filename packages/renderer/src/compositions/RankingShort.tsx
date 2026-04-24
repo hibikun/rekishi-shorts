@@ -605,40 +605,52 @@ const RankIntroScene: React.FC<{
 // シーン: ランク レビュー
 // ========================================================================
 
-const RankReviewScene: React.FC<{ item: RankingItem }> = ({ item }) => (
-  <FadeIn>
-    {/* 背景レイヤー: 第◯位 + 商品画像（intro と同じ位置・サイズ） */}
-    <AbsoluteFill
-      style={{
-        alignItems: "center",
-        justifyContent: "flex-start",
-        paddingTop: 140,
-        gap: 60,
-      }}
-    >
-      <RankBadge rank={item.rank} size="large" />
-      {/* intro の BrandText 位置を空白で埋める（スペースキープ） */}
-      <div style={{ height: 165 }} />
-      <ProductCard src={item.productImagePath} width={720} height={720} faded />
-    </AbsoluteFill>
-    {/* 前景レイヤー: レビュー吹き出し 3枚、商品画像にオーバーレイ。順番に pop-in */}
-    <AbsoluteFill
-      style={{
-        alignItems: "center",
-        justifyContent: "center",
-        paddingTop: 380,
-        gap: 26,
-        zIndex: 2,
-      }}
-    >
-      {item.reviews.map((text, i) => (
-        <StaggeredAppear key={i} delayFrames={4 + i * 6}>
-          <ReviewBubble text={text} colorIndex={i} />
-        </StaggeredAppear>
-      ))}
-    </AbsoluteFill>
-  </FadeIn>
-);
+const RankReviewScene: React.FC<{
+  item: RankingItem;
+  durationInFrames: number;
+}> = ({ item, durationInFrames }) => {
+  // レビュー3枚をシーン時間に沿って順次表示する。
+  // ナレーション（TTS）が各レビューを順に読み上げるペースにざっくり合わせるため、
+  // 冒頭のフェードイン分だけ詰めた残り時間を3等分し、等間隔で登場させる。
+  const leadFrames = 4;
+  const usable = Math.max(1, durationInFrames - leadFrames);
+  const slot = usable / item.reviews.length;
+
+  return (
+    <FadeIn>
+      {/* 背景レイヤー: 第◯位 + 商品画像（intro と同じ位置・サイズ） */}
+      <AbsoluteFill
+        style={{
+          alignItems: "center",
+          justifyContent: "flex-start",
+          paddingTop: 140,
+          gap: 60,
+        }}
+      >
+        <RankBadge rank={item.rank} size="large" />
+        {/* intro の BrandText 位置を空白で埋める（スペースキープ） */}
+        <div style={{ height: 165 }} />
+        <ProductCard src={item.productImagePath} width={720} height={720} faded />
+      </AbsoluteFill>
+      {/* 前景レイヤー: レビュー吹き出し 3枚、商品画像にオーバーレイ。順番に pop-in */}
+      <AbsoluteFill
+        style={{
+          alignItems: "center",
+          justifyContent: "center",
+          paddingTop: 380,
+          gap: 26,
+          zIndex: 2,
+        }}
+      >
+        {item.reviews.map((text, i) => (
+          <StaggeredAppear key={i} delayFrames={Math.round(leadFrames + slot * i)}>
+            <ReviewBubble text={text} colorIndex={i} />
+          </StaggeredAppear>
+        ))}
+      </AbsoluteFill>
+    </FadeIn>
+  );
+};
 
 /** 指定フレーム遅延後にフェード+軽くスライドアップして登場 */
 const StaggeredAppear: React.FC<{
@@ -767,7 +779,10 @@ export const RankingShort: React.FC<RankingShortProps> = ({
               durationInFrames={durationFrames}
             />
           ) : block.kind === "rank-review" ? (
-            <RankReviewScene item={block.item} />
+            <RankReviewScene
+              item={block.item}
+              durationInFrames={durationFrames}
+            />
           ) : (
             <ClosingScene text={closing.text} />
           )}
