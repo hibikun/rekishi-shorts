@@ -6,6 +6,7 @@ import { Caption } from "../components/Caption";
 import { NarrationAudio } from "../components/NarrationAudio";
 import { KeywordPopup, type KeywordHit } from "../components/KeywordPopup";
 import { TitleBar } from "../components/TitleBar";
+import { SfxAudio } from "../components/SfxAudio";
 
 export interface HistoryShortProps {
   scenes: Scene[];
@@ -16,6 +17,7 @@ export interface HistoryShortProps {
   totalDurationSec: number;
   keyTerms?: string[];
   title?: VideoTitle;
+  hookSfxSrc?: string;
 }
 
 const TITLE_BAR_RATIO = 0.25;
@@ -29,6 +31,7 @@ export const HistoryShort: React.FC<HistoryShortProps> = ({
   totalDurationSec,
   keyTerms = [],
   title,
+  hookSfxSrc,
 }) => {
   const { fps } = useVideoConfig();
 
@@ -40,6 +43,10 @@ export const HistoryShort: React.FC<HistoryShortProps> = ({
     const image = images.find((im) => im.sceneIndex === scene.index);
     return { scene, image, startFrame, durationFrames };
   });
+
+  // フック直後（scene[0] 終端 = scene[1] 開始）に SFX を鳴らす。
+  // 攻撃音のピークがカットに揃うよう 2 frame だけ前倒しする。
+  const hookSfxStartFrame = Math.max(0, (layout[1]?.startFrame ?? 0) - 2);
 
   const keywordHits: KeywordHit[] = keyTerms
     .map((term) => findKeywordHit(captions, term))
@@ -79,6 +86,7 @@ export const HistoryShort: React.FC<HistoryShortProps> = ({
 
       {title && <TitleBar top={title.top} bottom={title.bottom} />}
       <NarrationAudio src={audioSrc} />
+      {hookSfxSrc && <SfxAudio src={hookSfxSrc} startFrame={hookSfxStartFrame} />}
     </AbsoluteFill>
   );
 };
