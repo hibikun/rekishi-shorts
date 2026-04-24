@@ -2,7 +2,8 @@
 import { Command, Option } from "commander";
 import chalk from "chalk";
 import path from "node:path";
-import { TopicSchema } from "@rekishi/shared";
+import fs from "node:fs";
+import { RankingPlanSchema, TopicSchema } from "@rekishi/shared";
 import { DEFAULT_CHANNEL, setChannel } from "@rekishi/shared/channel";
 import {
   generatePlan,
@@ -242,6 +243,23 @@ program
     });
     const { script } = await generateScript(topic);
     console.log(JSON.stringify(script, null, 2));
+  });
+
+program
+  .command("render-ranking")
+  .description("既存の ranking-plan.json を読み込んで RankingShort をレンダリング")
+  .requiredOption("--plan <path>", "ranking-plan.json のファイルパス")
+  .option("--out <path>", "出力 mp4 のパス", "")
+  .action(async (opts) => {
+    const planRaw = JSON.parse(fs.readFileSync(opts.plan, "utf-8"));
+    const plan = RankingPlanSchema.parse(planRaw);
+    const outputPath =
+      opts.out ||
+      path.join(getJobOutputDir(), `ranking-${plan.id}.mp4`);
+    const { renderRankingShort } = await import("@rekishi/renderer");
+    console.log(chalk.bold(`\n🎥 RankingShort をレンダリング中...`));
+    await renderRankingShort(plan, outputPath);
+    console.log(chalk.green(`\n✅ 完成: ${outputPath}`));
   });
 
 program.parseAsync().catch((err) => {

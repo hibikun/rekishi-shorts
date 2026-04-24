@@ -23,6 +23,15 @@ export const ThreePickItemSchema = z.object({
   rank: z.number().int().min(1).max(3),
   name: z.string().min(1),
   summary: z.string().min(1).describe("このランクの驚きポイントを含む1-2文"),
+  // ranking チャンネル用の拡張フィールド（optional。rekishi / kosei では未使用）
+  brand: z.string().optional().describe("ブランド名。ranking 用"),
+  category: z.string().optional().describe("商品カテゴリ。ranking 用"),
+  reviews: z
+    .tuple([z.string(), z.string(), z.string()])
+    .optional()
+    .describe("レビュー吹き出し3枚。ranking 用"),
+  priceRangeJpy: z.string().optional().describe("価格帯。ranking 用"),
+  affiliateUrl: z.string().optional().describe("概要欄アフィリエイトURL。ranking 用"),
 });
 export type ThreePickItem = z.infer<typeof ThreePickItemSchema>;
 

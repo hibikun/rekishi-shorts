@@ -35,3 +35,4 @@ data/sfx/*
 
 # remotion
 packages/renderer/out/
+packages/renderer/public/
