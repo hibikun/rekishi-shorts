@@ -27,6 +27,7 @@ export function buildNextStepsMarkdown(input: NextStepsInput): string {
   const { script, jobId, channel, assetsDirRelative } = input;
   const items = (script.items ?? []).slice().sort((a, b) => a.rank - b.rank);
 
+  const ttsCmd = `pnpm --filter @rekishi/pipeline exec tsx src/cli.ts tts-only --channel ${channel} --job-id ${jobId}`;
   const buildCmd = `pnpm --filter @rekishi/pipeline exec tsx src/cli.ts build-ranking-plan --channel ${channel} --job-id ${jobId}`;
   const renderCmd = `pnpm --filter @rekishi/pipeline exec tsx src/cli.ts render-ranking --channel ${channel} --job-id ${jobId}`;
 
@@ -42,9 +43,10 @@ jobId: \`${jobId}\` / channel: \`${channel}\`
    - \`item-2\` （第2位）
    - \`item-3\` （第3位）
    - \`background\` （ブラー背景 — 任意の雰囲気画像で可）
-3. 保存できたら次のコマンドで plan 構築 → レンダリング
+3. ナレーション音声を Gemini TTS で合成 → plan 構築 → レンダリング
 
 \`\`\`bash
+${ttsCmd}
 ${buildCmd}
 ${renderCmd}
 \`\`\`
@@ -83,6 +85,7 @@ export function buildStdoutGuideLines(input: StdoutGuideInput): string[] {
     lines.push(`       → item-${it.rank}.png  参考: ${ref}`);
   }
   lines.push("");
-  lines.push(`   配置後: pnpm --filter @rekishi/pipeline exec tsx src/cli.ts build-ranking-plan --channel ${channel} --job-id ${jobId}`);
+  lines.push(`   配置後: pnpm --filter @rekishi/pipeline exec tsx src/cli.ts tts-only --channel ${channel} --job-id ${jobId}`);
+  lines.push(`           pnpm --filter @rekishi/pipeline exec tsx src/cli.ts build-ranking-plan --channel ${channel} --job-id ${jobId}`);
   return lines;
 }

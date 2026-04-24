@@ -13,6 +13,7 @@ export interface RankingJobPaths {
   nextStepsMd: string;
   planJson: string;
   assetsDir: string;
+  narrationWav: string;
 }
 
 export function validateJobId(jobId: string): void {
@@ -33,6 +34,7 @@ export function resolveRankingJobPaths(jobId: string): RankingJobPaths {
     nextStepsMd: path.join(root, "NEXT_STEPS.md"),
     planJson: path.join(root, "ranking-plan.json"),
     assetsDir: path.join(root, "assets"),
+    narrationWav: path.join(root, "narration.wav"),
   };
 }
 
