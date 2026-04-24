@@ -91,6 +91,8 @@ const threePickResponseSchema = {
           },
           priceRangeJpy: { type: Type.STRING },
           affiliateUrl: { type: Type.STRING },
+          officialUrl: { type: Type.STRING },
+          searchKeywords: { type: Type.STRING },
         },
         required: ["rank", "name", "summary"],
       },

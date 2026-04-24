@@ -32,6 +32,14 @@ export const ThreePickItemSchema = z.object({
     .describe("レビュー吹き出し3枚。ranking 用"),
   priceRangeJpy: z.string().optional().describe("価格帯。ranking 用"),
   affiliateUrl: z.string().optional().describe("概要欄アフィリエイトURL。ranking 用"),
+  officialUrl: z
+    .string()
+    .optional()
+    .describe("公式/メーカーページ URL。画像取得元の第一候補。ranking 用"),
+  searchKeywords: z
+    .string()
+    .optional()
+    .describe("商品画像検索用キーワード。URL が無いとき人間が使う。ranking 用"),
 });
 export type ThreePickItem = z.infer<typeof ThreePickItemSchema>;
 
