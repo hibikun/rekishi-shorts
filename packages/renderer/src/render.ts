@@ -56,6 +56,12 @@ export async function renderHistoryShort(plan: RenderPlan, outputPath: string): 
     ? stageAsset(sfxLocalPath, bundleDir, `hook-sfx${path.extname(sfxLocalPath)}`)
     : "";
 
+  // 動画冒頭 0.0 秒 SFX。data/sfx/hyoshigi.mp3 が存在すれば自動で乗せる。
+  const openingSfxLocalPath = path.resolve(__dirname, "../../../data/sfx/hyoshigi.mp3");
+  const openingSfxSrc = fs.existsSync(openingSfxLocalPath)
+    ? stageAsset(openingSfxLocalPath, bundleDir, `opening-sfx${path.extname(openingSfxLocalPath)}`)
+    : "";
+
   const durationInFrames = Math.max(1, Math.ceil(plan.totalDurationSec * VIDEO_FPS));
 
   const inputProps = {
@@ -68,6 +74,7 @@ export async function renderHistoryShort(plan: RenderPlan, outputPath: string): 
     keyTerms: plan.script.keyTerms,
     title: plan.script.title,
     hookSfxSrc,
+    openingSfxSrc,
   };
 
   const composition = await selectComposition({

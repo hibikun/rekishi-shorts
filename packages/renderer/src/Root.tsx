@@ -14,6 +14,7 @@ const defaultProps: HistoryShortProps = {
   keyTerms: [],
   title: { top: "", bottom: "" },
   hookSfxSrc: "",
+  openingSfxSrc: "",
 };
 
 const HistoryShortComponent = HistoryShort as unknown as React.FC<Record<string, unknown>>;
