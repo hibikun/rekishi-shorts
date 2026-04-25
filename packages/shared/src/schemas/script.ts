@@ -70,8 +70,8 @@ export type NarrationSegment = z.infer<typeof NarrationSegmentSchema>;
 // AI が生成する台本本体
 export const ScriptSchema = z.object({
   topic: TopicSchema,
-  // 60秒 = 約300-400文字を想定
-  narration: z.string().min(100).describe("ナレーション全文。句読点込み"),
+  // 60秒 = 約300-400文字を想定。ranking three-pick はナレーター枠のみ短く（80字前後）なる
+  narration: z.string().min(50).describe("ナレーション全文。句読点込み"),
   hook: z.string().describe("掴みの1-2文"),
   title: VideoTitleSchema.describe("動画全編に常時表示する2行タイトル。上段(前振り)+下段(核/オチ)"),
   body: z.string().describe("本文"),
