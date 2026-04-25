@@ -206,8 +206,17 @@ function assessWhisperQuality(
   const englishTokenCount = words.filter((w) => /^[A-Za-z]{2,}/.test(w.text)).length;
   if (englishTokenCount > 2) weakReasons.push(`englishTokens=${englishTokenCount}`);
 
+  // 冒頭取りこぼしは scene-aligner の fillMissingSpans が scene[0] を word[0] まで
+  // 引き延ばす形で具体的な破綻を生むため、絶対秒・尺比のいずれかが大きければ単独で broken。
   const firstWordStartSec = words[0]?.startSec ?? 0;
-  if (firstWordStartSec > 2.0) weakReasons.push(`firstWordStart=${firstWordStartSec.toFixed(2)}s`);
+  const firstWordStartRatio = totalDurationSec > 0 ? firstWordStartSec / totalDurationSec : 0;
+  if (firstWordStartSec > 5.0 || firstWordStartRatio > 0.2) {
+    strongReasons.push(
+      `firstWordStart=${firstWordStartSec.toFixed(2)}s (${(firstWordStartRatio * 100).toFixed(0)}% of total)`,
+    );
+  } else if (firstWordStartSec > 2.0) {
+    weakReasons.push(`firstWordStart=${firstWordStartSec.toFixed(2)}s`);
+  }
 
   // word count 比率: Whisper は各モーラ/短単位で切るので日本語なら原文文字数の 0.5〜1.5 倍が目安
   const scriptCharCount = normalizeForSimilarity(scriptText).length;
