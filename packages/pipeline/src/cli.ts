@@ -401,10 +401,21 @@ program
         },
       );
 
+      // コスト試算（cost-tracker と同じ料金式: input $1.0/1M, output $20.0/1M, ¥150/$）
+      const usdInput = (result.usage.inputTokens / 1_000_000) * 1.0;
+      const usdOutput = (result.usage.outputTokens / 1_000_000) * 20.0;
+      const usdTotal = usdInput + usdOutput;
+      const jpyTotal = usdTotal * 150;
+
       console.log(chalk.green(`\n✅ narration 結合保存: ${result.combinedPath}`));
       console.log(
         chalk.dim(
           `   ${result.characters}文字 / 合成${result.totalDurationSec.toFixed(2)}秒 / 14クリップ / model=${result.usage.model}`,
+        ),
+      );
+      console.log(
+        chalk.dim(
+          `   tokens in=${result.usage.inputTokens} out=${result.usage.outputTokens} → 試算 $${usdTotal.toFixed(5)} (¥${jpyTotal.toFixed(2)})`,
         ),
       );
       console.log(chalk.dim(`   📄 audioClips: ${audioClipsJsonPath}`));

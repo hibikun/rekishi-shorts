@@ -69,18 +69,22 @@ export async function synthesizeNarration(
 
   const styledPrompt = `${STYLE_PROMPTS[persona]}\n${processed}`;
 
-  const response = await ai.models.generateContent({
-    model,
-    contents: styledPrompt,
-    config: {
-      responseModalities: ["AUDIO"],
-      speechConfig: {
-        voiceConfig: {
-          prebuiltVoiceConfig: { voiceName },
+  // Gemini TTS preview は per-minute レート制限 (現状 10 req/min) があるため、
+  // 429 が返ったら retryDelay を尊重しつつ最大 6 回まで指数バックオフでリトライする。
+  const response = await retryOn429(() =>
+    ai.models.generateContent({
+      model,
+      contents: styledPrompt,
+      config: {
+        responseModalities: ["AUDIO"],
+        speechConfig: {
+          voiceConfig: {
+            prebuiltVoiceConfig: { voiceName },
+          },
         },
       },
-    },
-  });
+    }),
+  );
 
   const parts = response.candidates?.[0]?.content?.parts ?? [];
   const audioPart = parts.find((p) => (p as { inlineData?: unknown }).inlineData !== undefined);
@@ -134,6 +138,38 @@ export async function probeDurationSec(filePath: string): Promise<number | null>
   } catch {
     return null;
   }
+}
+
+/**
+ * Gemini API の 429 (RESOURCE_EXHAUSTED) を捕まえて retryDelay 秒待ってリトライする。
+ * retryDelay が読めない場合は指数バックオフ (2^attempt 秒)。最大 6 回まで。
+ */
+async function retryOn429<T>(fn: () => Promise<T>): Promise<T> {
+  const maxAttempts = 6;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const is429 = /429|RESOURCE_EXHAUSTED|quota/i.test(msg);
+      if (!is429 || attempt === maxAttempts - 1) throw err;
+      const retryAfterSec = parseRetryAfterSec(msg) ?? Math.min(60, 2 ** (attempt + 2));
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[tts-generator] 429 hit (attempt ${attempt + 1}/${maxAttempts}), waiting ${retryAfterSec.toFixed(1)}s...`,
+      );
+      await new Promise((r) => setTimeout(r, retryAfterSec * 1000));
+    }
+  }
+  throw new Error("retryOn429: unreachable");
+}
+
+function parseRetryAfterSec(msg: string): number | null {
+  const m = msg.match(/Please retry in ([\d.]+)s/);
+  if (m) return Number(m[1]);
+  const m2 = msg.match(/retryDelay"?\s*[:=]\s*"?(\d+)s/i);
+  if (m2) return Number(m2[1]);
+  return null;
 }
 
 function runFfprobeStdout(args: string[]): Promise<string> {

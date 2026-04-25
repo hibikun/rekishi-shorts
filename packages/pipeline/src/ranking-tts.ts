@@ -19,7 +19,9 @@ import { synthesizeNarration, probeDurationSec } from "./tts-generator.js";
 
 const DEFAULT_NARRATOR_VOICE = "Kore";
 const DEFAULT_REVIEWER_VOICES = ["Puck", "Aoede", "Leda"] as const;
-const DEFAULT_CONCURRENCY = 4;
+// Gemini 3.1 Flash TTS preview の per-minute レート制限 (10 req/min) を避けるため、
+// デフォルトは 2 並列に抑える。tts-generator 側で 429 retry も入っている。
+const DEFAULT_CONCURRENCY = 2;
 
 export interface SynthesizeRankingClipsInput {
   script: Script;
