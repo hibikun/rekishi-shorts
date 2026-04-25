@@ -9,19 +9,68 @@ import {
   type Scene,
   type Script,
 } from "@rekishi/shared";
-import { synthesizeNarration, probeDurationSec } from "./tts-generator.js";
+import { getChannel } from "@rekishi/shared/channel";
+import {
+  resolveNarratorVoice,
+  synthesizeNarration,
+  probeDurationSec,
+} from "./tts-generator.js";
 
 // ========================================================================
 // セグメント別 TTS で ranking three-pick の narration を組み立てるパイプライン。
-// 案G改: 5 narrator clips (Kore) + 9 reviewer clips (3 voices rotate) → ffmpeg concat
-//        → audioClips manifest と 8 scenes を返す。scene-aligner は不要。
+// 5 narrator clips + 9 reviewer clips (N voices rotate) → ffmpeg concat
+// → audioClips manifest と 8 scenes を返す。scene-aligner は不要。
+//
+// 声の選択はチャンネル別: ranking = narrator Zubenelgenubi / reviewer Despina。
+// チャンネルごとの default は REVIEWER_VOICES_BY_CHANNEL に列挙し、
+// env GEMINI_TTS_REVIEW_VOICES_<CHANNEL> で個別上書き可能。
 // ========================================================================
 
-const DEFAULT_NARRATOR_VOICE = "Kore";
-const DEFAULT_REVIEWER_VOICES = ["Puck", "Aoede", "Leda"] as const;
+// チャンネル別 reviewer default。
+// ranking は Despina 単一でローテーション (= 9 review 全部 Despina) する。
+// 1 声で単調になるなら env で 2-3 声に増やす運用を想定。
+const REVIEWER_VOICES_BY_CHANNEL: Record<string, readonly string[]> = {
+  ranking: ["Despina"],
+};
+
+// 表に未登録のチャンネル用フォールバック (旧 default と同等)。
+const FALLBACK_REVIEWER_VOICES = ["Puck", "Aoede", "Leda"] as const;
+
 // Gemini 3.1 Flash TTS preview の per-minute レート制限 (10 req/min) を避けるため、
 // デフォルトは 2 並列に抑える。tts-generator 側で 429 retry も入っている。
 const DEFAULT_CONCURRENCY = 2;
+
+/**
+ * 現在のチャンネルに応じて reviewer voice 配列を決める。優先順:
+ *   1. 明示オーバーライド (input.reviewerVoices)
+ *   2. GEMINI_TTS_REVIEW_VOICES_<CHANNEL> env (CSV)
+ *   3. REVIEWER_VOICES_BY_CHANNEL の組み込み default
+ *   4. GEMINI_TTS_REVIEW_VOICES 互換 env (旧グローバル CSV)
+ *   5. 最終フォールバック ["Puck","Aoede","Leda"]
+ */
+function resolveReviewerVoices(
+  override?: readonly string[],
+): readonly string[] {
+  if (override && override.length > 0) return override;
+  const channel = getChannel();
+  const channelKey = channel.toUpperCase();
+
+  const fromChannelEnv = process.env[`GEMINI_TTS_REVIEW_VOICES_${channelKey}`]
+    ?.split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (fromChannelEnv && fromChannelEnv.length > 0) return fromChannelEnv;
+
+  const channelDefault = REVIEWER_VOICES_BY_CHANNEL[channel];
+  if (channelDefault && channelDefault.length > 0) return channelDefault;
+
+  const fromGlobalEnv = process.env.GEMINI_TTS_REVIEW_VOICES?.split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (fromGlobalEnv && fromGlobalEnv.length > 0) return fromGlobalEnv;
+
+  return FALLBACK_REVIEWER_VOICES;
+}
 
 export interface SynthesizeRankingClipsInput {
   script: Script;
@@ -102,11 +151,8 @@ export async function synthesizeRankingClips(
     );
   }
 
-  const narratorVoice = input.narratorVoice ?? DEFAULT_NARRATOR_VOICE;
-  const reviewerVoices =
-    input.reviewerVoices && input.reviewerVoices.length > 0
-      ? input.reviewerVoices
-      : DEFAULT_REVIEWER_VOICES;
+  const narratorVoice = resolveNarratorVoice(input.narratorVoice);
+  const reviewerVoices = resolveReviewerVoices(input.reviewerVoices);
   const concurrency = Math.max(1, input.concurrency ?? DEFAULT_CONCURRENCY);
 
   await fsp.mkdir(input.clipsDir, { recursive: true });

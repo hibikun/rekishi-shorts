@@ -363,9 +363,6 @@ program
       const { sha256File, synthesizeRankingClips, writeAudioClipsJson } = await import(
         "./ranking-tts.js"
       );
-      const reviewerVoicesEnv = process.env.GEMINI_TTS_REVIEW_VOICES?.split(",")
-        .map((s) => s.trim())
-        .filter(Boolean);
 
       console.log(
         chalk.bold(
@@ -382,13 +379,13 @@ program
       );
       console.log(chalk.dim(`   clips   : ${clipsDir}`));
 
+      // narrator/reviewer の声はチャンネル別 default + env で resolveNarratorVoice / resolveReviewerVoices が決める。
       const result = await synthesizeRankingClips({
         script,
         clipsDir: clipsDir!,
         combinedOutPath: outPath,
         readings: script.readings,
         furigana: FURIGANA_MAP,
-        reviewerVoices: reviewerVoicesEnv,
       });
 
       writeAudioClipsJson(

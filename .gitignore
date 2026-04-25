@@ -21,6 +21,7 @@ data/*/captions/*
 data/*/videos/*
 data/*/uploads/*
 data/*/design-mockups/*
+data/*/voice-compare/*
 data/sfx/*
 !data/*/scripts/.gitkeep
 !data/*/audio/.gitkeep
