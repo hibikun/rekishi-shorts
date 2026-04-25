@@ -5,6 +5,7 @@ import {
   ScriptSchema,
   type RankingItem,
   type RankingPlan,
+  type Scene,
   type Script,
 } from "@rekishi/shared";
 
@@ -19,6 +20,12 @@ export interface BuildRankingPlanInput {
   hookSfxPath?: string;
   id?: string;
   totalDurationSec?: number;
+  /**
+   * scene-aligner で実音声に合わせて durationSec を上書き済みの Scene 列。
+   * 与えると RankingShort 側でスライド進行が TTS と同期する。
+   * 未指定時はコンポ側の固定尺フォールバックが使われる（後方互換）。
+   */
+  scenes?: Scene[];
 }
 
 function ensureRankingScript(
@@ -81,8 +88,16 @@ export function buildRankingPlan(input: BuildRankingPlanInput): RankingPlan {
   ];
 
   const id = input.id ?? `ranking-${Date.now()}`;
+  // scenes が与えられていれば、その合計を真の動画尺として採用する
+  // (実音声と一致するため)。なければ script の推定値にフォールバック。
+  const scenesTotalSec = input.scenes
+    ? input.scenes.reduce((sum, s) => sum + s.durationSec, 0)
+    : undefined;
   const totalDurationSec =
-    input.totalDurationSec ?? script.estimatedDurationSec ?? 30;
+    input.totalDurationSec ??
+    scenesTotalSec ??
+    script.estimatedDurationSec ??
+    30;
 
   return RankingPlanSchema.parse({
     id,
@@ -97,6 +112,7 @@ export function buildRankingPlan(input: BuildRankingPlanInput): RankingPlan {
     hookSfxPath: input.hookSfxPath,
     captions: [],
     captionSegments: [],
+    scenes: input.scenes,
     createdAt: new Date().toISOString(),
   });
 }

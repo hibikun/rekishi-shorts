@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { CaptionSegmentSchema, CaptionWordSchema } from "./asset";
+import { SceneSchema } from "./script";
 
 // ========================================================================
 // ranking チャンネル専用の RenderPlan
@@ -61,6 +62,11 @@ export const RankingPlanSchema = z.object({
   // Whisper 字幕（後段で拡張する場合用）
   captions: z.array(CaptionWordSchema).default([]),
   captionSegments: z.array(CaptionSegmentSchema).default([]),
+  // scene-aligner で実音声に合わせて durationSec を上書きした Scene 列。
+  // 8 シーン固定 (opening / rank3-intro / rank3-review / rank2-intro / rank2-review /
+  // rank1-intro / rank1-review / closing)。コンポ側はこの長さの合計と各 durationSec を
+  // 使ってスライド進行を制御する。未指定時は固定尺フォールバック（既存ジョブ互換）。
+  scenes: z.array(SceneSchema).optional(),
   createdAt: z.string().describe("ISO 8601"),
 });
 export type RankingPlan = z.infer<typeof RankingPlanSchema>;
