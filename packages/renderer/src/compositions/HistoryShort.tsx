@@ -18,6 +18,7 @@ export interface HistoryShortProps {
   keyTerms?: string[];
   title?: VideoTitle;
   hookSfxSrc?: string;
+  openingSfxSrc?: string;
 }
 
 const TITLE_BAR_RATIO = 0.25;
@@ -32,6 +33,7 @@ export const HistoryShort: React.FC<HistoryShortProps> = ({
   keyTerms = [],
   title,
   hookSfxSrc,
+  openingSfxSrc,
 }) => {
   const { fps } = useVideoConfig();
 
@@ -86,6 +88,7 @@ export const HistoryShort: React.FC<HistoryShortProps> = ({
 
       {title && <TitleBar top={title.top} bottom={title.bottom} />}
       <NarrationAudio src={audioSrc} />
+      {openingSfxSrc && <SfxAudio src={openingSfxSrc} startFrame={0} />}
       {hookSfxSrc && <SfxAudio src={hookSfxSrc} startFrame={hookSfxStartFrame} />}
     </AbsoluteFill>
   );
