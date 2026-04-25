@@ -89,7 +89,7 @@ export const HistoryShort: React.FC<HistoryShortProps> = ({
       {title && <TitleBar top={title.top} bottom={title.bottom} />}
       <NarrationAudio src={audioSrc} />
       {openingSfxSrc && <SfxAudio src={openingSfxSrc} startFrame={0} volume={1} />}
-      {hookSfxSrc && <SfxAudio src={hookSfxSrc} startFrame={hookSfxStartFrame} />}
+      {hookSfxSrc && <SfxAudio src={hookSfxSrc} startFrame={hookSfxStartFrame} volume={1} />}
     </AbsoluteFill>
   );
 };
