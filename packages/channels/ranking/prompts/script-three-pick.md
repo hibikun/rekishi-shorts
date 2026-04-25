@@ -126,11 +126,49 @@
 - 絞り込み（価格帯・用途等）: {{topic.era}}
 - カテゴリ: {{topic.subject}}
 
+## narrationSegments（必須・新フォーマット）
+
+セグメント別 TTS パイプライン（案G改）が **`narrationSegments` を 5 枠で出力すること** を要求する。
+これはナレーター枠（5 シーン分）の読み上げテキスト配列で、レビュー枠（rank3/2/1-review）は
+`items[].reviews` を別ボイスで読み上げるため **`narrationSegments` には含めない**。
+
+| kind | 対応シーン | 内容 |
+|---|---|---|
+| `opening` | scene 0 | フック A をそのまま（句点込み） |
+| `rank3-intro` | scene 1 | 「第3位、<カテゴリ or 商品名>。」+ 1〜2文の特徴/驚き要点（**レビュー風の体験談ではなく、ナレーター視点の紹介文**） |
+| `rank2-intro` | scene 3 | 同上（rank 2 用） |
+| `rank1-intro` | scene 5 | 同上、最も推す理由を 2 文で展開 |
+| `closing` | scene 7 | E（締め1文） |
+
+### narrationSegments の必須ルール
+
+1. **5 件ちょうど**。順序固定（opening / rank3-intro / rank2-intro / rank1-intro / closing）
+2. **`narration`（全文連結版）と内容的に整合**させる。`narration` は後方互換のため引き続き必須出力だが、
+   セグメント別パイプラインでは `narrationSegments` の方を優先利用する
+3. **レビュー枠の使用感説明をここに書かない**。「使ってみた」「便利だった」のような体験談はレビュー枠
+   （`items[].reviews`）で読み上げるため、`narrationSegments` の `rank*-intro` は**第三者視点の紹介**で書く
+4. 各 `rank*-intro` は **句点で完結する 2〜3 文以内**。読み上げ目安 4〜6 秒（80〜120字以内）
+5. `opening` / `closing` は narration と同じ短文（30字前後 / 20字前後）
+
+### items[].reviews の役割（再確認）
+
+- 画面に吹き出し3枚として表示され、**別ボイスで「ユーザーがコメントしている感」で読み上げられる**
+- 1人称・口語・短評（30字以内推奨）
+- 例: 「ケーブル不要で充電できるのまじ革命」「想像より薄くて邪魔にならない」「外出時の安心感が段違い」
+- ナレーター視点の説明（「3,000円以下と高コスパ」等）は入れない
+
 ## 出力（JSON）
 
 ```json
 {
-  "narration": "A+B+C+D+Eを自然につなげた200-240字の完成形",
+  "narration": "A+B+C+D+Eを自然につなげた200-240字の完成形（後方互換のため引き続き必須）",
+  "narrationSegments": [
+    { "kind": "opening", "text": "5000円以下で生活がガチで捗る、Amazon神商品3選。" },
+    { "kind": "rank3-intro", "text": "第3位、エレコムのクリーニングクロス。スマホやPCの指紋汚れを一拭きで消せる定番アイテム。" },
+    { "kind": "rank2-intro", "text": "第2位、Ankerのマグネットケーブルホルダー。デスクのケーブルごちゃごちゃを磁石でピタッと整頓。" },
+    { "kind": "rank1-intro", "text": "第1位、SwitchBotのスマートプラグ。家電をスマホで遠隔操作できて消し忘れもゼロ。これは買って正解。" },
+    { "kind": "closing", "text": "詳細は概要欄に。忘れないよう保存推奨。" }
+  ],
   "hook": "A（フックのみ）",
   "title": { "top": "5,000円以下で", "bottom": "生活ガチで捗る3選" },
   "body": "B+C+D",

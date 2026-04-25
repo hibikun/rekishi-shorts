@@ -7,7 +7,7 @@ import { config } from "./config.js";
 
 export interface TTSResult {
   path: string;
-  /** 実測の秒数 (PCMサンプル数から算出) */
+  /** loudnorm 後の真の wav 長 (ffprobe 実測, 取得失敗時は PCM 長フォールバック) */
   approxDurationSec: number;
   /** 課金文字数 (furigana置換後) */
   characters: number;
@@ -27,8 +27,22 @@ const LOUDNESS_FILTER =
   "loudnorm=I=-14:TP=-1:LRA=7,volume=4dB,alimiter=limit=0.95:attack=5:release=50";
 
 /**
+ * voicePersona ごとの Gemini TTS スタイル指示。Gemini TTS は prompt でトーン/間/語勢を
+ * 引き出せるが、narrator 風 prompt をレビュー音声にも流用すると「アナウンサー調のレビュー」に
+ * なってしまうため、reviewer は会話的・短評的な指示に切り替える。
+ */
+export type VoicePersona = "narrator" | "reviewer";
+
+const STYLE_PROMPTS: Record<VoicePersona, string> = {
+  narrator:
+    "Say the following in natural, clear Japanese with a confident educational narrator's voice, slightly fast pace (suitable for a YouTube Shorts video):",
+  reviewer:
+    "Read the following Japanese text as a casual short user review comment for a YouTube Shorts video. Sound conversational and personal, not like an announcer. Keep it natural and brief:",
+};
+
+/**
  * Gemini 3.1 Flash TTS で日本語ナレーションを合成し、WAV として保存する。
- * 返り値の durationSec はPCMサンプル数から正確に算出。
+ * approxDurationSec は loudnorm 適用後に ffprobe で再計測した真の wav 長。
  */
 export async function synthesizeNarration(
   text: string,
@@ -41,17 +55,19 @@ export async function synthesizeNarration(
     voiceName?: string;
     /** 冒頭フック文。Kore 方針では未使用（将来 Algenib 的なdocumentary調に戻す際用） */
     hook?: string;
+    /** スタイル指示の切り替え。レビュー読み上げは "reviewer" を渡す */
+    persona?: VoicePersona;
   } = {},
 ): Promise<TTSResult> {
   const withReadings = applyFurigana(text, opts.readings);
   const processed = applyFurigana(withReadings, opts.furigana);
   const voiceName = opts.voiceName ?? process.env.GEMINI_TTS_VOICE ?? "Kore";
   const model = process.env.GEMINI_TTS_MODEL ?? "gemini-3.1-flash-tts-preview";
+  const persona: VoicePersona = opts.persona ?? "narrator";
 
   const ai = new GoogleGenAI({ apiKey: config.gemini.apiKey });
 
-  // ショート動画用の指示を prompt に含める (Gemini TTS は prompt でスタイル制御可能)
-  const styledPrompt = `Say the following in natural, clear Japanese with a confident educational narrator's voice, slightly fast pace (suitable for a YouTube Shorts video for students):\n${processed}`;
+  const styledPrompt = `${STYLE_PROMPTS[persona]}\n${processed}`;
 
   const response = await ai.models.generateContent({
     model,
@@ -82,7 +98,10 @@ export async function synthesizeNarration(
   await fs.writeFile(destPath, wav);
   await loudnormInPlace(destPath);
 
-  const durationSec = pcm.length / (SAMPLE_RATE * 2); // 16-bit mono
+  // loudnorm/alimiter は出力サンプル数を変える可能性があるため、ffprobe で実測する。
+  // 失敗した場合は PCM 長へフォールバック（Remotion 側で多少のズレは許容）。
+  const pcmDurationSec = pcm.length / (SAMPLE_RATE * 2); // 16-bit mono
+  const durationSec = (await probeDurationSec(destPath)) ?? pcmDurationSec;
 
   return {
     path: destPath,
@@ -94,6 +113,46 @@ export async function synthesizeNarration(
       model,
     },
   };
+}
+
+/**
+ * ffprobe で wav の真の秒数を取得。失敗時は null を返し、呼び出し側はフォールバックすること。
+ */
+export async function probeDurationSec(filePath: string): Promise<number | null> {
+  try {
+    const stdout = await runFfprobeStdout([
+      "-v",
+      "error",
+      "-show_entries",
+      "format=duration",
+      "-of",
+      "default=noprint_wrappers=1:nokey=1",
+      filePath,
+    ]);
+    const v = Number(stdout.trim());
+    return Number.isFinite(v) && v > 0 ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+function runFfprobeStdout(args: string[]): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const proc = spawn("ffprobe", args, { stdio: ["ignore", "pipe", "pipe"] });
+    let stdout = "";
+    let stderr = "";
+    proc.stdout.on("data", (chunk) => {
+      stdout += chunk.toString();
+    });
+    proc.stderr.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
+    proc.on("error", reject);
+    proc.on("close", (code) => {
+      if (code === 0) resolve(stdout);
+      else reject(new Error(`ffprobe exited ${code}: ${stderr}`));
+    });
+  });
 }
 
 function applyFurigana(text: string, map?: Record<string, string>): string {

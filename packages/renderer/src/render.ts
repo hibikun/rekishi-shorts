@@ -176,6 +176,7 @@ export async function renderRankingShort(
     rankSfxSrc,
     hookSfxSrc,
     scenes: plan.scenes,
+    audioClips: plan.audioClips,
   };
 
   const composition = await selectComposition({

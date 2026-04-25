@@ -49,6 +49,24 @@ export const VideoTitleSchema = z.object({
 });
 export type VideoTitle = z.infer<typeof VideoTitleSchema>;
 
+// ranking three-pick で narration を構造化セグメントとして出力する場合の単位。
+// kind は 8 シーンの「ナレーター枠」5 つに対応 (opening / rank3-intro / rank2-intro / rank1-intro / closing)。
+// レビュー枠 (rank3/2/1-review) は items[].reviews を別ボイスで合成するため segments には含めない。
+export const NarrationSegmentKindSchema = z.enum([
+  "opening",
+  "rank3-intro",
+  "rank2-intro",
+  "rank1-intro",
+  "closing",
+]);
+export type NarrationSegmentKind = z.infer<typeof NarrationSegmentKindSchema>;
+
+export const NarrationSegmentSchema = z.object({
+  kind: NarrationSegmentKindSchema,
+  text: z.string().min(1).describe("このセグメントで読み上げるナレーションテキスト"),
+});
+export type NarrationSegment = z.infer<typeof NarrationSegmentSchema>;
+
 // AI が生成する台本本体
 export const ScriptSchema = z.object({
   topic: TopicSchema,
@@ -70,6 +88,14 @@ export const ScriptSchema = z.object({
     .array(ThreePickItemSchema)
     .optional()
     .describe("three-pick format 時のランキング項目"),
+  // ranking three-pick で「ナレーター枠」を 5 セグメントに分けて読み上げ、
+  // レビュー枠は items[].reviews を別ボイスで読む新フロー用。未指定時は従来 narration 一本流し。
+  narrationSegments: z
+    .array(NarrationSegmentSchema)
+    .optional()
+    .describe(
+      "ranking three-pick 用: opening / rank3-intro / rank2-intro / rank1-intro / closing の5枠",
+    ),
 });
 export type Script = z.infer<typeof ScriptSchema>;
 

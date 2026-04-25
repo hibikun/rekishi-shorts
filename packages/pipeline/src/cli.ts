@@ -316,6 +316,10 @@ program
   .option("--job-id <id>", "ジョブID。指定すると script.json を読み narration.wav を出力")
   .option("--script <path>", "script.json のパス（--job-id 指定時は省略可）")
   .option("--out <path>", "narration の書き出し先（省略時は <job>/narration.wav or stdout エラー）")
+  .option(
+    "--legacy-single-voice",
+    "narrationSegments があってもセグメント別 TTS を使わず、従来通り narration を 1 本で合成する",
+  )
   .addOption(channelOption())
   .action(async (opts) => {
     const { synthesizeNarration } = await import("./tts-generator.js");
@@ -324,12 +328,16 @@ program
 
     let scriptPath: string | undefined = opts.script ? resolveCliPath(opts.script) : undefined;
     let outPath: string | undefined = opts.out ? resolveCliPath(opts.out) : undefined;
+    let clipsDir: string | undefined;
+    let audioClipsJsonPath: string | undefined;
 
     if (opts.jobId) {
       const { resolveRankingJobPaths } = await import("./ranking-paths.js");
       const paths = resolveRankingJobPaths(opts.jobId);
       scriptPath = scriptPath ?? paths.scriptJson;
       outPath = outPath ?? paths.narrationWav;
+      clipsDir = paths.ttsClipsDir;
+      audioClipsJsonPath = paths.audioClipsJson;
     }
 
     if (!scriptPath) throw new Error("--script または --job-id のいずれかが必要です");
@@ -339,7 +347,77 @@ program
     }
 
     const script = readScriptFile(scriptPath);
-    console.log(chalk.bold(`\n🎙️  Gemini TTS でナレーション合成中...`));
+
+    // 案G改: narrationSegments + items.reviews があれば segment 別 TTS パイプラインに分岐。
+    // ただし --legacy-single-voice や clipsDir 不在 (--out 単独指定など) の場合は従来フロー。
+    const useSegmentFlow =
+      !opts.legacySingleVoice &&
+      !!script.narrationSegments &&
+      script.narrationSegments.length > 0 &&
+      !!script.items &&
+      script.items.length >= 3 &&
+      !!clipsDir &&
+      !!audioClipsJsonPath;
+
+    if (useSegmentFlow) {
+      const { synthesizeRankingClips, writeAudioClipsJson } = await import(
+        "./ranking-tts.js"
+      );
+      const reviewerVoicesEnv = process.env.GEMINI_TTS_REVIEW_VOICES?.split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+
+      console.log(
+        chalk.bold(
+          `\n🎙️  Gemini TTS でセグメント別合成中（5 narrator + 9 review）...`,
+        ),
+      );
+      console.log(chalk.dim(`   script  : ${scriptPath}`));
+      console.log(
+        chalk.dim(
+          `   segments: ${script.narrationSegments!.length} 枠 / reviews: ${
+            script.items!.reduce((s, it) => s + (it.reviews?.length ?? 0), 0)
+          } 件`,
+        ),
+      );
+      console.log(chalk.dim(`   clips   : ${clipsDir}`));
+
+      const result = await synthesizeRankingClips({
+        script,
+        clipsDir: clipsDir!,
+        combinedOutPath: outPath,
+        readings: script.readings,
+        furigana: FURIGANA_MAP,
+        reviewerVoices: reviewerVoicesEnv,
+      });
+
+      writeAudioClipsJson(
+        result.audioClips,
+        result.totalDurationSec,
+        audioClipsJsonPath!,
+      );
+
+      console.log(chalk.green(`\n✅ narration 結合保存: ${result.combinedPath}`));
+      console.log(
+        chalk.dim(
+          `   ${result.characters}文字 / 合成${result.totalDurationSec.toFixed(2)}秒 / 14クリップ / model=${result.usage.model}`,
+        ),
+      );
+      console.log(chalk.dim(`   📄 audioClips: ${audioClipsJsonPath}`));
+
+      if (opts.jobId) {
+        console.log(chalk.bold("\n次のステップ:"));
+        console.log(
+          `  ${chalk.cyan(
+            `pnpm --filter @rekishi/pipeline exec tsx src/cli.ts build-ranking-plan --channel ${opts.channel} --job-id ${opts.jobId}`,
+          )}`,
+        );
+      }
+      return;
+    }
+
+    // 従来フロー: 1 本合成 → build-ranking-plan で scene-aligner にかける
+    console.log(chalk.bold(`\n🎙️  Gemini TTS でナレーション合成中（単一ボイス）...`));
     console.log(chalk.dim(`   script: ${scriptPath}`));
     console.log(chalk.dim(`   text  : ${script.narration.length}文字`));
 
@@ -405,6 +483,8 @@ program
       ? resolveCliPath(opts.narration)
       : undefined;
 
+    let audioClipsJsonPath: string | undefined;
+
     if (opts.jobId) {
       const { resolveRankingJobPaths, resolveRankingAssets } = await import(
         "./ranking-paths.js"
@@ -416,6 +496,7 @@ program
       if (!narrationPath && fs.existsSync(paths.narrationWav)) {
         narrationPath = paths.narrationWav;
       }
+      audioClipsJsonPath = paths.audioClipsJson;
 
       if (!opts.background || !opts.images) {
         if (!fs.existsSync(paths.assetsDir)) {
@@ -476,11 +557,82 @@ program
     const script = readScriptFile(scriptPath);
 
     // ===== TTS↔スライド整合パイプライン =====
-    // narration があれば scene-planner → ASR → scene-aligner を回し、
-    // 各シーンの実発話 durationSec を ranking-plan に埋め込む。
+    // 案G改: audio-clips.json (segment 別 TTS パイプラインの成果物) があれば
+    //         scene-aligner を skip し、scenes と audioClips をそのまま採用する。
+    // それ以外: narration があれば scene-planner → ASR → scene-aligner を従来どおり回す。
     // 未配置 / --skip-align の場合は scenes 抜き（コンポ側で固定尺フォールバック）。
     let alignedScenes: import("@rekishi/shared").Scene[] | undefined;
-    if (narrationPath && !opts.skipAlign) {
+    let audioClips: import("@rekishi/shared").AudioClip[] | undefined;
+
+    if (audioClipsJsonPath && fs.existsSync(audioClipsJsonPath) && !opts.skipAlign) {
+      const { readAudioClipsJson } = await import("./ranking-tts.js");
+      const data = readAudioClipsJson(audioClipsJsonPath);
+      if (data) {
+        audioClips = data.audioClips;
+        // audioClips から 8 シーンを再構築（順序: opening / r3-intro / r3-review / r2-intro / r2-review / r1-intro / r1-review / closing）
+        const sumDur = (predicate: (c: import("@rekishi/shared").AudioClip) => boolean): number => {
+          const sum = data.audioClips
+            .filter(predicate)
+            .reduce((s, c) => s + c.durationSec, 0);
+          return Math.max(0.01, Number(sum.toFixed(3)));
+        };
+        const segText = (kind: string): string =>
+          script.narrationSegments?.find((s) => s.kind === kind)?.text ?? "";
+        const reviewText = (rank: 1 | 2 | 3): string => {
+          const it = script.items?.find((x) => x.rank === rank);
+          return it?.reviews?.join(" / ") ?? "";
+        };
+        const scenes: import("@rekishi/shared").Scene[] = [];
+        scenes.push({
+          index: 0,
+          narration: segText("opening"),
+          imageQueryJa: "",
+          imageQueryEn: "",
+          imagePromptEn: "",
+          durationSec: sumDur((c) => c.kind === "opening"),
+        });
+        let idx = 1;
+        for (const rank of [3, 2, 1] as const) {
+          scenes.push({
+            index: idx++,
+            narration: segText(`rank${rank}-intro`),
+            imageQueryJa: "",
+            imageQueryEn: "",
+            imagePromptEn: "",
+            durationSec: sumDur((c) => c.kind === "rank-intro" && c.rank === rank),
+          });
+          scenes.push({
+            index: idx++,
+            narration: reviewText(rank),
+            imageQueryJa: "",
+            imageQueryEn: "",
+            imagePromptEn: "",
+            durationSec: sumDur((c) => c.kind === "review" && c.rank === rank),
+          });
+        }
+        scenes.push({
+          index: 7,
+          narration: segText("closing"),
+          imageQueryJa: "",
+          imageQueryEn: "",
+          imagePromptEn: "",
+          durationSec: sumDur((c) => c.kind === "closing"),
+        });
+        alignedScenes = scenes;
+        console.log(
+          chalk.bold(
+            "\n🎯 audioClips manifest を検出: scene-aligner を skip し、TTS タイミングをそのまま採用します",
+          ),
+        );
+        console.log(
+          chalk.dim(
+            `   ${data.audioClips.length}クリップ / 合計${data.totalDurationSec.toFixed(2)}秒`,
+          ),
+        );
+      }
+    }
+
+    if (!alignedScenes && narrationPath && !opts.skipAlign) {
       if (!fs.existsSync(narrationPath)) {
         throw new Error(`narration ファイルが見当たりません: ${narrationPath}`);
       }
@@ -587,6 +739,7 @@ program
       hookSfxPath: opts.hookSfx ? resolveCliPath(opts.hookSfx) : undefined,
       id: planId,
       scenes: alignedScenes,
+      audioClips,
     });
 
     const finalOut =

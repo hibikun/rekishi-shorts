@@ -58,6 +58,27 @@ const threePickResponseSchema = {
   type: Type.OBJECT,
   properties: {
     narration: { type: Type.STRING },
+    // ranking 案G改: ナレーター枠 5 シーン分のテキスト。レビュー枠は items[].reviews を別ボイスで読む。
+    narrationSegments: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          kind: {
+            type: Type.STRING,
+            enum: [
+              "opening",
+              "rank3-intro",
+              "rank2-intro",
+              "rank1-intro",
+              "closing",
+            ],
+          },
+          text: { type: Type.STRING },
+        },
+        required: ["kind", "text"],
+      },
+    },
     hook: { type: Type.STRING },
     title: titleResponseSchema,
     body: { type: Type.STRING },
@@ -99,7 +120,17 @@ const threePickResponseSchema = {
     },
     estimatedDurationSec: { type: Type.NUMBER },
   },
-  required: ["narration", "hook", "title", "body", "closing", "keyTerms", "items", "estimatedDurationSec"],
+  required: [
+    "narration",
+    "narrationSegments",
+    "hook",
+    "title",
+    "body",
+    "closing",
+    "keyTerms",
+    "items",
+    "estimatedDurationSec",
+  ],
 };
 
 const RESPONSE_SCHEMAS = {

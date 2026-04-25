@@ -16,6 +16,10 @@ export interface RankingJobPaths {
   narrationWav: string;
   scenePlanJson: string;
   wordsJson: string;
+  /** セグメント別 TTS の個別クリップ群を置くディレクトリ */
+  ttsClipsDir: string;
+  /** セグメント別 TTS の audioClips マニフェスト JSON */
+  audioClipsJson: string;
 }
 
 export function validateJobId(jobId: string): void {
@@ -39,6 +43,8 @@ export function resolveRankingJobPaths(jobId: string): RankingJobPaths {
     narrationWav: path.join(root, "narration.wav"),
     scenePlanJson: path.join(root, "scene-plan.json"),
     wordsJson: path.join(root, "words.json"),
+    ttsClipsDir: path.join(root, "tts-clips"),
+    audioClipsJson: path.join(root, "audio-clips.json"),
   };
 }
 
