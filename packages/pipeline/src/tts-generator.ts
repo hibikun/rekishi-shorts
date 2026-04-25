@@ -7,7 +7,7 @@ import { config } from "./config.js";
 
 export interface TTSResult {
   path: string;
-  /** 実測の秒数 (PCMサンプル数から算出) */
+  /** loudnorm 後の真の wav 長 (ffprobe 実測, 取得失敗時は PCM 長フォールバック) */
   approxDurationSec: number;
   /** 課金文字数 (furigana置換後) */
   characters: number;
@@ -27,8 +27,22 @@ const LOUDNESS_FILTER =
   "loudnorm=I=-14:TP=-1:LRA=7,volume=4dB,alimiter=limit=0.95:attack=5:release=50";
 
 /**
+ * voicePersona ごとの Gemini TTS スタイル指示。Gemini TTS は prompt でトーン/間/語勢を
+ * 引き出せるが、narrator 風 prompt をレビュー音声にも流用すると「アナウンサー調のレビュー」に
+ * なってしまうため、reviewer は会話的・短評的な指示に切り替える。
+ */
+export type VoicePersona = "narrator" | "reviewer";
+
+const STYLE_PROMPTS: Record<VoicePersona, string> = {
+  narrator:
+    "Say the following in natural, clear Japanese with a confident educational narrator's voice, slightly fast pace (suitable for a YouTube Shorts video):",
+  reviewer:
+    "Read the following Japanese text as a casual short user review comment for a YouTube Shorts video. Sound conversational and personal, not like an announcer. Keep it natural and brief:",
+};
+
+/**
  * Gemini 3.1 Flash TTS で日本語ナレーションを合成し、WAV として保存する。
- * 返り値の durationSec はPCMサンプル数から正確に算出。
+ * approxDurationSec は loudnorm 適用後に ffprobe で再計測した真の wav 長。
  */
 export async function synthesizeNarration(
   text: string,
@@ -41,30 +55,36 @@ export async function synthesizeNarration(
     voiceName?: string;
     /** 冒頭フック文。Kore 方針では未使用（将来 Algenib 的なdocumentary調に戻す際用） */
     hook?: string;
+    /** スタイル指示の切り替え。レビュー読み上げは "reviewer" を渡す */
+    persona?: VoicePersona;
   } = {},
 ): Promise<TTSResult> {
   const withReadings = applyFurigana(text, opts.readings);
   const processed = applyFurigana(withReadings, opts.furigana);
   const voiceName = opts.voiceName ?? process.env.GEMINI_TTS_VOICE ?? "Kore";
   const model = process.env.GEMINI_TTS_MODEL ?? "gemini-3.1-flash-tts-preview";
+  const persona: VoicePersona = opts.persona ?? "narrator";
 
   const ai = new GoogleGenAI({ apiKey: config.gemini.apiKey });
 
-  // ショート動画用の指示を prompt に含める (Gemini TTS は prompt でスタイル制御可能)
-  const styledPrompt = `Say the following in natural, clear Japanese with a confident educational narrator's voice, slightly fast pace (suitable for a YouTube Shorts video for students):\n${processed}`;
+  const styledPrompt = `${STYLE_PROMPTS[persona]}\n${processed}`;
 
-  const response = await ai.models.generateContent({
-    model,
-    contents: styledPrompt,
-    config: {
-      responseModalities: ["AUDIO"],
-      speechConfig: {
-        voiceConfig: {
-          prebuiltVoiceConfig: { voiceName },
+  // Gemini TTS preview は per-minute レート制限 (現状 10 req/min) があるため、
+  // 429 が返ったら retryDelay を尊重しつつ最大 6 回まで指数バックオフでリトライする。
+  const response = await retryOn429(() =>
+    ai.models.generateContent({
+      model,
+      contents: styledPrompt,
+      config: {
+        responseModalities: ["AUDIO"],
+        speechConfig: {
+          voiceConfig: {
+            prebuiltVoiceConfig: { voiceName },
+          },
         },
       },
-    },
-  });
+    }),
+  );
 
   const parts = response.candidates?.[0]?.content?.parts ?? [];
   const audioPart = parts.find((p) => (p as { inlineData?: unknown }).inlineData !== undefined);
@@ -82,7 +102,10 @@ export async function synthesizeNarration(
   await fs.writeFile(destPath, wav);
   await loudnormInPlace(destPath);
 
-  const durationSec = pcm.length / (SAMPLE_RATE * 2); // 16-bit mono
+  // loudnorm/alimiter は出力サンプル数を変える可能性があるため、ffprobe で実測する。
+  // 失敗した場合は PCM 長へフォールバック（Remotion 側で多少のズレは許容）。
+  const pcmDurationSec = pcm.length / (SAMPLE_RATE * 2); // 16-bit mono
+  const durationSec = (await probeDurationSec(destPath)) ?? pcmDurationSec;
 
   return {
     path: destPath,
@@ -94,6 +117,78 @@ export async function synthesizeNarration(
       model,
     },
   };
+}
+
+/**
+ * ffprobe で wav の真の秒数を取得。失敗時は null を返し、呼び出し側はフォールバックすること。
+ */
+export async function probeDurationSec(filePath: string): Promise<number | null> {
+  try {
+    const stdout = await runFfprobeStdout([
+      "-v",
+      "error",
+      "-show_entries",
+      "format=duration",
+      "-of",
+      "default=noprint_wrappers=1:nokey=1",
+      filePath,
+    ]);
+    const v = Number(stdout.trim());
+    return Number.isFinite(v) && v > 0 ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Gemini API の 429 (RESOURCE_EXHAUSTED) を捕まえて retryDelay 秒待ってリトライする。
+ * retryDelay が読めない場合は指数バックオフ (2^attempt 秒)。最大 6 回まで。
+ */
+async function retryOn429<T>(fn: () => Promise<T>): Promise<T> {
+  const maxAttempts = 6;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const is429 = /429|RESOURCE_EXHAUSTED|quota/i.test(msg);
+      if (!is429 || attempt === maxAttempts - 1) throw err;
+      const retryAfterSec = parseRetryAfterSec(msg) ?? Math.min(60, 2 ** (attempt + 2));
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[tts-generator] 429 hit (attempt ${attempt + 1}/${maxAttempts}), waiting ${retryAfterSec.toFixed(1)}s...`,
+      );
+      await new Promise((r) => setTimeout(r, retryAfterSec * 1000));
+    }
+  }
+  throw new Error("retryOn429: unreachable");
+}
+
+function parseRetryAfterSec(msg: string): number | null {
+  const m = msg.match(/Please retry in ([\d.]+)s/);
+  if (m) return Number(m[1]);
+  const m2 = msg.match(/retryDelay"?\s*[:=]\s*"?(\d+)s/i);
+  if (m2) return Number(m2[1]);
+  return null;
+}
+
+function runFfprobeStdout(args: string[]): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const proc = spawn("ffprobe", args, { stdio: ["ignore", "pipe", "pipe"] });
+    let stdout = "";
+    let stderr = "";
+    proc.stdout.on("data", (chunk) => {
+      stdout += chunk.toString();
+    });
+    proc.stderr.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
+    proc.on("error", reject);
+    proc.on("close", (code) => {
+      if (code === 0) resolve(stdout);
+      else reject(new Error(`ffprobe exited ${code}: ${stderr}`));
+    });
+  });
 }
 
 function applyFurigana(text: string, map?: Record<string, string>): string {

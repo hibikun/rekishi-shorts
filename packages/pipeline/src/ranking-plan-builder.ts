@@ -3,6 +3,7 @@ import path from "node:path";
 import {
   RankingPlanSchema,
   ScriptSchema,
+  type AudioClip,
   type RankingItem,
   type RankingPlan,
   type Scene,
@@ -26,6 +27,11 @@ export interface BuildRankingPlanInput {
    * 未指定時はコンポ側の固定尺フォールバックが使われる（後方互換）。
    */
   scenes?: Scene[];
+  /**
+   * セグメント別 TTS で生成された audioClips マニフェスト（案G改）。
+   * 与えられている場合、レビュー吹き出しの登場タイミングが startSec ベースで決まる。
+   */
+  audioClips?: AudioClip[];
 }
 
 function ensureRankingScript(
@@ -113,6 +119,7 @@ export function buildRankingPlan(input: BuildRankingPlanInput): RankingPlan {
     captions: [],
     captionSegments: [],
     scenes: input.scenes,
+    audioClips: input.audioClips,
     createdAt: new Date().toISOString(),
   });
 }

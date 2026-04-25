@@ -9,7 +9,7 @@ import {
   useCurrentFrame,
   useVideoConfig,
 } from "remotion";
-import type { Scene } from "@rekishi/shared";
+import type { AudioClip, Scene } from "@rekishi/shared";
 import { NarrationAudio } from "../components/NarrationAudio";
 
 // ========================================================================
@@ -55,6 +55,12 @@ export interface RankingShortProps {
    * 未指定 / 長さ不一致時は固定尺フォールバックで動作（後方互換）。
    */
   scenes?: Scene[];
+  /**
+   * セグメント別 TTS で生成された audioClips マニフェスト（案G改）。
+   * 与えられている場合、レビュー吹き出し3枚の登場タイミングを各 review クリップの
+   * 開始秒に合わせて表示する。未指定時はシーン尺を3等分して表示（既存挙動）。
+   */
+  audioClips?: AudioClip[];
 }
 
 // ========================================================================
@@ -616,13 +622,25 @@ const RankIntroScene: React.FC<{
 const RankReviewScene: React.FC<{
   item: RankingItem;
   durationInFrames: number;
-}> = ({ item, durationInFrames }) => {
+  /**
+   * audioClips から計算した「シーン開始からの各レビュー開始フレーム」。
+   * undefined の場合はシーン尺を 3 等分する従来挙動にフォールバック。
+   */
+  reviewDelayFrames?: [number, number, number];
+}> = ({ item, durationInFrames, reviewDelayFrames }) => {
   // レビュー3枚をシーン時間に沿って順次表示する。
-  // ナレーション（TTS）が各レビューを順に読み上げるペースにざっくり合わせるため、
-  // 冒頭のフェードイン分だけ詰めた残り時間を3等分し、等間隔で登場させる。
+  // 案G改: audioClips が与えられていれば各 review クリップの startSec に合わせて表示し、
+  // ボイスの「コメントしてる感」と吹き出し登場を完全同期させる。
+  // 未指定時は冒頭のフェードイン分だけ詰めた残り時間を3等分する従来挙動。
   const leadFrames = 4;
   const usable = Math.max(1, durationInFrames - leadFrames);
   const slot = usable / item.reviews.length;
+  const delays: [number, number, number] =
+    reviewDelayFrames ?? [
+      Math.round(leadFrames + slot * 0),
+      Math.round(leadFrames + slot * 1),
+      Math.round(leadFrames + slot * 2),
+    ];
 
   return (
     <FadeIn>
@@ -651,7 +669,7 @@ const RankReviewScene: React.FC<{
         }}
       >
         {item.reviews.map((text, i) => (
-          <StaggeredAppear key={i} delayFrames={Math.round(leadFrames + slot * i)}>
+          <StaggeredAppear key={i} delayFrames={delays[i as 0 | 1 | 2]!}>
             <ReviewBubble text={text} colorIndex={i} />
           </StaggeredAppear>
         ))}
@@ -820,6 +838,44 @@ function buildSceneBlocks(
   return buildSceneBlocksFixed(items);
 }
 
+/**
+ * audioClips から rank ごとの review クリップ 3 つを取り出し、対応する rank-review シーンの
+ * 開始秒を基準にした「シーン内オフセットを frame 換算した配列」を返す。
+ *
+ * audioClips が無い、または review クリップが揃っていない rank は Map に入れない
+ * （RankReviewScene 側で従来の3等分挙動にフォールバックする）。
+ */
+function computeReviewDelayByRank(
+  layout: Array<{
+    block: SceneBlock & { durationSec: number };
+    startFrame: number;
+    durationFrames: number;
+    sceneStartSec: number;
+  }>,
+  audioClips: AudioClip[] | undefined,
+  fps: number,
+): Map<number, [number, number, number]> {
+  const out = new Map<number, [number, number, number]>();
+  if (!audioClips || audioClips.length === 0) return out;
+  const rankReviewLayouts = layout.filter((l) => l.block.kind === "rank-review");
+  for (const l of rankReviewLayouts) {
+    const block = l.block as Extract<SceneBlock, { kind: "rank-review" }> & {
+      durationSec: number;
+    };
+    const rank = block.item.rank;
+    const reviewClips = audioClips
+      .filter((c) => c.kind === "review" && c.rank === rank)
+      .sort((a, b) => (a.reviewIndex ?? 0) - (b.reviewIndex ?? 0));
+    if (reviewClips.length !== 3) continue;
+    const delays = reviewClips.map((c) => {
+      const offsetSec = Math.max(0, c.startSec - l.sceneStartSec);
+      return Math.max(0, Math.round(offsetSec * fps));
+    }) as [number, number, number];
+    out.set(rank, delays);
+  }
+  return out;
+}
+
 export const RankingShort: React.FC<RankingShortProps> = ({
   opening,
   items,
@@ -833,6 +889,7 @@ export const RankingShort: React.FC<RankingShortProps> = ({
   hookSfxSrc,
   hookSfxVolume = 0.8,
   scenes,
+  audioClips,
 }) => {
   const { fps } = useVideoConfig();
   const blocks = buildSceneBlocks(items, scenes);
@@ -840,9 +897,10 @@ export const RankingShort: React.FC<RankingShortProps> = ({
   let cursor = 0;
   const layout = blocks.map((block) => {
     const startFrame = Math.round(cursor * fps);
+    const sceneStartSec = cursor;
     const durationFrames = Math.max(1, Math.round(block.durationSec * fps));
     cursor += block.durationSec;
-    return { block, startFrame, durationFrames };
+    return { block, startFrame, durationFrames, sceneStartSec };
   });
 
   // hookSfx は opening 冒頭で鳴らす
@@ -851,6 +909,10 @@ export const RankingShort: React.FC<RankingShortProps> = ({
   const rankIntroStarts = layout
     .filter((l) => l.block.kind === "rank-intro")
     .map((l) => l.startFrame);
+
+  // audioClips が与えられている場合、rank ごとの review クリップ 3 つから
+  // 「シーン開始からの delayFrames 配列」を作って RankReviewScene に渡す。
+  const reviewDelayByRank = computeReviewDelayByRank(layout, audioClips, fps);
 
   return (
     <AbsoluteFill style={{ backgroundColor: "#000" }}>
@@ -868,6 +930,7 @@ export const RankingShort: React.FC<RankingShortProps> = ({
             <RankReviewScene
               item={block.item}
               durationInFrames={durationFrames}
+              reviewDelayFrames={reviewDelayByRank.get(block.item.rank)}
             />
           ) : (
             <ClosingScene text={closing.text} />
