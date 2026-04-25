@@ -20,6 +20,7 @@ data/*/images/*
 data/*/captions/*
 data/*/videos/*
 data/*/uploads/*
+data/*/design-mockups/*
 data/sfx/*
 !data/*/scripts/.gitkeep
 !data/*/audio/.gitkeep
