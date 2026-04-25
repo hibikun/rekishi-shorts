@@ -62,6 +62,12 @@ export async function renderHistoryShort(plan: RenderPlan, outputPath: string): 
     ? stageAsset(openingSfxLocalPath, bundleDir, `opening-sfx${path.extname(openingSfxLocalPath)}`)
     : "";
 
+  // scene[2] 終端の男衆「オウ！」SFX。data/sfx/otokoshu.mp3 が存在すれば自動で乗せる。
+  const cheerSfxLocalPath = path.resolve(__dirname, "../../../data/sfx/otokoshu.mp3");
+  const cheerSfxSrc = fs.existsSync(cheerSfxLocalPath)
+    ? stageAsset(cheerSfxLocalPath, bundleDir, `cheer-sfx${path.extname(cheerSfxLocalPath)}`)
+    : "";
+
   const durationInFrames = Math.max(1, Math.ceil(plan.totalDurationSec * VIDEO_FPS));
 
   const inputProps = {
@@ -75,6 +81,7 @@ export async function renderHistoryShort(plan: RenderPlan, outputPath: string): 
     title: plan.script.title,
     hookSfxSrc,
     openingSfxSrc,
+    cheerSfxSrc,
   };
 
   const composition = await selectComposition({
