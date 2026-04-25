@@ -1,10 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
-import { channelDataPath } from "@rekishi/shared/channel";
+import { channelAssetsDir, channelDataPath } from "@rekishi/shared/channel";
 
 const JOB_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
 
 const IMAGE_EXTENSIONS = ["png", "webp", "jpg", "jpeg"] as const;
+const AUDIO_EXTENSIONS = ["mp3", "wav", "m4a", "ogg"] as const;
 
 export interface RankingJobPaths {
   jobId: string;
@@ -88,3 +89,54 @@ export function resolveRankingAssets(
 }
 
 export const IMAGE_EXTENSION_LIST = IMAGE_EXTENSIONS;
+export const AUDIO_EXTENSION_LIST = AUDIO_EXTENSIONS;
+
+export interface ResolvedBgm {
+  /** 検出された BGM ファイルの絶対パス */
+  path: string;
+  /** どこから来たか（ログ表示用） */
+  source: "cli-flag" | "job-override" | "channel-default";
+}
+
+/**
+ * 利用可能な最初の音声ファイルを返す（ディレクトリ配下を AUDIO_EXTENSIONS 順で走査）。
+ * 見つからなければ null。
+ */
+function findFirstAudio(dir: string): string | null {
+  if (!fs.existsSync(dir)) return null;
+  let entries: string[];
+  try {
+    entries = fs.readdirSync(dir);
+  } catch {
+    return null;
+  }
+  for (const ext of AUDIO_EXTENSIONS) {
+    const hit = entries.find((name) => name.toLowerCase().endsWith(`.${ext}`));
+    if (hit) return path.join(dir, hit);
+  }
+  return null;
+}
+
+/**
+ * BGM を解決する。優先順位:
+ *   1. `cliBgmPath` (--bgm <path> 明示指定)
+ *   2. ジョブ assets/bgm/ 配下の最初の音声ファイル（このジョブだけ別 BGM したい時）
+ *   3. `packages/channels/<channel>/assets/bgm/` 配下の最初の音声ファイル（チャンネル既定）
+ *   4. null
+ */
+export function resolveBgmPath(
+  jobPaths: RankingJobPaths | null,
+  channel: string,
+  cliBgmPath: string | null,
+): ResolvedBgm | null {
+  if (cliBgmPath) {
+    return { path: cliBgmPath, source: "cli-flag" };
+  }
+  if (jobPaths) {
+    const jobBgm = findFirstAudio(path.join(jobPaths.assetsDir, "bgm"));
+    if (jobBgm) return { path: jobBgm, source: "job-override" };
+  }
+  const channelBgm = findFirstAudio(channelAssetsDir("bgm", channel));
+  if (channelBgm) return { path: channelBgm, source: "channel-default" };
+  return null;
+}
