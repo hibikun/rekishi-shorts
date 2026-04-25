@@ -9,6 +9,7 @@ import {
   useCurrentFrame,
   useVideoConfig,
 } from "remotion";
+import type { Scene } from "@rekishi/shared";
 import { NarrationAudio } from "../components/NarrationAudio";
 
 // ========================================================================
@@ -47,6 +48,13 @@ export interface RankingShortProps {
   /** オープニングのフック直後に鳴らす SFX（和太鼓 "ドン！" 等） */
   hookSfxSrc?: string;
   hookSfxVolume?: number;
+  /**
+   * scene-aligner で実音声に合わせて durationSec を上書き済みの Scene 列。
+   * 与えられた場合、各シーンの durationSec を順に SceneBlock に流し込みスライド進行を
+   * TTS と同期させる。3ピックでは長さ 8 を期待 (opening + intro/review×3 + closing)。
+   * 未指定 / 長さ不一致時は固定尺フォールバックで動作（後方互換）。
+   */
+  scenes?: Scene[];
 }
 
 // ========================================================================
@@ -713,9 +721,70 @@ type SceneBlock =
   | { kind: "rank-review"; item: RankingItem }
   | { kind: "closing" };
 
-function buildSceneBlocks(items: [RankingItem, RankingItem, RankingItem]): Array<
-  SceneBlock & { durationSec: number }
-> {
+/**
+ * scene index から SceneBlock の kind と対応 rank を導く。
+ * 期待するレイアウト (itemCount=3): [opening, r3-intro, r3-review, r2-intro, r2-review, r1-intro, r1-review, closing]
+ *   length = itemCount * 2 + 2
+ * - i === 0           → opening
+ * - i === length-1    → closing
+ * - 中間: 偶数 index → rank-intro / 奇数 index → rank-review
+ *   対応 rank = itemCount - floor((i - 1) / 2)
+ *
+ * 範囲外なら null を返す（呼び出し側で固定尺フォールバック）。
+ */
+function blockKindForIndex(
+  i: number,
+  itemCount: number,
+):
+  | { kind: "opening" }
+  | { kind: "closing" }
+  | { kind: "rank-intro"; rank: number }
+  | { kind: "rank-review"; rank: number }
+  | null {
+  const expectedLength = itemCount * 2 + 2;
+  if (i < 0 || i >= expectedLength) return null;
+  if (i === 0) return { kind: "opening" };
+  if (i === expectedLength - 1) return { kind: "closing" };
+  const middleIdx = i - 1;
+  const rank = itemCount - Math.floor(middleIdx / 2);
+  if (rank < 1 || rank > itemCount) return null;
+  if (middleIdx % 2 === 0) return { kind: "rank-intro", rank };
+  return { kind: "rank-review", rank };
+}
+
+/**
+ * scenes が与えられている場合は実発話の durationSec で SceneBlock を組み立てる。
+ * 失敗（scenes 未指定 / 長さ不一致 / kind 解決不能 / rank 不在）した場合は null を返し、
+ * 呼び出し側で固定尺フォールバックを使う。
+ */
+function buildSceneBlocksFromScenes(
+  items: [RankingItem, RankingItem, RankingItem],
+  scenes: Scene[],
+): Array<SceneBlock & { durationSec: number }> | null {
+  const expectedLength = items.length * 2 + 2;
+  if (scenes.length !== expectedLength) return null;
+
+  const blocks: Array<SceneBlock & { durationSec: number }> = [];
+  for (let i = 0; i < scenes.length; i++) {
+    const meta = blockKindForIndex(i, items.length);
+    if (!meta) return null;
+    const durationSec = scenes[i]!.durationSec;
+    if (meta.kind === "opening") {
+      blocks.push({ kind: "opening", durationSec });
+    } else if (meta.kind === "closing") {
+      blocks.push({ kind: "closing", durationSec });
+    } else {
+      const item = items.find((it) => it.rank === meta.rank);
+      if (!item) return null;
+      blocks.push({ kind: meta.kind, item, durationSec });
+    }
+  }
+  return blocks;
+}
+
+function buildSceneBlocksFixed(
+  items: [RankingItem, RankingItem, RankingItem],
+): Array<SceneBlock & { durationSec: number }> {
   const blocks: Array<SceneBlock & { durationSec: number }> = [];
   blocks.push({ kind: "opening", durationSec: 3.0 });
 
@@ -735,6 +804,22 @@ function buildSceneBlocks(items: [RankingItem, RankingItem, RankingItem]): Array
   return blocks;
 }
 
+function buildSceneBlocks(
+  items: [RankingItem, RankingItem, RankingItem],
+  scenes?: Scene[],
+): Array<SceneBlock & { durationSec: number }> {
+  if (scenes && scenes.length > 0) {
+    const fromScenes = buildSceneBlocksFromScenes(items, scenes);
+    if (fromScenes) return fromScenes;
+    // 不整合時は固定尺で出してログを残す（コンポは Remotion 内で動くので console.warn）
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[RankingShort] scenes length=${scenes.length} did not match expected ${items.length * 2 + 2}. Falling back to fixed durations.`,
+    );
+  }
+  return buildSceneBlocksFixed(items);
+}
+
 export const RankingShort: React.FC<RankingShortProps> = ({
   opening,
   items,
@@ -747,9 +832,10 @@ export const RankingShort: React.FC<RankingShortProps> = ({
   rankSfxVolume = 0.7,
   hookSfxSrc,
   hookSfxVolume = 0.8,
+  scenes,
 }) => {
   const { fps } = useVideoConfig();
-  const blocks = buildSceneBlocks(items);
+  const blocks = buildSceneBlocks(items, scenes);
 
   let cursor = 0;
   const layout = blocks.map((block) => {

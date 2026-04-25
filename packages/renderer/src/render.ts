@@ -175,6 +175,7 @@ export async function renderRankingShort(
     bgmSrc,
     rankSfxSrc,
     hookSfxSrc,
+    scenes: plan.scenes,
   };
 
   const composition = await selectComposition({

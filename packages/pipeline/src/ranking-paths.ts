@@ -14,6 +14,8 @@ export interface RankingJobPaths {
   planJson: string;
   assetsDir: string;
   narrationWav: string;
+  scenePlanJson: string;
+  wordsJson: string;
 }
 
 export function validateJobId(jobId: string): void {
@@ -35,6 +37,8 @@ export function resolveRankingJobPaths(jobId: string): RankingJobPaths {
     planJson: path.join(root, "ranking-plan.json"),
     assetsDir: path.join(root, "assets"),
     narrationWav: path.join(root, "narration.wav"),
+    scenePlanJson: path.join(root, "scene-plan.json"),
+    wordsJson: path.join(root, "words.json"),
   };
 }
 

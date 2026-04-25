@@ -384,6 +384,10 @@ program
   .option("--hook-sfx <path>", "オープニング冒頭SFX")
   .option("--id <string>", "ranking-plan.id。省略時は ranking-<timestamp> or jobId")
   .option("--out <path>", "ranking-plan.json の書き出し先")
+  .option(
+    "--skip-align",
+    "scene-planner / aligner を実行せず、固定尺フォールバックで ranking-plan を出す（デバッグ用）",
+  )
   .addOption(channelOption())
   .action(async (opts) => {
     const { buildRankingPlan, readScriptFile, writeRankingPlan } = await import(
@@ -470,6 +474,102 @@ program
     }
 
     const script = readScriptFile(scriptPath);
+
+    // ===== TTS↔スライド整合パイプライン =====
+    // narration があれば scene-planner → ASR → scene-aligner を回し、
+    // 各シーンの実発話 durationSec を ranking-plan に埋め込む。
+    // 未配置 / --skip-align の場合は scenes 抜き（コンポ側で固定尺フォールバック）。
+    let alignedScenes: import("@rekishi/shared").Scene[] | undefined;
+    if (narrationPath && !opts.skipAlign) {
+      if (!fs.existsSync(narrationPath)) {
+        throw new Error(`narration ファイルが見当たりません: ${narrationPath}`);
+      }
+      const { planScenes } = await import("./scene-planner.js");
+      const { alignCaptions } = await import("./asr-aligner.js");
+      const { alignScenesToAudio } = await import("./scene-aligner.js");
+
+      console.log(chalk.bold("\n🎬 [1/3] Gemini で 8シーン分割中..."));
+      const sceneResult = await planScenes(script);
+      const scenePlan = sceneResult.plan;
+      console.log(
+        chalk.dim(
+          `   ${scenePlan.scenes.length}シーン / in=${sceneResult.usage.inputTokens}tok out=${sceneResult.usage.outputTokens}tok`,
+        ),
+      );
+      if (scenePlan.scenes.length !== 8) {
+        console.log(
+          chalk.yellow(
+            `   ⚠ 期待するシーン数(8)と異なります。コンポ側でフォールバックする可能性があります。`,
+          ),
+        );
+      }
+
+      console.log(
+        chalk.bold("\n📝 [2/3] Whisper + gpt-4o-mini-transcribe で字幕タイムスタンプ取得中..."),
+      );
+      const alignResult = await alignCaptions(narrationPath, {
+        scriptText: script.narration,
+        readings: script.readings,
+        keyTerms: script.keyTerms,
+      });
+      const { words, totalDurationSec, brokenByGuard, qualitySignals } = alignResult;
+      if (brokenByGuard) {
+        console.log(
+          chalk.yellow(`   ⚠ whisper-1 が破綻検出: ${qualitySignals.reasons.join(", ")}`),
+        );
+        console.log(chalk.yellow(`     → script.narration を線形配分した words に置換しました`));
+      }
+      console.log(chalk.dim(`   ${words.length}単語 / 実測${totalDurationSec.toFixed(2)}秒`));
+
+      console.log(chalk.bold("\n🪡 [3/3] scene-aligner でシーン境界を実音声に合わせる..."));
+      const alignment = alignScenesToAudio(scenePlan.scenes, words, totalDurationSec, {
+        audioPath: narrationPath,
+        brokenAsr: brokenByGuard,
+      });
+      if (alignment.vadUsed) {
+        console.log(
+          chalk.cyan(
+            `   🎯 VAD-based scene boundaries: ${alignment.matchedByVad}/${scenePlan.scenes.length - 1} 境界が無音マッチ`,
+          ),
+        );
+      } else if (alignment.fallbackUsed) {
+        console.log(
+          chalk.yellow(`   ⚠ scene alignment fallback used — 実発話とシーン境界がズレる可能性あり`),
+        );
+      }
+      alignedScenes = alignment.scenes;
+
+      // jobId 配下に scene-plan.json と words.json を保存（再アライメント用）
+      if (opts.jobId) {
+        const { resolveRankingJobPaths } = await import("./ranking-paths.js");
+        const paths = resolveRankingJobPaths(opts.jobId);
+        fs.mkdirSync(paths.root, { recursive: true });
+        fs.writeFileSync(paths.scenePlanJson, JSON.stringify(scenePlan, null, 2));
+        fs.writeFileSync(
+          paths.wordsJson,
+          JSON.stringify(
+            { words, totalDurationSec, brokenByGuard, qualitySignals },
+            null,
+            2,
+          ),
+        );
+        console.log(chalk.dim(`   📄 scene-plan: ${paths.scenePlanJson}`));
+        console.log(chalk.dim(`   📄 words    : ${paths.wordsJson}`));
+      }
+    } else if (opts.skipAlign) {
+      console.log(
+        chalk.yellow(
+          "\n⚠ --skip-align 指定: scene-aligner をスキップ（固定尺フォールバックで再生されます）",
+        ),
+      );
+    } else {
+      console.log(
+        chalk.yellow(
+          "\n⚠ narration 未配置: scene-aligner をスキップ（固定尺フォールバックで再生されます）",
+        ),
+      );
+    }
+
     const plan = buildRankingPlan({
       script,
       backgroundImagePath: resolveCliPath(backgroundPath),
@@ -483,6 +583,7 @@ program
       rankSfxPath: opts.rankSfx ? resolveCliPath(opts.rankSfx) : undefined,
       hookSfxPath: opts.hookSfx ? resolveCliPath(opts.hookSfx) : undefined,
       id: planId,
+      scenes: alignedScenes,
     });
 
     const finalOut =
