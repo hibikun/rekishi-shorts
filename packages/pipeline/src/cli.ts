@@ -497,10 +497,8 @@ program
         ),
       );
       if (scenePlan.scenes.length !== 8) {
-        console.log(
-          chalk.yellow(
-            `   ⚠ 期待するシーン数(8)と異なります。コンポ側でフォールバックする可能性があります。`,
-          ),
+        throw new Error(
+          `scene-planner returned ${scenePlan.scenes.length} scenes; ranking three-pick requires exactly 8 scenes.`,
         );
       }
 
@@ -535,6 +533,11 @@ program
       } else if (alignment.fallbackUsed) {
         console.log(
           chalk.yellow(`   ⚠ scene alignment fallback used — 実発話とシーン境界がズレる可能性あり`),
+        );
+      }
+      if (alignment.scenes.length !== 8) {
+        throw new Error(
+          `scene-aligner returned ${alignment.scenes.length} scenes; ranking three-pick requires exactly 8 scenes.`,
         );
       }
       alignedScenes = alignment.scenes;
