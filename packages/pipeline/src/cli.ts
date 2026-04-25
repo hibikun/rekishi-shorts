@@ -4,7 +4,7 @@ import chalk from "chalk";
 import path from "node:path";
 import fs from "node:fs";
 import { RankingPlanSchema, TopicSchema } from "@rekishi/shared";
-import { DEFAULT_CHANNEL, setChannel } from "@rekishi/shared/channel";
+import { DEFAULT_CHANNEL, channelSubjectDefault, setChannel } from "@rekishi/shared/channel";
 import {
   generatePlan,
   getJobOutputDir,
@@ -13,9 +13,19 @@ import {
   runRealignStage,
   runResearchStage,
 } from "./orchestrator.js";
+import { config } from "./config.js";
 
 function channelOption(): Option {
   return new Option("--channel <id>", "チャンネルID (rekishi | kosei ...)").default(DEFAULT_CHANNEL);
+}
+
+/**
+ * CLI に渡された相対パスを repo root 基準で解決する。
+ * pnpm monorepo では cwd が `packages/pipeline/` になるため、絶対パス以外は
+ * 必ず repo root 起点で解釈し、cwd 依存の混乱を避ける。
+ */
+function resolveCliPath(p: string): string {
+  return path.isAbsolute(p) ? p : path.resolve(config.paths.repoRoot, p);
 }
 
 function buildOutputFilename(title: string, jobId: string): string {
@@ -39,7 +49,7 @@ program
   .description("Gemini + Google Search でトピックのリサーチ資料（research.md）を生成。draft の前段")
   .requiredOption("--topic <title>", "トピック名（例: 生類憐みの令）")
   .option("--era <era>", "時代（例: 江戸）")
-  .option("--subject <subject>", "科目（日本史 | 世界史）", "日本史")
+  .option("--subject <subject>", "科目（省略時は channel ごとのデフォルト）")
   .option("--target <target>", "対象試験（共通テスト | 二次 | 汎用）", "汎用")
   .option("--format <format>", "台本フォーマット（single | three-pick）", "single")
   .addOption(channelOption())
@@ -47,7 +57,7 @@ program
     const topic = TopicSchema.parse({
       title: opts.topic,
       era: opts.era,
-      subject: opts.subject,
+      subject: opts.subject ?? channelSubjectDefault(),
       target: opts.target,
       format: opts.format,
     });
@@ -68,7 +78,7 @@ program
   .description("台本のみ生成して draft.md を出力（人間レビュー用）")
   .requiredOption("--topic <title>", "トピック名（例: ペリー来航）")
   .option("--era <era>", "時代（例: 幕末）")
-  .option("--subject <subject>", "科目（日本史 | 世界史）", "日本史")
+  .option("--subject <subject>", "科目（省略時は channel ごとのデフォルト）")
   .option("--target <target>", "対象試験（共通テスト | 二次 | 汎用）", "汎用")
   .option("--format <format>", "台本フォーマット（single | three-pick）", "single")
   .option("--job <jobId>", "既存の research ジョブを引き継ぐ（research.md をプロンプトに注入）")
@@ -77,7 +87,7 @@ program
     const topic = TopicSchema.parse({
       title: opts.topic,
       era: opts.era,
-      subject: opts.subject,
+      subject: opts.subject ?? channelSubjectDefault(),
       target: opts.target,
       format: opts.format,
     });
@@ -128,7 +138,7 @@ program
   .description("台本生成からレンダリングまで一気通貫で実行（レビューなし）")
   .requiredOption("--topic <title>", "トピック名（例: ペリー来航）")
   .option("--era <era>", "時代（例: 幕末）")
-  .option("--subject <subject>", "科目（日本史 | 世界史）", "日本史")
+  .option("--subject <subject>", "科目（省略時は channel ごとのデフォルト）")
   .option("--target <target>", "対象試験（共通テスト | 二次 | 汎用）", "汎用")
   .option("--format <format>", "台本フォーマット（single | three-pick）", "single")
   .option("--no-generate-images", "Nano Banana 画像生成をスキップし Wikimedia のみ")
@@ -138,7 +148,7 @@ program
     const topic = TopicSchema.parse({
       title: opts.topic,
       era: opts.era,
-      subject: opts.subject,
+      subject: opts.subject ?? channelSubjectDefault(),
       target: opts.target,
       format: opts.format,
     });
@@ -228,28 +238,131 @@ program
   .description("台本生成のみ実行（API試運転用）")
   .requiredOption("--topic <title>")
   .option("--era <era>")
-  .option("--subject <subject>", "", "日本史")
+  .option("--subject <subject>", "科目（省略時は channel ごとのデフォルト）")
   .option("--target <target>", "", "汎用")
   .option("--format <format>", "", "single")
   .option("--out <path>", "script.json の書き出し先。省略時は stdout")
+  .option(
+    "--job-id <id>",
+    "ジョブID。指定すると data/<channel>/scripts/<id>/script.json に保存し NEXT_STEPS.md も出力",
+  )
   .addOption(channelOption())
   .action(async (opts) => {
     const { generateScript } = await import("./script-generator.js");
     const topic = TopicSchema.parse({
       title: opts.topic,
       era: opts.era,
-      subject: opts.subject,
+      subject: opts.subject ?? channelSubjectDefault(),
       target: opts.target,
       format: opts.format,
     });
     const { script } = await generateScript(topic);
     const json = JSON.stringify(script, null, 2);
+
+    if (opts.jobId) {
+      const { resolveRankingJobPaths } = await import("./ranking-paths.js");
+      const paths = resolveRankingJobPaths(opts.jobId);
+      fs.mkdirSync(paths.root, { recursive: true });
+      fs.mkdirSync(paths.assetsDir, { recursive: true });
+      fs.writeFileSync(paths.scriptJson, json);
+      console.log(chalk.green(`✅ script 保存: ${paths.scriptJson}`));
+
+      if (topic.format === "three-pick" && opts.channel === "ranking") {
+        const { buildNextStepsMarkdown, buildStdoutGuideLines } = await import(
+          "./ranking-next-steps.js"
+        );
+        const assetsDirRelative = path.relative(
+          config.paths.repoRoot,
+          paths.assetsDir,
+        );
+        const md = buildNextStepsMarkdown({
+          script,
+          jobId: opts.jobId,
+          channel: opts.channel,
+          assetsDirRelative,
+        });
+        fs.writeFileSync(paths.nextStepsMd, md);
+        console.log(chalk.green(`📝 NEXT_STEPS 保存: ${paths.nextStepsMd}`));
+        console.log();
+        console.log(chalk.bold("次の手順:"));
+        for (const line of buildStdoutGuideLines({
+          script,
+          jobId: opts.jobId,
+          channel: opts.channel,
+          assetsDirAbsolute: paths.assetsDir,
+          nextStepsPath: paths.nextStepsMd,
+        })) {
+          console.log(line);
+        }
+      }
+      return;
+    }
+
     if (opts.out) {
-      fs.mkdirSync(path.dirname(opts.out), { recursive: true });
-      fs.writeFileSync(opts.out, json);
-      console.log(chalk.green(`✅ script 保存: ${opts.out}`));
+      const outPath = resolveCliPath(opts.out);
+      fs.mkdirSync(path.dirname(outPath), { recursive: true });
+      fs.writeFileSync(outPath, json);
+      console.log(chalk.green(`✅ script 保存: ${outPath}`));
     } else {
       console.log(json);
+    }
+  });
+
+program
+  .command("tts-only")
+  .description(
+    "script.json から Gemini TTS でナレーション音声を合成（ranking 手動フロー用）",
+  )
+  .option("--job-id <id>", "ジョブID。指定すると script.json を読み narration.wav を出力")
+  .option("--script <path>", "script.json のパス（--job-id 指定時は省略可）")
+  .option("--out <path>", "narration の書き出し先（省略時は <job>/narration.wav or stdout エラー）")
+  .addOption(channelOption())
+  .action(async (opts) => {
+    const { synthesizeNarration } = await import("./tts-generator.js");
+    const { FURIGANA_MAP } = await import("./furigana.js");
+    const { readScriptFile } = await import("./ranking-plan-builder.js");
+
+    let scriptPath: string | undefined = opts.script ? resolveCliPath(opts.script) : undefined;
+    let outPath: string | undefined = opts.out ? resolveCliPath(opts.out) : undefined;
+
+    if (opts.jobId) {
+      const { resolveRankingJobPaths } = await import("./ranking-paths.js");
+      const paths = resolveRankingJobPaths(opts.jobId);
+      scriptPath = scriptPath ?? paths.scriptJson;
+      outPath = outPath ?? paths.narrationWav;
+    }
+
+    if (!scriptPath) throw new Error("--script または --job-id のいずれかが必要です");
+    if (!outPath) throw new Error("--out または --job-id のいずれかが必要です");
+    if (!fs.existsSync(scriptPath)) {
+      throw new Error(`script.json が見当たりません: ${scriptPath}`);
+    }
+
+    const script = readScriptFile(scriptPath);
+    console.log(chalk.bold(`\n🎙️  Gemini TTS でナレーション合成中...`));
+    console.log(chalk.dim(`   script: ${scriptPath}`));
+    console.log(chalk.dim(`   text  : ${script.narration.length}文字`));
+
+    const tts = await synthesizeNarration(script.narration, outPath, {
+      readings: script.readings,
+      furigana: FURIGANA_MAP,
+      hook: script.hook,
+    });
+
+    console.log(chalk.green(`\n✅ narration 保存: ${tts.path}`));
+    console.log(
+      chalk.dim(
+        `   ${tts.characters}文字 / 合成${tts.approxDurationSec.toFixed(2)}秒 / model=${tts.usage.model}`,
+      ),
+    );
+
+    if (opts.jobId) {
+      console.log(chalk.bold("\n次のステップ:"));
+      console.log(
+        `  ${chalk.cyan(
+          `pnpm --filter @rekishi/pipeline exec tsx src/cli.ts build-ranking-plan --channel ${opts.channel} --job-id ${opts.jobId} --narration ${tts.path}`,
+        )}`,
+      );
     }
   });
 
@@ -258,73 +371,158 @@ program
   .description(
     "script.json と手動アセットから ranking-plan.json を組み立てる（Step B 手動フロー用）",
   )
-  .requiredOption("--script <path>", "script-only で生成した script.json")
-  .requiredOption("--background <path>", "ブラー背景画像")
-  .requiredOption(
+  .option("--job-id <id>", "ジョブID。指定すると script.json と assets/ を conventional パスから解決")
+  .option("--script <path>", "script-only で生成した script.json（--job-id 指定時は省略可）")
+  .option("--background <path>", "ブラー背景画像（--job-id 指定時は省略可）")
+  .option(
     "--images <csv>",
-    "商品画像 3枚のパスをカンマ区切りで rank1,rank2,rank3 の順に指定",
+    "商品画像 3枚のパスをカンマ区切りで rank1,rank2,rank3 の順に指定（--job-id 指定時は省略可）",
   )
   .option("--narration <path>", "ナレーション音声（mp3/wav）")
   .option("--bgm <path>", "BGM（mp3）")
   .option("--rank-sfx <path>", "ランク登場SFX")
   .option("--hook-sfx <path>", "オープニング冒頭SFX")
-  .option("--id <string>", "ranking-plan.id。省略時は ranking-<timestamp>")
+  .option("--id <string>", "ranking-plan.id。省略時は ranking-<timestamp> or jobId")
   .option("--out <path>", "ranking-plan.json の書き出し先")
   .addOption(channelOption())
   .action(async (opts) => {
     const { buildRankingPlan, readScriptFile, writeRankingPlan } = await import(
       "./ranking-plan-builder.js"
     );
-    const images = (opts.images as string)
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
-    if (images.length !== 3) {
-      throw new Error(
-        `--images は rank1,rank2,rank3 の順で 3件必要です（got ${images.length}）`,
+
+    let scriptPath: string | undefined = opts.script ? resolveCliPath(opts.script) : undefined;
+    let backgroundPath: string | undefined = opts.background
+      ? resolveCliPath(opts.background)
+      : undefined;
+    let imagePaths: [string, string, string] | undefined;
+    let outPath: string | undefined = opts.out ? resolveCliPath(opts.out) : undefined;
+    let planId: string | undefined = opts.id;
+    let narrationPath: string | undefined = opts.narration
+      ? resolveCliPath(opts.narration)
+      : undefined;
+
+    if (opts.jobId) {
+      const { resolveRankingJobPaths, resolveRankingAssets } = await import(
+        "./ranking-paths.js"
       );
+      const paths = resolveRankingJobPaths(opts.jobId);
+      scriptPath = scriptPath ?? paths.scriptJson;
+      outPath = outPath ?? paths.planJson;
+      planId = planId ?? opts.jobId;
+      if (!narrationPath && fs.existsSync(paths.narrationWav)) {
+        narrationPath = paths.narrationWav;
+      }
+
+      if (!opts.background || !opts.images) {
+        if (!fs.existsSync(paths.assetsDir)) {
+          throw new Error(
+            `アセットディレクトリが見当たりません: ${paths.assetsDir}\n` +
+              `先に script-only --job-id ${opts.jobId} を実行し、画像を配置してください。`,
+          );
+        }
+        const { itemImages, backgroundImage, missing } = resolveRankingAssets(
+          paths.assetsDir,
+        );
+        if (missing.length > 0) {
+          const script = fs.existsSync(paths.scriptJson)
+            ? readScriptFile(paths.scriptJson)
+            : null;
+          const items = script?.items ?? [];
+          console.error(chalk.red(`\n❌ 画像ファイルが見つかりません:`));
+          for (const name of missing) {
+            const m = name.match(/^item-(\d)$/);
+            const rank = m ? Number(m[1]) : null;
+            const it = rank ? items.find((x) => x.rank === rank) : null;
+            const ref = it?.officialUrl || it?.affiliateUrl || it?.searchKeywords;
+            console.error(
+              chalk.red(`  - ${name}.(png|webp|jpg|jpeg) が ${paths.assetsDir}/ に不在`),
+            );
+            if (it?.name) console.error(chalk.dim(`      商品: ${it.name}`));
+            if (ref) console.error(chalk.dim(`      参考: ${ref}`));
+          }
+          console.error(chalk.yellow(`\n→ NEXT_STEPS.md を参照: ${paths.nextStepsMd}`));
+          process.exit(1);
+        }
+        imagePaths = itemImages;
+        backgroundPath = backgroundPath ?? backgroundImage;
+      }
     }
-    const script = readScriptFile(opts.script);
+
+    if (!scriptPath) throw new Error("--script または --job-id のいずれかが必要です");
+    if (!backgroundPath) throw new Error("--background または --job-id のいずれかが必要です");
+
+    if (!imagePaths) {
+      if (!opts.images) throw new Error("--images または --job-id のいずれかが必要です");
+      const parsed = (opts.images as string)
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      if (parsed.length !== 3) {
+        throw new Error(
+          `--images は rank1,rank2,rank3 の順で 3件必要です（got ${parsed.length}）`,
+        );
+      }
+      imagePaths = [
+        resolveCliPath(parsed[0]!),
+        resolveCliPath(parsed[1]!),
+        resolveCliPath(parsed[2]!),
+      ];
+    }
+
+    const script = readScriptFile(scriptPath);
     const plan = buildRankingPlan({
       script,
-      backgroundImagePath: path.resolve(opts.background),
+      backgroundImagePath: resolveCliPath(backgroundPath),
       itemImagePaths: [
-        path.resolve(images[0]!),
-        path.resolve(images[1]!),
-        path.resolve(images[2]!),
+        resolveCliPath(imagePaths[0]),
+        resolveCliPath(imagePaths[1]),
+        resolveCliPath(imagePaths[2]),
       ],
-      audioPath: opts.narration ? path.resolve(opts.narration) : undefined,
-      bgmPath: opts.bgm ? path.resolve(opts.bgm) : undefined,
-      rankSfxPath: opts.rankSfx ? path.resolve(opts.rankSfx) : undefined,
-      hookSfxPath: opts.hookSfx ? path.resolve(opts.hookSfx) : undefined,
-      id: opts.id,
+      audioPath: narrationPath,
+      bgmPath: opts.bgm ? resolveCliPath(opts.bgm) : undefined,
+      rankSfxPath: opts.rankSfx ? resolveCliPath(opts.rankSfx) : undefined,
+      hookSfxPath: opts.hookSfx ? resolveCliPath(opts.hookSfx) : undefined,
+      id: planId,
     });
-    const outPath =
-      opts.out ??
+
+    const finalOut =
+      outPath ??
       path.join(
         (await import("./config.js")).dataPath("ranking-plans"),
         `${plan.id}.json`,
       );
-    writeRankingPlan(plan, outPath);
-    console.log(chalk.green(`✅ ranking-plan 保存: ${outPath}`));
+    writeRankingPlan(plan, finalOut);
+    console.log(chalk.green(`✅ ranking-plan 保存: ${finalOut}`));
     console.log(chalk.dim(`   id=${plan.id} / duration=${plan.totalDurationSec}s`));
     console.log(chalk.bold("\n次のステップ:"));
-    console.log(
-      `  ${chalk.cyan(`pnpm --filter @rekishi/pipeline exec tsx src/cli.ts render-ranking --plan ${outPath}`)}`,
-    );
+    const renderCmd = opts.jobId
+      ? `pnpm --filter @rekishi/pipeline exec tsx src/cli.ts render-ranking --channel ${opts.channel} --job-id ${opts.jobId}`
+      : `pnpm --filter @rekishi/pipeline exec tsx src/cli.ts render-ranking --plan ${finalOut}`;
+    console.log(`  ${chalk.cyan(renderCmd)}`);
   });
 
 program
   .command("render-ranking")
   .description("既存の ranking-plan.json を読み込んで RankingShort をレンダリング")
-  .requiredOption("--plan <path>", "ranking-plan.json のファイルパス")
+  .option("--plan <path>", "ranking-plan.json のファイルパス")
+  .option("--job-id <id>", "ジョブID。data/<channel>/scripts/<id>/ranking-plan.json を読む")
   .option("--out <path>", "出力 mp4 のパス", "")
+  .addOption(channelOption())
   .action(async (opts) => {
-    const planRaw = JSON.parse(fs.readFileSync(opts.plan, "utf-8"));
+    let planPath: string | undefined = opts.plan ? resolveCliPath(opts.plan) : undefined;
+    if (!planPath && opts.jobId) {
+      const { resolveRankingJobPaths } = await import("./ranking-paths.js");
+      planPath = resolveRankingJobPaths(opts.jobId).planJson;
+    }
+    if (!planPath) throw new Error("--plan または --job-id のいずれかが必要です");
+    if (!fs.existsSync(planPath)) {
+      throw new Error(`ranking-plan.json が見当たりません: ${planPath}`);
+    }
+    const planRaw = JSON.parse(fs.readFileSync(planPath, "utf-8"));
     const plan = RankingPlanSchema.parse(planRaw);
-    const outputPath =
-      opts.out ||
-      path.join(getJobOutputDir(), `ranking-${plan.id}.mp4`);
+    const outputPath = opts.out
+      ? resolveCliPath(opts.out)
+      : path.join(getJobOutputDir(), `ranking-${plan.id}.mp4`);
     const { renderRankingShort } = await import("@rekishi/renderer");
     console.log(chalk.bold(`\n🎥 RankingShort をレンダリング中...`));
     await renderRankingShort(plan, outputPath);

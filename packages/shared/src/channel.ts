@@ -7,6 +7,18 @@ const REPO_ROOT = path.resolve(__dirname, "../../../");
 
 export const DEFAULT_CHANNEL = "rekishi";
 
+const CHANNEL_SUBJECT_DEFAULTS: Record<string, string> = {
+  rekishi: "日本史",
+  kosei: "生物",
+  ranking: "ガジェット",
+};
+
+const FALLBACK_SUBJECT = "日本史";
+
+export function channelSubjectDefault(channel: string = currentChannel): string {
+  return CHANNEL_SUBJECT_DEFAULTS[channel] ?? FALLBACK_SUBJECT;
+}
+
 let currentChannel: string = DEFAULT_CHANNEL;
 
 export function setChannel(id: string): void {

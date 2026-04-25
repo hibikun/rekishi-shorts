@@ -99,13 +99,17 @@
     "想像より薄くて邪魔にならない",
     "外出時の安心感が段違い"
   ],
-  "affiliateUrl": "https://www.amazon.co.jp/dp/..."
+  "affiliateUrl": "https://www.amazon.co.jp/dp/...",
+  "officialUrl": "https://www.ankerjapan.com/products/...",
+  "searchKeywords": "Anker MagGo Battery 10000 公式"
 }
 ```
 
 - `reviews` は**3個固定**、各 **30字以内推奨**
 - `affiliateUrl` はリサーチ段階で決まっていなければ空文字でOK（後から概要欄で追記）
 - `brand` は Anker のようにテロップで強調表示する対象。商品名全体（name）とは別管理
+- `officialUrl` はメーカー公式/代理店ページなど**商品画像を取得しやすいURL**を入れる。リサーチ資料の「公式URL」から採用可
+- `searchKeywords` は URL が無いときに**人間が商品画像を探すための検索ワード**。「<ブランド> <型番/製品名> 公式」が基本形
 
 ## リサーチ資料（事実ベースの一次情報。優先して採用すること）
 
@@ -137,7 +141,7 @@
   ],
   "estimatedDurationSec": 40,
   "items": [
-    { "rank": 3, "name": "...", "category": "...", "brand": "...", "priceRangeJpy": "...", "summary": "...", "reviews": ["...", "...", "..."], "affiliateUrl": "" },
+    { "rank": 3, "name": "...", "category": "...", "brand": "...", "priceRangeJpy": "...", "summary": "...", "reviews": ["...", "...", "..."], "affiliateUrl": "", "officialUrl": "", "searchKeywords": "" },
     { "rank": 2, "...": "..." },
     { "rank": 1, "...": "..." }
   ]
