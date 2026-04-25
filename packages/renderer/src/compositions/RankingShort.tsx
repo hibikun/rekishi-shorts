@@ -22,6 +22,7 @@ export interface RankingItem {
   category: string;
   productImagePath: string;
   reviews: [string, string, string];
+  productName?: string;
 }
 
 export interface RankingOpening {
@@ -121,26 +122,6 @@ const MinchoText: React.FC<MinchoTextProps> = ({
       margin: 0,
       textAlign: "center",
       opacity,
-    }}
-  >
-    {text}
-  </div>
-);
-
-const SmallCapsLabel: React.FC<{ text: string; size?: number; color?: string }> = ({
-  text,
-  size = 24,
-  color = COLORS.ivoryDim,
-}) => (
-  <div
-    style={{
-      fontFamily: SANS_FONT,
-      fontWeight: 500,
-      fontSize: size,
-      color,
-      letterSpacing: "0.36em",
-      textTransform: "uppercase",
-      textAlign: "center",
     }}
   >
     {text}
@@ -460,17 +441,25 @@ const OpeningScene: React.FC<{ opening: RankingOpening }> = ({ opening }) => {
             letterSpacing="0.08em"
           />
         );
-      case "gold":
+      case "gold": {
+        // メインタイトル。改行マーカー "/" は builder で "\n" に置換済み。
+        // 行数に応じて fontSize を自動調整して、はみ出しと過剰な縮小の両方を避ける。
+        const lineCount = line.text.split("\n").length;
+        const goldFontSize =
+          lineCount >= 3 ? 150 : lineCount === 2 ? 200 : 240;
         return (
           <MinchoText
             key={idx}
             text={line.text}
-            fontSize={200}
+            fontSize={goldFontSize}
             color={COLORS.ivoryBright}
             weight={700}
             letterSpacing="0.08em"
+            lineHeight={1.05}
+            whiteSpace="pre-line"
           />
         );
+      }
       case "small-white":
         return (
           <MinchoText
@@ -498,15 +487,24 @@ const OpeningScene: React.FC<{ opening: RankingOpening }> = ({ opening }) => {
     }
   };
 
+  // icons[].src を持つアイコンだけを描画（emoji フォールバックは廃止、後方互換のため受け取るのみ）
+  const iconSources = (opening.icons ?? [])
+    .map((ic) => ic.src)
+    .filter((s): s is string => typeof s === "string" && s.length > 0)
+    .slice(0, 3);
+  const hasIcons = iconSources.length > 0;
+
   return (
     <SoftFadeIn>
       <AbsoluteFill
         style={{
           alignItems: "center",
-          justifyContent: "center",
+          // icons がある時はタイトルを上寄せにして下部に画像枠を確保する
+          justifyContent: hasIcons ? "flex-start" : "center",
           gap: 36,
           paddingLeft: 80,
           paddingRight: 80,
+          paddingTop: hasIcons ? 220 : 0,
         }}
       >
         {opening.lines.map(renderLine)}
@@ -514,17 +512,56 @@ const OpeningScene: React.FC<{ opening: RankingOpening }> = ({ opening }) => {
           <Ornament ruleWidth={220} />
         </div>
       </AbsoluteFill>
-      <div
-        style={{
-          position: "absolute",
-          bottom: 80,
-          left: 0,
-          right: 0,
-        }}
-      >
-        <SmallCapsLabel text="01 HOOK" size={22} />
-      </div>
+      {hasIcons && <OpeningIconsRow sources={iconSources} />}
     </SoftFadeIn>
+  );
+};
+
+/**
+ * オープニング下部に表示するキャラ/ロゴ画像群。最大 3 枚で中央寄せ横並び。
+ * 画像枚数で高さと gap を変えてバランスを取る。
+ *
+ * 背景が淡色の画像でも黒の動画背景に溶け込むよう、画像下端から下方向に
+ * 黒へフェードする mask を掛けている（顔・首・上半身は残し、肩より下は溶ける）。
+ */
+const OpeningIconsRow: React.FC<{ sources: string[] }> = ({ sources }) => {
+  const count = sources.length;
+  const heightByCount = count >= 3 ? 360 : count === 2 ? 440 : 540;
+  const gapByCount = count >= 3 ? 28 : count === 2 ? 48 : 0;
+  // 下端 60px の余白
+  return (
+    <div
+      style={{
+        position: "absolute",
+        left: 0,
+        right: 0,
+        bottom: 60,
+        display: "flex",
+        flexDirection: "row",
+        alignItems: "flex-end",
+        justifyContent: "center",
+        gap: gapByCount,
+        paddingLeft: 40,
+        paddingRight: 40,
+      }}
+    >
+      {sources.map((src, i) => (
+        <Img
+          key={`${src}-${i}`}
+          src={src}
+          style={{
+            height: heightByCount,
+            width: "auto",
+            objectFit: "contain",
+            // 下部 25% を黒に向かってフェードして動画背景に溶け込ませる
+            WebkitMaskImage:
+              "linear-gradient(to bottom, rgba(0,0,0,1) 0%, rgba(0,0,0,1) 75%, rgba(0,0,0,0) 100%)",
+            maskImage:
+              "linear-gradient(to bottom, rgba(0,0,0,1) 0%, rgba(0,0,0,1) 75%, rgba(0,0,0,0) 100%)",
+          }}
+        />
+      ))}
+    </div>
   );
 };
 
@@ -535,38 +572,39 @@ const OpeningScene: React.FC<{ opening: RankingOpening }> = ({ opening }) => {
 const RankIntroScene: React.FC<{
   item: RankingItem;
   durationInFrames: number;
-}> = ({ item, durationInFrames }) => (
-  <SoftFadeIn>
-    <AbsoluteFill
-      style={{
-        alignItems: "center",
-        justifyContent: "flex-start",
-        paddingTop: 180,
-        gap: 56,
-      }}
-    >
-      <RankMark rank={item.rank} size="large" />
-      <VeryGentleZoom durationInFrames={durationInFrames}>
-        <ProductCard src={item.productImagePath} width={760} height={960} />
-      </VeryGentleZoom>
-      <SmallCapsLabel
-        text={`${item.brand} / ${item.category}`}
-        size={28}
-        color={COLORS.ivoryDim}
-      />
-    </AbsoluteFill>
-    <div
-      style={{
-        position: "absolute",
-        bottom: 80,
-        left: 0,
-        right: 0,
-      }}
-    >
-      <SmallCapsLabel text={`02 RANK #${item.rank}`} size={22} />
-    </div>
-  </SoftFadeIn>
-);
+}> = ({ item, durationInFrames }) => {
+  const productName = item.productName ?? "";
+  const len = productName.length;
+  const nameFontSize = len >= 18 ? 56 : len >= 14 ? 64 : 72;
+  return (
+    <SoftFadeIn>
+      <AbsoluteFill
+        style={{
+          alignItems: "center",
+          justifyContent: "flex-start",
+          paddingTop: 180,
+          gap: 56,
+          paddingLeft: 60,
+          paddingRight: 60,
+        }}
+      >
+        <RankMark rank={item.rank} size="large" />
+        <VeryGentleZoom durationInFrames={durationInFrames}>
+          <ProductCard src={item.productImagePath} width={760} height={960} />
+        </VeryGentleZoom>
+        {productName && (
+          <MinchoText
+            text={productName}
+            fontSize={nameFontSize}
+            color={COLORS.ivoryBright}
+            weight={600}
+            letterSpacing="0.04em"
+          />
+        )}
+      </AbsoluteFill>
+    </SoftFadeIn>
+  );
+};
 
 // ============================================================================
 // シーン: RANK REVIEWS
@@ -627,16 +665,6 @@ const RankReviewScene: React.FC<{
           </SoftSlideUp>
         ))}
       </AbsoluteFill>
-      <div
-        style={{
-          position: "absolute",
-          bottom: 80,
-          left: 0,
-          right: 0,
-        }}
-      >
-        <SmallCapsLabel text={`03 REVIEWS #${item.rank}`} size={22} />
-      </div>
     </SoftFadeIn>
   );
 };
@@ -666,16 +694,6 @@ const ClosingScene: React.FC<{ text: string }> = ({ text }) => (
       />
       <Ornament ruleWidth={220} />
     </AbsoluteFill>
-    <div
-      style={{
-        position: "absolute",
-        bottom: 80,
-        left: 0,
-        right: 0,
-      }}
-    >
-      <SmallCapsLabel text="04 CLOSING" size={22} />
-    </div>
   </SoftFadeIn>
 );
 
