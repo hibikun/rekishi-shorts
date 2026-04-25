@@ -360,7 +360,7 @@ program
       !!audioClipsJsonPath;
 
     if (useSegmentFlow) {
-      const { synthesizeRankingClips, writeAudioClipsJson } = await import(
+      const { sha256File, synthesizeRankingClips, writeAudioClipsJson } = await import(
         "./ranking-tts.js"
       );
       const reviewerVoicesEnv = process.env.GEMINI_TTS_REVIEW_VOICES?.split(",")
@@ -395,6 +395,10 @@ program
         result.audioClips,
         result.totalDurationSec,
         audioClipsJsonPath!,
+        {
+          scriptHash: sha256File(scriptPath),
+          combinedAudioHash: sha256File(result.combinedPath),
+        },
       );
 
       console.log(chalk.green(`\n✅ narration 結合保存: ${result.combinedPath}`));
@@ -426,6 +430,15 @@ program
       furigana: FURIGANA_MAP,
       hook: script.hook,
     });
+
+    if (opts.legacySingleVoice && audioClipsJsonPath && fs.existsSync(audioClipsJsonPath)) {
+      fs.unlinkSync(audioClipsJsonPath);
+      console.log(
+        chalk.dim(
+          `   古い audioClips manifest を削除: ${audioClipsJsonPath}`,
+        ),
+      );
+    }
 
     console.log(chalk.green(`\n✅ narration 保存: ${tts.path}`));
     console.log(
@@ -565,8 +578,14 @@ program
     let audioClips: import("@rekishi/shared").AudioClip[] | undefined;
 
     if (audioClipsJsonPath && fs.existsSync(audioClipsJsonPath) && !opts.skipAlign) {
-      const { readAudioClipsJson } = await import("./ranking-tts.js");
-      const data = readAudioClipsJson(audioClipsJsonPath);
+      const { readAudioClipsJson, sha256File } = await import("./ranking-tts.js");
+      const data =
+        narrationPath && fs.existsSync(narrationPath)
+          ? readAudioClipsJson(audioClipsJsonPath, {
+              scriptHash: sha256File(scriptPath),
+              combinedAudioHash: sha256File(narrationPath),
+            })
+          : null;
       if (data) {
         audioClips = data.audioClips;
         // audioClips から 8 シーンを再構築（順序: opening / r3-intro / r3-review / r2-intro / r2-review / r1-intro / r1-review / closing）
@@ -627,6 +646,12 @@ program
         console.log(
           chalk.dim(
             `   ${data.audioClips.length}クリップ / 合計${data.totalDurationSec.toFixed(2)}秒`,
+          ),
+        );
+      } else {
+        console.log(
+          chalk.yellow(
+            "\n⚠️  audioClips manifest は現在の script/narration と一致しないため無視します",
           ),
         );
       }

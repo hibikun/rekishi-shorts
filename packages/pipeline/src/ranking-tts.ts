@@ -3,6 +3,7 @@ import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   type AudioClip,
   type Scene,
@@ -55,6 +56,25 @@ export interface SynthesizeRankingClipsResult {
     outputTokens: number;
     model: string;
   };
+}
+
+const AUDIO_CLIPS_MANIFEST_VERSION = 1;
+const AUDIO_CLIPS_MANIFEST_MODE = "segment-ranking-tts";
+
+export interface AudioClipsManifest {
+  version: typeof AUDIO_CLIPS_MANIFEST_VERSION;
+  mode: typeof AUDIO_CLIPS_MANIFEST_MODE;
+  /** script.json の sha256。手編集後の古い manifest 誤用を防ぐ */
+  scriptHash: string;
+  /** 結合済み narration.wav の sha256。単一ボイス再生成後の古い manifest 誤用を防ぐ */
+  combinedAudioHash: string;
+  totalDurationSec: number;
+  audioClips: AudioClip[];
+}
+
+export interface AudioClipsManifestHashes {
+  scriptHash: string;
+  combinedAudioHash: string;
 }
 
 /**
@@ -285,25 +305,49 @@ export function writeAudioClipsJson(
   audioClips: AudioClip[],
   totalDurationSec: number,
   destPath: string,
+  hashes: AudioClipsManifestHashes,
 ): void {
+  const manifest: AudioClipsManifest = {
+    version: AUDIO_CLIPS_MANIFEST_VERSION,
+    mode: AUDIO_CLIPS_MANIFEST_MODE,
+    ...hashes,
+    totalDurationSec,
+    audioClips,
+  };
   fs.mkdirSync(path.dirname(destPath), { recursive: true });
   fs.writeFileSync(
     destPath,
-    JSON.stringify({ totalDurationSec, audioClips }, null, 2),
+    JSON.stringify(manifest, null, 2),
   );
 }
 
 /**
- * audio-clips.json を読み込む。存在しない場合は null。
+ * audio-clips.json を読み込む。存在しない/現在の script・audio と一致しない場合は null。
  */
 export function readAudioClipsJson(
   filePath: string,
-): { totalDurationSec: number; audioClips: AudioClip[] } | null {
+  expectedHashes?: AudioClipsManifestHashes,
+): AudioClipsManifest | null {
   if (!fs.existsSync(filePath)) return null;
   const raw = JSON.parse(fs.readFileSync(filePath, "utf-8"));
-  // schema 単純チェック（型整合は呼び出し側で zod.parse 等してもよい）
+  if (raw?.version !== AUDIO_CLIPS_MANIFEST_VERSION) return null;
+  if (raw?.mode !== AUDIO_CLIPS_MANIFEST_MODE) return null;
+  if (typeof raw?.scriptHash !== "string") return null;
+  if (typeof raw?.combinedAudioHash !== "string") return null;
+  if (typeof raw?.totalDurationSec !== "number") return null;
   if (!Array.isArray(raw?.audioClips)) return null;
-  return raw;
+  if (
+    expectedHashes &&
+    (raw.scriptHash !== expectedHashes.scriptHash ||
+      raw.combinedAudioHash !== expectedHashes.combinedAudioHash)
+  ) {
+    return null;
+  }
+  return raw as AudioClipsManifest;
+}
+
+export function sha256File(filePath: string): string {
+  return createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
 }
 
 /**
