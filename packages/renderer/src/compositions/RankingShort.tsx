@@ -12,9 +12,9 @@ import {
 import type { AudioClip, Scene } from "@rekishi/shared";
 import { NarrationAudio } from "../components/NarrationAudio";
 
-// ========================================================================
-// 型
-// ========================================================================
+// ============================================================================
+// 公開型 (RankingPlanSchema 互換)
+// ============================================================================
 
 export interface RankingItem {
   rank: 1 | 2 | 3;
@@ -25,9 +25,16 @@ export interface RankingItem {
 }
 
 export interface RankingOpening {
-  // 表示する行。サイズ/色バリアントを行ごとに指定
+  /**
+   * 表示する行。variant ごとに階層 (フォントサイズ/色/ウェイト) を切り替える。
+   * rg-A balanced ベースのデザインでは派手なグラデを廃し、明朝アイボリーに統一。
+   * variant 名は既存スキーマ後方互換のため small-white / red / gold / tiny-white を維持。
+   */
   lines: Array<{ text: string; variant: "small-white" | "red" | "gold" | "tiny-white" }>;
-  // 下部アイコン行。src を指定すれば画像（いらすとや等）、emoji 指定で絵文字プレースホルダ
+  /**
+   * 既存スキーマ互換のため受け取るが、rg-A デザインではローズゴールドの装飾モチーフを優先するため
+   * このアイコン行は描画しない (後方互換)。
+   */
   icons?: Array<{ src?: string; emoji?: string; size?: number }>;
 }
 
@@ -37,157 +44,75 @@ export interface RankingShortProps {
   backgroundImagePath: string;
   closing: { text: string };
   totalDurationSec: number;
-  /** ナレーション音声（動画全体に流す） */
   audioSrc?: string;
-  /** BGM。ループ再生・低音量（デフォルト 0.18） */
   bgmSrc?: string;
   bgmVolume?: number;
-  /** ランク登場時の効果音（第3位/第2位/第1位の intro 冒頭に鳴る） */
   rankSfxSrc?: string;
   rankSfxVolume?: number;
-  /** オープニングのフック直後に鳴らす SFX（和太鼓 "ドン！" 等） */
   hookSfxSrc?: string;
   hookSfxVolume?: number;
   /**
    * scene-aligner で実音声に合わせて durationSec を上書き済みの Scene 列。
-   * 与えられた場合、各シーンの durationSec を順に SceneBlock に流し込みスライド進行を
-   * TTS と同期させる。3ピックでは長さ 8 を期待 (opening + intro/review×3 + closing)。
-   * 未指定 / 長さ不一致時は固定尺フォールバックで動作（後方互換）。
+   * 3ピックでは長さ 8 を期待 (opening + intro/review×3 + closing)。
+   * 未指定 / 長さ不一致時は固定尺フォールバック。
    */
   scenes?: Scene[];
   /**
-   * セグメント別 TTS で生成された audioClips マニフェスト（案G改）。
-   * 与えられている場合、レビュー吹き出し3枚の登場タイミングを各 review クリップの
-   * 開始秒に合わせて表示する。未指定時はシーン尺を3等分して表示（既存挙動）。
+   * セグメント別 TTS の audioClips マニフェスト (案G改)。
+   * レビュー吹き出しの登場フレームを各 review クリップの startSec に同期する。
    */
   audioClips?: AudioClip[];
 }
 
-// ========================================================================
-// フォント定義
-// ========================================================================
+// ============================================================================
+// デザイントークン (rg-A balanced: matte black + rose gold + ivory mincho)
+// ============================================================================
+
+const COLORS = {
+  bgBase: "#0a0908",
+  bgMarbleHi: "#1c1715",
+  bgMarbleLo: "#040303",
+  ivory: "#ece1c8",
+  ivoryBright: "#f6ecd6",
+  ivoryDim: "#a8987a",
+  rosegold: "#c9a36a",
+  rosegoldSoft: "#8a6f48",
+} as const;
 
 const MINCHO_FONT =
   '"Yu Mincho", "YuMincho", "Hiragino Mincho ProN", "Noto Serif CJK JP", "Noto Serif JP", serif';
 const SANS_FONT =
   '"Noto Sans CJK JP", "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif';
 
-// ========================================================================
-// グラデ + 黒縁 のヘルパー
-//
-// -webkit-text-stroke は太くするとグラデ塗りが視認できないほど潰れる。
-// 同じ位置にテキストを2枚重ねる:
-//   下層: 黒ベタ + text-shadow で縁取り
-//   上層: background-clip:text でグラデ塗り（縁取りなし）
-// ========================================================================
+// ============================================================================
+// 基本テキスト
+// ============================================================================
 
-function multiDirectionShadow(width: number, color: string = "#000"): string {
-  const offsets: Array<[number, number]> = [];
-  // 8方向 + 斜め中間、放射状にカバー
-  const step = width;
-  for (let dx = -step; dx <= step; dx++) {
-    for (let dy = -step; dy <= step; dy++) {
-      if (dx === 0 && dy === 0) continue;
-      if (Math.abs(dx) === step || Math.abs(dy) === step) {
-        offsets.push([dx, dy]);
-      }
-    }
-  }
-  return offsets.map(([x, y]) => `${x}px ${y}px 0 ${color}`).join(", ");
-}
-
-interface StrokedGradientTextProps {
+interface MinchoTextProps {
   text: string;
   fontSize: number;
-  gradient: string;
-  strokeWidth: number;
-  fontFamily?: string;
+  color?: string;
+  weight?: number;
   letterSpacing?: string;
   lineHeight?: number;
   whiteSpace?: React.CSSProperties["whiteSpace"];
-  dropShadow?: string;
+  opacity?: number;
 }
 
-const StrokedGradientText: React.FC<StrokedGradientTextProps> = ({
+const MinchoText: React.FC<MinchoTextProps> = ({
   text,
   fontSize,
-  gradient,
-  strokeWidth,
-  fontFamily = MINCHO_FONT,
-  letterSpacing = "0.02em",
-  lineHeight = 1.1,
+  color = COLORS.ivory,
+  weight = 600,
+  letterSpacing = "0.04em",
+  lineHeight = 1.15,
   whiteSpace,
-  dropShadow,
-}) => {
-  const commonStyle: React.CSSProperties = {
-    fontFamily,
-    fontWeight: 900,
-    fontSize,
-    letterSpacing,
-    lineHeight,
-    whiteSpace,
-    margin: 0,
-    textAlign: "center",
-  };
-
-  return (
-    <div style={{ position: "relative", display: "inline-block" }}>
-      {/* 下層: 黒縁取り（text-shadow による放射状塗り） */}
-      <div
-        style={{
-          ...commonStyle,
-          color: "#000",
-          textShadow: `${multiDirectionShadow(strokeWidth)}${dropShadow ? `, ${dropShadow}` : ""}`,
-        }}
-      >
-        {text}
-      </div>
-      {/* 上層: グラデ塗り（縁取りなし、同じ位置に重ねる） */}
-      <div
-        style={{
-          ...commonStyle,
-          position: "absolute",
-          inset: 0,
-          background: gradient,
-          WebkitBackgroundClip: "text",
-          WebkitTextFillColor: "transparent",
-          backgroundClip: "text",
-          pointerEvents: "none",
-        }}
-      >
-        {text}
-      </div>
-    </div>
-  );
-};
-
-interface StrokedSolidTextProps {
-  text: string;
-  fontSize: number;
-  color: string;
-  strokeWidth: number;
-  fontFamily?: string;
-  letterSpacing?: string;
-  lineHeight?: number;
-  whiteSpace?: React.CSSProperties["whiteSpace"];
-  dropShadow?: string;
-}
-
-const StrokedSolidText: React.FC<StrokedSolidTextProps> = ({
-  text,
-  fontSize,
-  color,
-  strokeWidth,
-  fontFamily = MINCHO_FONT,
-  letterSpacing = "0.02em",
-  lineHeight = 1.1,
-  whiteSpace,
-  dropShadow,
+  opacity = 1,
 }) => (
   <div
     style={{
-      fontFamily,
-      fontWeight: 900,
+      fontFamily: MINCHO_FONT,
+      fontWeight: weight,
       fontSize,
       color,
       letterSpacing,
@@ -195,65 +120,129 @@ const StrokedSolidText: React.FC<StrokedSolidTextProps> = ({
       whiteSpace,
       margin: 0,
       textAlign: "center",
-      textShadow: `${multiDirectionShadow(strokeWidth)}${dropShadow ? `, ${dropShadow}` : ""}`,
+      opacity,
     }}
   >
     {text}
   </div>
 );
 
-// ========================================================================
-// トランジションラッパー
-// ========================================================================
+const SmallCapsLabel: React.FC<{ text: string; size?: number; color?: string }> = ({
+  text,
+  size = 24,
+  color = COLORS.ivoryDim,
+}) => (
+  <div
+    style={{
+      fontFamily: SANS_FONT,
+      fontWeight: 500,
+      fontSize: size,
+      color,
+      letterSpacing: "0.36em",
+      textTransform: "uppercase",
+      textAlign: "center",
+    }}
+  >
+    {text}
+  </div>
+);
 
-/** シーン冒頭の短いフェードイン（0.15秒） */
-const FadeIn: React.FC<{ children: React.ReactNode; durationFrames?: number }> = ({
-  children,
-  durationFrames = 4,
-}) => {
+// ============================================================================
+// 装飾: ローズゴールドの hairline rule + diamond motif
+// ============================================================================
+
+const RoseGoldRule: React.FC<{ width?: number; thickness?: number; opacity?: number }> = ({
+  width = 320,
+  thickness = 1,
+  opacity = 1,
+}) => (
+  <div
+    style={{
+      width,
+      height: thickness,
+      background: `linear-gradient(90deg, transparent 0%, ${COLORS.rosegold} 50%, transparent 100%)`,
+      opacity,
+    }}
+  />
+);
+
+const DiamondMotif: React.FC<{ size?: number }> = ({ size = 14 }) => (
+  <div
+    style={{
+      width: size,
+      height: size,
+      transform: "rotate(45deg)",
+      border: `1.5px solid ${COLORS.rosegold}`,
+      background: "transparent",
+    }}
+  />
+);
+
+const Ornament: React.FC<{ ruleWidth?: number }> = ({ ruleWidth = 280 }) => (
+  <div
+    style={{
+      display: "flex",
+      alignItems: "center",
+      gap: 18,
+      justifyContent: "center",
+    }}
+  >
+    <RoseGoldRule width={ruleWidth} />
+    <DiamondMotif />
+    <RoseGoldRule width={ruleWidth} />
+  </div>
+);
+
+// ============================================================================
+// アニメーション (控えめ)
+// ============================================================================
+
+const SoftFadeIn: React.FC<{
+  children: React.ReactNode;
+  durationFrames?: number;
+  from?: number;
+}> = ({ children, durationFrames = 9, from = 0.965 }) => {
   const frame = useCurrentFrame();
   const opacity = interpolate(frame, [0, durationFrames], [0, 1], {
     extrapolateRight: "clamp",
   });
-  return <AbsoluteFill style={{ opacity }}>{children}</AbsoluteFill>;
-};
-
-/** バッジ等の "パンチイン"。スケール1.35→0.95→1.0 でワンバウンド */
-const PunchIn: React.FC<{
-  children: React.ReactNode;
-  durationFrames?: number;
-}> = ({ children, durationFrames = 9 }) => {
-  const frame = useCurrentFrame();
-  const scale = interpolate(
-    frame,
-    [0, durationFrames * 0.55, durationFrames],
-    [1.35, 0.95, 1.0],
-    { extrapolateRight: "clamp" },
-  );
-  const opacity = interpolate(frame, [0, durationFrames * 0.4], [0, 1], {
+  const scale = interpolate(frame, [0, durationFrames], [from, 1], {
     extrapolateRight: "clamp",
   });
   return (
-    <div
-      style={{
-        transform: `scale(${scale})`,
-        opacity,
-        transformOrigin: "center center",
-        display: "inline-block",
-      }}
+    <AbsoluteFill
+      style={{ opacity, transform: `scale(${scale})`, transformOrigin: "center center" }}
     >
       {children}
-    </div>
+    </AbsoluteFill>
   );
 };
 
-/** ケン・バーンズ風の軽いズームイン（商品カード用） */
-const SubtleZoom: React.FC<{
+const SoftSlideUp: React.FC<{
+  children: React.ReactNode;
+  delayFrames: number;
+  durationFrames?: number;
+  distance?: number;
+}> = ({ children, delayFrames, durationFrames = 8, distance = 28 }) => {
+  const frame = useCurrentFrame();
+  const t = interpolate(
+    frame,
+    [delayFrames, delayFrames + durationFrames],
+    [0, 1],
+    { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
+  );
+  const translateY = (1 - t) * distance;
+  return (
+    <div style={{ opacity: t, transform: `translateY(${translateY}px)` }}>{children}</div>
+  );
+};
+
+const VeryGentleZoom: React.FC<{
   children: React.ReactNode;
   durationInFrames: number;
   from?: number;
   to?: number;
-}> = ({ children, durationInFrames, from = 1.02, to = 1.08 }) => {
+}> = ({ children, durationInFrames, from = 1.0, to = 1.04 }) => {
   const frame = useCurrentFrame();
   const scale = interpolate(frame, [0, durationInFrames], [from, to], {
     extrapolateRight: "clamp",
@@ -271,13 +260,18 @@ const SubtleZoom: React.FC<{
   );
 };
 
-// ========================================================================
-// ブラー背景（共通）
-// ========================================================================
+// ============================================================================
+// 背景: matte black + subtle marble glow
+// ============================================================================
 
-const BlurredBackground: React.FC<{ src: string }> = ({ src }) => (
-  <AbsoluteFill style={{ backgroundColor: "#0a1420", overflow: "hidden" }}>
-    {src ? (
+const PremiumBackground: React.FC<{ src?: string }> = ({ src }) => (
+  <AbsoluteFill style={{ backgroundColor: COLORS.bgBase, overflow: "hidden" }}>
+    <AbsoluteFill
+      style={{
+        background: `radial-gradient(circle at 30% 22%, ${COLORS.bgMarbleHi} 0%, ${COLORS.bgBase} 48%, ${COLORS.bgMarbleLo} 100%)`,
+      }}
+    />
+    {src && (
       <Img
         src={src}
         style={{
@@ -287,106 +281,84 @@ const BlurredBackground: React.FC<{ src: string }> = ({ src }) => (
           position: "absolute",
           top: "-10%",
           left: "-10%",
-          filter: "blur(28px) brightness(0.55) saturate(1.1)",
-        }}
-      />
-    ) : (
-      <AbsoluteFill
-        style={{
-          background:
-            "radial-gradient(circle at 30% 40%, #1d3554 0%, #0a1420 55%, #050a14 100%)",
+          filter: "blur(60px) brightness(0.32) saturate(0.55)",
+          opacity: 0.16,
         }}
       />
     )}
   </AbsoluteFill>
 );
 
-// ========================================================================
-// 第◯位 バッジ
-// ========================================================================
+// ============================================================================
+// 第◯位 ランクマーク
+// ============================================================================
 
-const RankBadge: React.FC<{ rank: number; size?: "large" | "medium" }> = ({
+const RankMark: React.FC<{ rank: number; size?: "large" | "corner" }> = ({
   rank,
   size = "large",
 }) => {
-  const fontSize = size === "large" ? 260 : 190;
-  const strokeWidth = size === "large" ? 10 : 8;
+  if (size === "corner") {
+    return (
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: 8,
+        }}
+      >
+        <MinchoText
+          text={`第${rank}位`}
+          fontSize={64}
+          color={COLORS.rosegold}
+          weight={500}
+          letterSpacing="0.06em"
+        />
+        <RoseGoldRule width={140} />
+      </div>
+    );
+  }
   return (
-    <StrokedSolidText
-      text={`第${rank}位`}
-      fontSize={fontSize}
-      color="#ffffff"
-      strokeWidth={strokeWidth}
-      dropShadow="0 8px 18px rgba(0,0,0,0.85)"
-    />
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        gap: 22,
+      }}
+    >
+      <MinchoText
+        text={`第${rank}位`}
+        fontSize={220}
+        color={COLORS.ivoryBright}
+        weight={500}
+        letterSpacing="0.08em"
+      />
+      <RoseGoldRule width={420} thickness={1.5} />
+    </div>
   );
 };
 
-// ========================================================================
-// 商品カテゴリ/ブランド名 テロップ（自動スケール: 画面幅に応じて1行に収める）
-// ========================================================================
-
-const BRAND_BASE_FONT_SIZE = 150;
-const BRAND_HORIZONTAL_PADDING = 60;
-const JA_CHAR_WIDTH_RATIO = 1.15;
-const BRAND_STROKE_WIDTH = 8;
-
-function fitFontSize(
-  text: string,
-  baseSize: number,
-  availableWidth: number,
-  strokeWidth: number,
-): number {
-  if (!text) return baseSize;
-  const usable = Math.max(0, availableWidth - strokeWidth * 2);
-  const maxByWidth = usable / (text.length * JA_CHAR_WIDTH_RATIO);
-  return Math.floor(Math.min(baseSize, maxByWidth));
-}
-
-const RED_GRADIENT = "linear-gradient(180deg, #ffcccc 0%, #ff2a2a 40%, #a00000 100%)";
-const GOLD_GRADIENT = "linear-gradient(180deg, #fff4b8 0%, #ffcc3a 40%, #b87610 100%)";
-
-const BrandText: React.FC<{ text: string }> = ({ text }) => {
-  const { width: videoWidth } = useVideoConfig();
-  const availableWidth = videoWidth - BRAND_HORIZONTAL_PADDING * 2;
-  const fontSize = fitFontSize(
-    text,
-    BRAND_BASE_FONT_SIZE,
-    availableWidth,
-    BRAND_STROKE_WIDTH,
-  );
-  return (
-    <StrokedGradientText
-      text={text}
-      fontSize={fontSize}
-      gradient={RED_GRADIENT}
-      strokeWidth={BRAND_STROKE_WIDTH}
-      letterSpacing="0.03em"
-      whiteSpace="nowrap"
-      dropShadow="0 6px 14px rgba(0,0,0,0.85)"
-    />
-  );
-};
-
-// ========================================================================
-// 商品画像カード
-// ========================================================================
+// ============================================================================
+// 商品カード (アイボリー bg + ローズゴールド hairline frame)
+// ============================================================================
 
 const ProductCard: React.FC<{
   src: string;
   width?: number;
   height?: number;
   faded?: boolean;
-}> = ({ src, width = 720, height = 720, faded = false }) => (
+}> = ({ src, width = 760, height = 960, faded = false }) => (
   <div
     style={{
       width,
       height,
-      backgroundColor: "#ffffff",
-      borderRadius: 8,
+      backgroundColor: "#f5ecd9",
+      border: `1.5px solid ${COLORS.rosegoldSoft}`,
+      boxShadow:
+        "0 32px 60px rgba(0,0,0,0.55), 0 0 0 1px rgba(201,163,106,0.18)",
       overflow: "hidden",
-      boxShadow: "0 20px 40px rgba(0,0,0,0.5)",
-      opacity: faded ? 0.55 : 1,
+      opacity: faded ? 0.5 : 1,
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
@@ -400,117 +372,125 @@ const ProductCard: React.FC<{
           width: "100%",
           height: "100%",
           background:
-            "linear-gradient(135deg, #e8e8e8 0%, #bdbdbd 50%, #9e9e9e 100%)",
+            "linear-gradient(135deg, #f5ecd9 0%, #ddd2b8 50%, #c2b594 100%)",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          color: "#666",
+          color: "#7a6a4a",
           fontFamily: SANS_FONT,
-          fontSize: 40,
-          fontWeight: 700,
+          fontSize: 36,
+          fontWeight: 600,
+          letterSpacing: "0.4em",
         }}
       >
-        商品画像
+        PRODUCT
       </div>
     )}
   </div>
 );
 
-// ========================================================================
-// レビュー吹き出し
-// ========================================================================
+// ============================================================================
+// レビューカード (引用符付き editorial)
+// ============================================================================
 
-const REVIEW_COLORS: Array<{ border: string }> = [
-  { border: "#ff5a80" },
-  { border: "#5bd37a" },
-  { border: "#7f5bf0" },
-];
-
-const ReviewBubble: React.FC<{ text: string; colorIndex: number }> = ({
-  text,
-  colorIndex,
-}) => {
-  const { border } = REVIEW_COLORS[colorIndex] ?? REVIEW_COLORS[0]!;
-  return (
-    <div
+const ReviewCard: React.FC<{ text: string }> = ({ text }) => (
+  <div
+    style={{
+      backgroundColor: COLORS.bgBase,
+      border: `1px solid ${COLORS.rosegoldSoft}`,
+      padding: "40px 56px",
+      width: 880,
+      fontFamily: MINCHO_FONT,
+      fontWeight: 500,
+      fontSize: 58,
+      color: COLORS.ivoryBright,
+      lineHeight: 1.35,
+      letterSpacing: "0.04em",
+      textAlign: "center",
+      boxShadow: "0 22px 48px rgba(0,0,0,0.55)",
+      position: "relative",
+    }}
+  >
+    <span
       style={{
-        backgroundColor: "#ffffff",
-        border: `8px solid ${border}`,
-        borderRadius: 4,
-        padding: "24px 32px",
-        fontFamily: SANS_FONT,
-        fontWeight: 900,
-        fontSize: 54,
-        color: "#111",
-        lineHeight: 1.25,
-        letterSpacing: "0.01em",
-        textAlign: "left",
-        boxShadow: "0 8px 18px rgba(0,0,0,0.35)",
-        width: 880,
-        wordBreak: "keep-all",
-        overflowWrap: "anywhere",
+        color: COLORS.rosegold,
+        fontFamily: MINCHO_FONT,
+        fontSize: 90,
+        lineHeight: 0.5,
+        marginRight: 14,
+        verticalAlign: "middle",
       }}
     >
-      {text}
-    </div>
-  );
-};
+      {"\u201C"}
+    </span>
+    {text}
+    <span
+      style={{
+        color: COLORS.rosegold,
+        fontFamily: MINCHO_FONT,
+        fontSize: 90,
+        lineHeight: 0.5,
+        marginLeft: 14,
+        verticalAlign: "middle",
+      }}
+    >
+      {"\u201D"}
+    </span>
+  </div>
+);
 
-// ========================================================================
-// シーン: オープニング
-// ========================================================================
+// ============================================================================
+// シーン: OPENING (HOOK)
+// ============================================================================
 
 const OpeningScene: React.FC<{ opening: RankingOpening }> = ({ opening }) => {
-  const frame = useCurrentFrame();
-  const introProgress = interpolate(frame, [0, 5], [0, 1], {
-    extrapolateRight: "clamp",
-  });
   const renderLine = (
     line: RankingOpening["lines"][number],
     idx: number,
   ): React.ReactNode => {
     switch (line.variant) {
-      case "small-white":
-        return (
-          <StrokedSolidText
-            key={idx}
-            text={line.text}
-            fontSize={110}
-            color="#ffffff"
-            strokeWidth={6}
-            dropShadow="0 4px 12px rgba(0,0,0,0.9)"
-          />
-        );
       case "red":
         return (
-          <StrokedGradientText
+          <MinchoText
             key={idx}
             text={line.text}
-            fontSize={190}
-            gradient={RED_GRADIENT}
-            strokeWidth={8}
-            dropShadow="0 6px 14px rgba(0,0,0,0.85)"
+            fontSize={260}
+            color={COLORS.ivoryBright}
+            weight={700}
+            letterSpacing="0.08em"
           />
         );
       case "gold":
         return (
-          <StrokedGradientText
+          <MinchoText
             key={idx}
             text={line.text}
-            fontSize={160}
-            gradient={GOLD_GRADIENT}
-            strokeWidth={8}
-            dropShadow="0 6px 14px rgba(0,0,0,0.85)"
+            fontSize={200}
+            color={COLORS.ivoryBright}
+            weight={700}
+            letterSpacing="0.08em"
+          />
+        );
+      case "small-white":
+        return (
+          <MinchoText
+            key={idx}
+            text={line.text}
+            fontSize={120}
+            color={COLORS.ivory}
+            weight={500}
+            letterSpacing="0.1em"
           />
         );
       case "tiny-white":
         return (
-          <StrokedSolidText
+          <MinchoText
             key={idx}
             text={line.text}
             fontSize={70}
-            color="#ffffff"
-            strokeWidth={4}
+            color={COLORS.ivoryDim}
+            weight={400}
+            letterSpacing="0.18em"
           />
         );
       default:
@@ -519,105 +499,78 @@ const OpeningScene: React.FC<{ opening: RankingOpening }> = ({ opening }) => {
   };
 
   return (
-    <AbsoluteFill style={{ opacity: introProgress }}>
+    <SoftFadeIn>
       <AbsoluteFill
         style={{
           alignItems: "center",
-          justifyContent: "flex-start",
-          paddingTop: 120,
-          gap: 14,
+          justifyContent: "center",
+          gap: 36,
+          paddingLeft: 80,
+          paddingRight: 80,
         }}
       >
         {opening.lines.map(renderLine)}
+        <div style={{ marginTop: 24 }}>
+          <Ornament ruleWidth={220} />
+        </div>
       </AbsoluteFill>
-      {opening.icons && opening.icons.length > 0 && (
-        <OpeningIconRow icons={opening.icons} />
-      )}
-    </AbsoluteFill>
+      <div
+        style={{
+          position: "absolute",
+          bottom: 80,
+          left: 0,
+          right: 0,
+        }}
+      >
+        <SmallCapsLabel text="01 HOOK" size={22} />
+      </div>
+    </SoftFadeIn>
   );
 };
 
-const OpeningIconRow: React.FC<{ icons: NonNullable<RankingOpening["icons"]> }> = ({
-  icons,
-}) => (
-  <div
-    style={{
-      position: "absolute",
-      bottom: 80,
-      left: 0,
-      right: 0,
-      display: "flex",
-      alignItems: "flex-end",
-      justifyContent: "center",
-      gap: 12,
-      padding: "0 40px",
-    }}
-  >
-    {icons.map((icon, idx) => {
-      const size = icon.size ?? 240;
-      if (icon.src) {
-        return (
-          <Img
-            key={idx}
-            src={icon.src}
-            style={{
-              width: size,
-              height: size,
-              objectFit: "contain",
-            }}
-          />
-        );
-      }
-      if (icon.emoji) {
-        return (
-          <div
-            key={idx}
-            style={{
-              fontSize: size * 0.9,
-              lineHeight: 1,
-              filter: "drop-shadow(0 4px 12px rgba(0,0,0,0.6))",
-            }}
-          >
-            {icon.emoji}
-          </div>
-        );
-      }
-      return null;
-    })}
-  </div>
-);
-
-// ========================================================================
-// シーン: ランク 商品紹介
-// ========================================================================
+// ============================================================================
+// シーン: RANK INTRO (REVEAL)
+// ============================================================================
 
 const RankIntroScene: React.FC<{
   item: RankingItem;
   durationInFrames: number;
 }> = ({ item, durationInFrames }) => (
-  <FadeIn>
+  <SoftFadeIn>
     <AbsoluteFill
       style={{
         alignItems: "center",
         justifyContent: "flex-start",
-        paddingTop: 140,
-        gap: 60,
+        paddingTop: 180,
+        gap: 56,
       }}
     >
-      <PunchIn>
-        <RankBadge rank={item.rank} size="large" />
-      </PunchIn>
-      <BrandText text={item.category} />
-      <SubtleZoom durationInFrames={durationInFrames}>
-        <ProductCard src={item.productImagePath} width={720} height={720} />
-      </SubtleZoom>
+      <RankMark rank={item.rank} size="large" />
+      <VeryGentleZoom durationInFrames={durationInFrames}>
+        <ProductCard src={item.productImagePath} width={760} height={960} />
+      </VeryGentleZoom>
+      <SmallCapsLabel
+        text={`${item.brand} / ${item.category}`}
+        size={28}
+        color={COLORS.ivoryDim}
+      />
     </AbsoluteFill>
-  </FadeIn>
+    <div
+      style={{
+        position: "absolute",
+        bottom: 80,
+        left: 0,
+        right: 0,
+      }}
+    >
+      <SmallCapsLabel text={`02 RANK #${item.rank}`} size={22} />
+    </div>
+  </SoftFadeIn>
 );
 
-// ========================================================================
-// シーン: ランク レビュー
-// ========================================================================
+// ============================================================================
+// シーン: RANK REVIEWS
+// ============================================================================
 
 const RankReviewScene: React.FC<{
   item: RankingItem;
@@ -628,11 +581,7 @@ const RankReviewScene: React.FC<{
    */
   reviewDelayFrames?: [number, number, number];
 }> = ({ item, durationInFrames, reviewDelayFrames }) => {
-  // レビュー3枚をシーン時間に沿って順次表示する。
-  // 案G改: audioClips が与えられていれば各 review クリップの startSec に合わせて表示し、
-  // ボイスの「コメントしてる感」と吹き出し登場を完全同期させる。
-  // 未指定時は冒頭のフェードイン分だけ詰めた残り時間を3等分する従来挙動。
-  const leadFrames = 4;
+  const leadFrames = 6;
   const usable = Math.max(1, durationInFrames - leadFrames);
   const slot = usable / item.reviews.length;
   const delays: [number, number, number] =
@@ -643,95 +592,96 @@ const RankReviewScene: React.FC<{
     ];
 
   return (
-    <FadeIn>
-      {/* 背景レイヤー: 第◯位 + 商品画像（intro と同じ位置・サイズ） */}
-      <AbsoluteFill
-        style={{
-          alignItems: "center",
-          justifyContent: "flex-start",
-          paddingTop: 140,
-          gap: 60,
-        }}
-      >
-        <RankBadge rank={item.rank} size="large" />
-        {/* intro の BrandText 位置を空白で埋める（スペースキープ） */}
-        <div style={{ height: 165 }} />
-        <ProductCard src={item.productImagePath} width={720} height={720} faded />
+    <SoftFadeIn>
+      {/* 背景: 商品 (薄め) + 第◯位 (corner) */}
+      <AbsoluteFill style={{ overflow: "visible" }}>
+        <div style={{ position: "absolute", top: 80, right: 80 }}>
+          <RankMark rank={item.rank} size="corner" />
+        </div>
+        <div
+          style={{
+            position: "absolute",
+            top: 200,
+            left: 0,
+            right: 0,
+            display: "flex",
+            justifyContent: "center",
+          }}
+        >
+          <ProductCard src={item.productImagePath} width={620} height={780} faded />
+        </div>
       </AbsoluteFill>
-      {/* 前景レイヤー: レビュー吹き出し 3枚、商品画像にオーバーレイ。順番に pop-in */}
+      {/* 前景: レビュー 3 枚 */}
       <AbsoluteFill
         style={{
           alignItems: "center",
-          justifyContent: "center",
-          paddingTop: 380,
-          gap: 26,
+          justifyContent: "flex-end",
+          paddingBottom: 220,
+          gap: 28,
           zIndex: 2,
         }}
       >
         {item.reviews.map((text, i) => (
-          <StaggeredAppear key={i} delayFrames={delays[i as 0 | 1 | 2]!}>
-            <ReviewBubble text={text} colorIndex={i} />
-          </StaggeredAppear>
+          <SoftSlideUp key={i} delayFrames={delays[i as 0 | 1 | 2]!}>
+            <ReviewCard text={text} />
+          </SoftSlideUp>
         ))}
       </AbsoluteFill>
-    </FadeIn>
+      <div
+        style={{
+          position: "absolute",
+          bottom: 80,
+          left: 0,
+          right: 0,
+        }}
+      >
+        <SmallCapsLabel text={`03 REVIEWS #${item.rank}`} size={22} />
+      </div>
+    </SoftFadeIn>
   );
 };
 
-/** 指定フレーム遅延後にフェード+軽くスライドアップして登場 */
-const StaggeredAppear: React.FC<{
-  children: React.ReactNode;
-  delayFrames: number;
-  fadeDurationFrames?: number;
-}> = ({ children, delayFrames, fadeDurationFrames = 6 }) => {
-  const frame = useCurrentFrame();
-  const progress = interpolate(
-    frame,
-    [delayFrames, delayFrames + fadeDurationFrames],
-    [0, 1],
-    { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
-  );
-  const translateY = (1 - progress) * 24;
-  return (
-    <div
-      style={{
-        opacity: progress,
-        transform: `translateY(${translateY}px)`,
-      }}
-    >
-      {children}
-    </div>
-  );
-};
-
-// ========================================================================
-// シーン: 締め
-// ========================================================================
+// ============================================================================
+// シーン: CLOSING
+// ============================================================================
 
 const ClosingScene: React.FC<{ text: string }> = ({ text }) => (
-  <FadeIn>
+  <SoftFadeIn>
     <AbsoluteFill
       style={{
         alignItems: "center",
         justifyContent: "center",
-        padding: 60,
+        gap: 56,
+        paddingLeft: 80,
+        paddingRight: 80,
       }}
     >
-      <StrokedSolidText
+      <Ornament ruleWidth={220} />
+      <MinchoText
         text={text}
         fontSize={140}
-        color="#ffffff"
-        strokeWidth={8}
-        lineHeight={1.2}
-        dropShadow="0 6px 18px rgba(0,0,0,0.9)"
+        color={COLORS.ivoryBright}
+        weight={600}
+        letterSpacing="0.1em"
       />
+      <Ornament ruleWidth={220} />
     </AbsoluteFill>
-  </FadeIn>
+    <div
+      style={{
+        position: "absolute",
+        bottom: 80,
+        left: 0,
+        right: 0,
+      }}
+    >
+      <SmallCapsLabel text="04 CLOSING" size={22} />
+    </div>
+  </SoftFadeIn>
 );
 
-// ========================================================================
-// 全体 composition
-// ========================================================================
+// ============================================================================
+// シーン構成 (既存ロジック維持)
+// ============================================================================
 
 type SceneBlock =
   | { kind: "opening" }
@@ -741,14 +691,8 @@ type SceneBlock =
 
 /**
  * scene index から SceneBlock の kind と対応 rank を導く。
- * 期待するレイアウト (itemCount=3): [opening, r3-intro, r3-review, r2-intro, r2-review, r1-intro, r1-review, closing]
+ * 期待レイアウト (itemCount=3): [opening, r3-intro, r3-review, r2-intro, r2-review, r1-intro, r1-review, closing]
  *   length = itemCount * 2 + 2
- * - i === 0           → opening
- * - i === length-1    → closing
- * - 中間: 偶数 index → rank-intro / 奇数 index → rank-review
- *   対応 rank = itemCount - floor((i - 1) / 2)
- *
- * 範囲外なら null を返す（呼び出し側で固定尺フォールバック）。
  */
 function blockKindForIndex(
   i: number,
@@ -770,11 +714,6 @@ function blockKindForIndex(
   return { kind: "rank-review", rank };
 }
 
-/**
- * scenes が与えられている場合は実発話の durationSec で SceneBlock を組み立てる。
- * 失敗（scenes 未指定 / 長さ不一致 / kind 解決不能 / rank 不在）した場合は null を返し、
- * 呼び出し側で固定尺フォールバックを使う。
- */
 function buildSceneBlocksFromScenes(
   items: [RankingItem, RankingItem, RankingItem],
   scenes: Scene[],
@@ -808,14 +747,12 @@ function buildSceneBlocksFixed(
 
   const byRank = (r: 1 | 2 | 3) => items.find((it) => it.rank === r)!;
 
-  // 3位 → 2位 → 1位 の順で intro + review
-  [3, 2, 1].forEach((r, idx) => {
+  [3, 2, 1].forEach((r) => {
     const item = byRank(r as 1 | 2 | 3);
     const introSec = r === 1 ? 4.0 : 3.5;
     const reviewSec = r === 1 ? 5.0 : 4.0;
     blocks.push({ kind: "rank-intro", item, durationSec: introSec });
     blocks.push({ kind: "rank-review", item, durationSec: reviewSec });
-    void idx;
   });
 
   blocks.push({ kind: "closing", durationSec: 2.5 });
@@ -829,7 +766,6 @@ function buildSceneBlocks(
   if (scenes && scenes.length > 0) {
     const fromScenes = buildSceneBlocksFromScenes(items, scenes);
     if (fromScenes) return fromScenes;
-    // 不整合時は固定尺で出してログを残す（コンポは Remotion 内で動くので console.warn）
     // eslint-disable-next-line no-console
     console.warn(
       `[RankingShort] scenes length=${scenes.length} did not match expected ${items.length * 2 + 2}. Falling back to fixed durations.`,
@@ -838,13 +774,6 @@ function buildSceneBlocks(
   return buildSceneBlocksFixed(items);
 }
 
-/**
- * audioClips から rank ごとの review クリップ 3 つを取り出し、対応する rank-review シーンの
- * 開始秒を基準にした「シーン内オフセットを frame 換算した配列」を返す。
- *
- * audioClips が無い、または review クリップが揃っていない rank は Map に入れない
- * （RankReviewScene 側で従来の3等分挙動にフォールバックする）。
- */
 function computeReviewDelayByRank(
   layout: Array<{
     block: SceneBlock & { durationSec: number };
@@ -876,6 +805,10 @@ function computeReviewDelayByRank(
   return out;
 }
 
+// ============================================================================
+// 全体 composition
+// ============================================================================
+
 export const RankingShort: React.FC<RankingShortProps> = ({
   opening,
   items,
@@ -903,29 +836,22 @@ export const RankingShort: React.FC<RankingShortProps> = ({
     return { block, startFrame, durationFrames, sceneStartSec };
   });
 
-  // hookSfx は opening 冒頭で鳴らす
   const hookSfxStart = 0;
-  // rankSfx は各 rank-intro の冒頭で鳴らす
   const rankIntroStarts = layout
     .filter((l) => l.block.kind === "rank-intro")
     .map((l) => l.startFrame);
 
-  // audioClips が与えられている場合、rank ごとの review クリップ 3 つから
-  // 「シーン開始からの delayFrames 配列」を作って RankReviewScene に渡す。
   const reviewDelayByRank = computeReviewDelayByRank(layout, audioClips, fps);
 
   return (
-    <AbsoluteFill style={{ backgroundColor: "#000" }}>
-      <BlurredBackground src={backgroundImagePath} />
+    <AbsoluteFill style={{ backgroundColor: COLORS.bgBase }}>
+      <PremiumBackground src={backgroundImagePath} />
       {layout.map(({ block, startFrame, durationFrames }, idx) => (
         <Sequence key={idx} from={startFrame} durationInFrames={durationFrames}>
           {block.kind === "opening" ? (
             <OpeningScene opening={opening} />
           ) : block.kind === "rank-intro" ? (
-            <RankIntroScene
-              item={block.item}
-              durationInFrames={durationFrames}
-            />
+            <RankIntroScene item={block.item} durationInFrames={durationFrames} />
           ) : block.kind === "rank-review" ? (
             <RankReviewScene
               item={block.item}

@@ -761,6 +761,26 @@ program
       );
     }
 
+    // BGM auto-detect:
+    //   1. --bgm <path>                              (明示)
+    //   2. data/<channel>/scripts/<id>/assets/bgm/*  (このジョブだけ別 BGM)
+    //   3. packages/channels/<channel>/assets/bgm/*  (チャンネル既定)
+    const { resolveBgmPath, resolveRankingJobPaths } = await import("./ranking-paths.js");
+    const jobPathsForBgm = opts.jobId ? resolveRankingJobPaths(opts.jobId) : null;
+    const cliBgmAbs = opts.bgm ? resolveCliPath(opts.bgm) : null;
+    const resolvedBgm = resolveBgmPath(jobPathsForBgm, opts.channel, cliBgmAbs);
+    if (resolvedBgm) {
+      const label =
+        resolvedBgm.source === "cli-flag"
+          ? "明示"
+          : resolvedBgm.source === "job-override"
+            ? "ジョブ override"
+            : "チャンネル既定";
+      console.log(
+        chalk.dim(`🎵 BGM (${label}): ${path.relative(process.cwd(), resolvedBgm.path)}`),
+      );
+    }
+
     const plan = buildRankingPlan({
       script,
       backgroundImagePath: resolveCliPath(backgroundPath),
@@ -770,7 +790,7 @@ program
         resolveCliPath(imagePaths[2]),
       ],
       audioPath: narrationPath,
-      bgmPath: opts.bgm ? resolveCliPath(opts.bgm) : undefined,
+      bgmPath: resolvedBgm?.path,
       rankSfxPath: opts.rankSfx ? resolveCliPath(opts.rankSfx) : undefined,
       hookSfxPath: opts.hookSfx ? resolveCliPath(opts.hookSfx) : undefined,
       id: planId,

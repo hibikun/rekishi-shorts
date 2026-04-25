@@ -20,6 +20,7 @@ data/*/images/*
 data/*/captions/*
 data/*/videos/*
 data/*/uploads/*
+data/*/design-mockups/*
 data/sfx/*
 !data/*/scripts/.gitkeep
 !data/*/audio/.gitkeep
@@ -36,3 +37,7 @@ data/sfx/*
 # remotion
 packages/renderer/out/
 packages/renderer/public/
+
+# ライセンス管理する BGM/SFX 等の音源は各自ローカルに配置（コミット禁止）
+packages/channels/*/assets/bgm/
+packages/channels/*/assets/sfx/

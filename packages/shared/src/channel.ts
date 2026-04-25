@@ -42,6 +42,18 @@ export function channelDocsDir(channel: string = currentChannel): string {
   return path.join(channelPackageDir(channel), "docs");
 }
 
+/**
+ * チャンネル既定アセット (BGM / SFX 等) の置き場。
+ * `packages/channels/<channel>/assets/<kind>/` を返す。
+ * 中身はライセンス都合で gitignore 管理（実体はローカルに各自配置）。
+ */
+export function channelAssetsDir(
+  kind: string,
+  channel: string = currentChannel,
+): string {
+  return path.join(channelPackageDir(channel), "assets", kind);
+}
+
 export function channelDataRoot(channel: string = currentChannel): string {
   return path.join(REPO_ROOT, "data", channel);
 }
