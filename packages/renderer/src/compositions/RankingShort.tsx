@@ -242,33 +242,48 @@ const VeryGentleZoom: React.FC<{
 };
 
 // ============================================================================
-// 背景: matte black + subtle marble glow
+// 背景: 夜の雰囲気写真 + ゆっくりドリフト + ブラー
 // ============================================================================
 
-const PremiumBackground: React.FC<{ src?: string }> = ({ src }) => (
-  <AbsoluteFill style={{ backgroundColor: COLORS.bgBase, overflow: "hidden" }}>
-    <AbsoluteFill
-      style={{
-        background: `radial-gradient(circle at 30% 22%, ${COLORS.bgMarbleHi} 0%, ${COLORS.bgBase} 48%, ${COLORS.bgMarbleLo} 100%)`,
-      }}
-    />
-    {src && (
-      <Img
-        src={src}
+const PremiumBackground: React.FC<{ src?: string }> = ({ src }) => {
+  const frame = useCurrentFrame();
+  const { durationInFrames } = useVideoConfig();
+  const progress = frame / Math.max(1, durationInFrames);
+
+  // ±26px の横ドリフトと、上→下方向の微妙なドリフト。動画尺全体で完結する。
+  const translateX = (progress - 0.5) * 52;
+  const translateY = Math.sin(progress * Math.PI) * -22;
+  // 1.14 → 1.18 のごく緩いスケール。ずらした分の余白を担保しつつ僅かに動きを足す。
+  const scale = 1.14 + progress * 0.04;
+
+  return (
+    <AbsoluteFill style={{ backgroundColor: COLORS.bgBase, overflow: "hidden" }}>
+      {src && (
+        <Img
+          src={src}
+          style={{
+            width: "120%",
+            height: "120%",
+            objectFit: "cover",
+            position: "absolute",
+            top: "-10%",
+            left: "-10%",
+            transform: `translate(${translateX}px, ${translateY}px) scale(${scale})`,
+            transformOrigin: "center center",
+            filter: "blur(22px) brightness(0.6) saturate(0.85)",
+            opacity: 0.62,
+          }}
+        />
+      )}
+      {/* 上から黒・周囲ビネットで前景の文字可読性を確保しつつ夜のニュアンスを残す */}
+      <AbsoluteFill
         style={{
-          width: "120%",
-          height: "120%",
-          objectFit: "cover",
-          position: "absolute",
-          top: "-10%",
-          left: "-10%",
-          filter: "blur(60px) brightness(0.32) saturate(0.55)",
-          opacity: 0.16,
+          background: `radial-gradient(circle at 50% 40%, rgba(10,9,8,0.35) 0%, rgba(10,9,8,0.65) 55%, rgba(4,3,3,0.88) 100%)`,
         }}
       />
-    )}
-  </AbsoluteFill>
-);
+    </AbsoluteFill>
+  );
+};
 
 // ============================================================================
 // 第◯位 ランクマーク
@@ -575,7 +590,7 @@ const RankIntroScene: React.FC<{
 }> = ({ item, durationInFrames }) => {
   const productName = item.productName ?? "";
   const len = productName.length;
-  const nameFontSize = len >= 18 ? 56 : len >= 14 ? 64 : 72;
+  const nameFontSize = len >= 18 ? 80 : len >= 14 ? 96 : 112;
   return (
     <SoftFadeIn>
       <AbsoluteFill
