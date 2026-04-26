@@ -19,6 +19,7 @@ export interface HistoryShortProps {
   title?: VideoTitle;
   hookSfxSrc?: string;
   openingSfxSrc?: string;
+  cheerSfxSrc?: string;
 }
 
 const TITLE_BAR_RATIO = 0.25;
@@ -34,6 +35,7 @@ export const HistoryShort: React.FC<HistoryShortProps> = ({
   title,
   hookSfxSrc,
   openingSfxSrc,
+  cheerSfxSrc,
 }) => {
   const { fps } = useVideoConfig();
 
@@ -49,6 +51,9 @@ export const HistoryShort: React.FC<HistoryShortProps> = ({
   // フック直後（scene[0] 終端 = scene[1] 開始）に SFX を鳴らす。
   // 攻撃音のピークがカットに揃うよう 2 frame だけ前倒しする。
   const hookSfxStartFrame = Math.max(0, (layout[1]?.startFrame ?? 0) - 2);
+
+  // 3 シーン目終端（= scene[3] 開始）の男衆「オウ！」。layout[3] 不在なら無音。
+  const cheerSfxStartFrame = layout[3] ? Math.max(0, layout[3].startFrame - 2) : -1;
 
   const keywordHits: KeywordHit[] = keyTerms
     .map((term) => findKeywordHit(captions, term))
@@ -89,7 +94,10 @@ export const HistoryShort: React.FC<HistoryShortProps> = ({
       {title && <TitleBar top={title.top} bottom={title.bottom} />}
       <NarrationAudio src={audioSrc} />
       {openingSfxSrc && <SfxAudio src={openingSfxSrc} startFrame={0} volume={1} />}
-      {hookSfxSrc && <SfxAudio src={hookSfxSrc} startFrame={hookSfxStartFrame} />}
+      {hookSfxSrc && <SfxAudio src={hookSfxSrc} startFrame={hookSfxStartFrame} volume={1} />}
+      {cheerSfxSrc && cheerSfxStartFrame >= 0 && (
+        <SfxAudio src={cheerSfxSrc} startFrame={cheerSfxStartFrame} volume={0.8} />
+      )}
     </AbsoluteFill>
   );
 };

@@ -21,6 +21,8 @@ export interface RankingJobPaths {
   ttsClipsDir: string;
   /** セグメント別 TTS の audioClips マニフェスト JSON */
   audioClipsJson: string;
+  /** opening 下部に表示するキャラ/ロゴ等を置くディレクトリ（ジョブ別 override 用） */
+  openingIconsDir: string;
 }
 
 export function validateJobId(jobId: string): void {
@@ -46,6 +48,7 @@ export function resolveRankingJobPaths(jobId: string): RankingJobPaths {
     wordsJson: path.join(root, "words.json"),
     ttsClipsDir: path.join(root, "tts-clips"),
     audioClipsJson: path.join(root, "audio-clips.json"),
+    openingIconsDir: path.join(root, "assets", "opening-icons"),
   };
 }
 
@@ -115,6 +118,58 @@ function findFirstAudio(dir: string): string | null {
     if (hit) return path.join(dir, hit);
   }
   return null;
+}
+
+/**
+ * 指定ディレクトリ配下の画像を IMAGE_EXTENSIONS 順 + ファイル名昇順で全て返す。
+ * ディレクトリが無い場合は空配列。
+ */
+function listImagesSorted(dir: string): string[] {
+  if (!fs.existsSync(dir)) return [];
+  let entries: string[];
+  try {
+    entries = fs.readdirSync(dir);
+  } catch {
+    return [];
+  }
+  const isImage = (name: string): boolean =>
+    IMAGE_EXTENSIONS.some((ext) => name.toLowerCase().endsWith(`.${ext}`));
+  return entries
+    .filter(isImage)
+    .sort((a, b) => a.localeCompare(b))
+    .map((name) => path.join(dir, name));
+}
+
+export interface ResolvedOpeningIcons {
+  /** 検出された画像の絶対パス（最大 3 枚で打ち切り）。0 件なら空配列 */
+  paths: string[];
+  source: "job-override" | "channel-default" | "none";
+}
+
+/**
+ * opening 下部に表示するキャラ画像 / ロゴ等を解決する。優先順位:
+ *   1. ジョブ assets/opening-icons/ 配下の画像（ジョブ別 override）
+ *   2. packages/channels/<channel>/assets/opening-icons/ 配下の画像（チャンネル既定）
+ *   3. なし
+ *
+ * 画像数は最大 3 枚で打ち切る（4 枚目以降は無視）。1〜3 枚で renderer がレイアウト調整する。
+ */
+export function resolveOpeningIcons(
+  jobPaths: RankingJobPaths | null,
+  channel: string,
+): ResolvedOpeningIcons {
+  const cap = (paths: string[]): string[] => paths.slice(0, 3);
+  if (jobPaths) {
+    const jobIcons = listImagesSorted(jobPaths.openingIconsDir);
+    if (jobIcons.length > 0) {
+      return { paths: cap(jobIcons), source: "job-override" };
+    }
+  }
+  const channelIcons = listImagesSorted(channelAssetsDir("opening-icons", channel));
+  if (channelIcons.length > 0) {
+    return { paths: cap(channelIcons), source: "channel-default" };
+  }
+  return { paths: [], source: "none" };
 }
 
 /**

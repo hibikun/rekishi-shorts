@@ -9,19 +9,87 @@ import {
   type Scene,
   type Script,
 } from "@rekishi/shared";
-import { synthesizeNarration, probeDurationSec } from "./tts-generator.js";
+import { getChannel } from "@rekishi/shared/channel";
+import {
+  resolveNarratorVoice,
+  synthesizeNarration,
+  probeDurationSec,
+} from "./tts-generator.js";
 
 // ========================================================================
 // セグメント別 TTS で ranking three-pick の narration を組み立てるパイプライン。
-// 案G改: 5 narrator clips (Kore) + 9 reviewer clips (3 voices rotate) → ffmpeg concat
-//        → audioClips manifest と 8 scenes を返す。scene-aligner は不要。
+// 5 narrator clips + 9 reviewer clips (N voices rotate) → ffmpeg concat
+// → audioClips manifest と 8 scenes を返す。scene-aligner は不要。
+//
+// 声の選択はチャンネル別: ranking = narrator Zubenelgenubi / reviewer Despina。
+// チャンネルごとの default は REVIEWER_VOICES_BY_CHANNEL に列挙し、
+// env GEMINI_TTS_REVIEW_VOICES_<CHANNEL> で個別上書き可能。
 // ========================================================================
 
-const DEFAULT_NARRATOR_VOICE = "Kore";
-const DEFAULT_REVIEWER_VOICES = ["Puck", "Aoede", "Leda"] as const;
+// チャンネル別 reviewer default。
+// ranking は Despina 単一でローテーション (= 9 review 全部 Despina) する。
+// 1 声で単調になるなら env で 2-3 声に増やす運用を想定。
+const REVIEWER_VOICES_BY_CHANNEL: Record<string, readonly string[]> = {
+  ranking: ["Despina"],
+};
+
+// 表に未登録のチャンネル用フォールバック (旧 default と同等)。
+const FALLBACK_REVIEWER_VOICES = ["Puck", "Aoede", "Leda"] as const;
+
 // Gemini 3.1 Flash TTS preview の per-minute レート制限 (10 req/min) を避けるため、
 // デフォルトは 2 並列に抑える。tts-generator 側で 429 retry も入っている。
 const DEFAULT_CONCURRENCY = 2;
+
+// reviewer クリップに後段で掛ける ffmpeg 高速化フィルタの設定。
+// silenceremove で前後の無音を削り、atempo で発話速度を上げる。
+// atempo は 0.5〜2.0 の範囲、感覚値のスイートスポットは 1.15〜1.25。
+// env RANKING_REVIEWER_ATEMPO で 1.0 にすれば実質「無音トリムのみ」に退避できる。
+const REVIEWER_ATEMPO_DEFAULT = 1.2;
+const REVIEWER_ATEMPO_MIN = 0.5;
+const REVIEWER_ATEMPO_MAX = 2.0;
+// silenceremove の閾値: -40dB (静かな声でも声と判定する余裕)、最小 50ms の無音をカット。
+const REVIEWER_SILENCE_THRESHOLD_DB = -40;
+const REVIEWER_SILENCE_MIN_SEC = 0.05;
+
+function resolveReviewerAtempo(): number {
+  const raw = process.env.RANKING_REVIEWER_ATEMPO;
+  if (!raw) return REVIEWER_ATEMPO_DEFAULT;
+  const v = Number(raw);
+  if (!Number.isFinite(v)) return REVIEWER_ATEMPO_DEFAULT;
+  return Math.min(REVIEWER_ATEMPO_MAX, Math.max(REVIEWER_ATEMPO_MIN, v));
+}
+
+/**
+ * 現在のチャンネルに応じて reviewer voice 配列を決める。優先順:
+ *   1. 明示オーバーライド (input.reviewerVoices)
+ *   2. GEMINI_TTS_REVIEW_VOICES_<CHANNEL> env (CSV)
+ *   3. REVIEWER_VOICES_BY_CHANNEL の組み込み default
+ *   4. GEMINI_TTS_REVIEW_VOICES 互換 env (旧グローバル CSV)
+ *   5. 最終フォールバック ["Puck","Aoede","Leda"]
+ */
+function resolveReviewerVoices(
+  override?: readonly string[],
+): readonly string[] {
+  if (override && override.length > 0) return override;
+  const channel = getChannel();
+  const channelKey = channel.toUpperCase();
+
+  const fromChannelEnv = process.env[`GEMINI_TTS_REVIEW_VOICES_${channelKey}`]
+    ?.split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (fromChannelEnv && fromChannelEnv.length > 0) return fromChannelEnv;
+
+  const channelDefault = REVIEWER_VOICES_BY_CHANNEL[channel];
+  if (channelDefault && channelDefault.length > 0) return channelDefault;
+
+  const fromGlobalEnv = process.env.GEMINI_TTS_REVIEW_VOICES?.split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (fromGlobalEnv && fromGlobalEnv.length > 0) return fromGlobalEnv;
+
+  return FALLBACK_REVIEWER_VOICES;
+}
 
 export interface SynthesizeRankingClipsInput {
   script: Script;
@@ -102,11 +170,8 @@ export async function synthesizeRankingClips(
     );
   }
 
-  const narratorVoice = input.narratorVoice ?? DEFAULT_NARRATOR_VOICE;
-  const reviewerVoices =
-    input.reviewerVoices && input.reviewerVoices.length > 0
-      ? input.reviewerVoices
-      : DEFAULT_REVIEWER_VOICES;
+  const narratorVoice = resolveNarratorVoice(input.narratorVoice);
+  const reviewerVoices = resolveReviewerVoices(input.reviewerVoices);
   const concurrency = Math.max(1, input.concurrency ?? DEFAULT_CONCURRENCY);
 
   await fsp.mkdir(input.clipsDir, { recursive: true });
@@ -223,6 +288,8 @@ export async function synthesizeRankingClips(
   };
   const synthResults: SynthOutput[] = new Array(jobs.length);
 
+  const reviewerAtempo = resolveReviewerAtempo();
+
   await runWithConcurrency(
     jobs.map((job, idx) => async () => {
       const tts = await synthesizeNarration(job.text, job.outPath, {
@@ -231,8 +298,13 @@ export async function synthesizeRankingClips(
         voiceName: job.voice,
         persona: job.persona,
       });
+      let durationSec = tts.approxDurationSec;
+      if (job.persona === "reviewer") {
+        await applyReviewerPostProcess(job.outPath, reviewerAtempo);
+        durationSec = (await probeDurationSec(job.outPath)) ?? durationSec;
+      }
       synthResults[idx] = {
-        durationSec: tts.approxDurationSec,
+        durationSec,
         characters: tts.characters,
         usage: tts.usage,
       };
@@ -455,6 +527,48 @@ async function runWithConcurrency<T>(
   for (let i = 0; i < n; i++) workers.push(worker());
   await Promise.all(workers);
   return results;
+}
+
+/**
+ * reviewer クリップを ffmpeg で in-place 高速化＋無音除去する。
+ * - silenceremove で先頭/末尾の無音 (>= 50ms / -40dB) を削る (前後 reverse トリック)。
+ * - atempo で発話速度を上げる (デフォルト 1.20、env RANKING_REVIEWER_ATEMPO で上書き可)。
+ * - 出力は元の wav と同じ 24000Hz / mono / pcm_s16le。
+ *
+ * 後段の ffmpegConcatWavs は -c copy で結合するため、フォーマットを必ず元と揃える。
+ */
+async function applyReviewerPostProcess(
+  wavPath: string,
+  atempo: number,
+): Promise<void> {
+  const filterParts = [
+    `silenceremove=start_periods=1:start_silence=${REVIEWER_SILENCE_MIN_SEC}:start_threshold=${REVIEWER_SILENCE_THRESHOLD_DB}dB:detection=peak`,
+    "areverse",
+    `silenceremove=start_periods=1:start_silence=${REVIEWER_SILENCE_MIN_SEC}:start_threshold=${REVIEWER_SILENCE_THRESHOLD_DB}dB:detection=peak`,
+    "areverse",
+  ];
+  if (Math.abs(atempo - 1.0) > 1e-3) {
+    filterParts.push(`atempo=${atempo.toFixed(3)}`);
+  }
+  const tmpPath = `${wavPath}.fast.wav`;
+  await runFfmpeg([
+    "-y",
+    "-hide_banner",
+    "-loglevel",
+    "error",
+    "-i",
+    wavPath,
+    "-af",
+    filterParts.join(","),
+    "-ar",
+    "24000",
+    "-ac",
+    "1",
+    "-c:a",
+    "pcm_s16le",
+    tmpPath,
+  ]);
+  await fsp.rename(tmpPath, wavPath);
 }
 
 /**

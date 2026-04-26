@@ -3,7 +3,37 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { Buffer } from "node:buffer";
 import { spawn } from "node:child_process";
+import { getChannel } from "@rekishi/shared/channel";
 import { config } from "./config.js";
+
+// チャンネル別の narrator default。ranking は「大人でリッチ」基調で Zubenelgenubi。
+// rekishi/kosei は明示エントリを置かず、従来通り GEMINI_TTS_VOICE / "Kore" にフォールバックさせる。
+const NARRATOR_VOICE_BY_CHANNEL: Record<string, string> = {
+  ranking: "Zubenelgenubi",
+};
+
+/**
+ * 現在のチャンネルに応じて narrator voice を決める。優先順:
+ *   1. 明示オーバーライド (cli の引数や呼び出し側 opts)
+ *   2. GEMINI_TTS_VOICE_<CHANNEL> env (例: GEMINI_TTS_VOICE_RANKING)
+ *   3. NARRATOR_VOICE_BY_CHANNEL の組み込み default
+ *   4. GEMINI_TTS_VOICE 互換 env (旧グローバル設定)
+ *   5. 最終フォールバック "Kore"
+ *
+ * 3 を 4 より先に置いてあるため、ユーザーが旧来の GEMINI_TTS_VOICE=Kore を残していても
+ * ranking だけ別声で再生される（rekishi/kosei は表に未登録なので 4 が拾う）。
+ */
+export function resolveNarratorVoice(override?: string): string {
+  const channel = getChannel();
+  const channelKey = channel.toUpperCase();
+  return (
+    override ??
+    process.env[`GEMINI_TTS_VOICE_${channelKey}`] ??
+    NARRATOR_VOICE_BY_CHANNEL[channel] ??
+    process.env.GEMINI_TTS_VOICE ??
+    "Kore"
+  );
+}
 
 export interface TTSResult {
   path: string;
@@ -35,9 +65,9 @@ export type VoicePersona = "narrator" | "reviewer";
 
 const STYLE_PROMPTS: Record<VoicePersona, string> = {
   narrator:
-    "Say the following in natural, clear Japanese with a confident educational narrator's voice, slightly fast pace (suitable for a YouTube Shorts video):",
+    "Say the following in natural, clear Japanese with a confident narrator's voice. Speak at a noticeably fast, brisk tempo — the punchy pace of a fast-cut YouTube Shorts video. Keep articulation crisp and minimize pauses between phrases. Stay natural; do not sound rushed or robotic:",
   reviewer:
-    "Read the following Japanese text as a casual short user review comment for a YouTube Shorts video. Sound conversational and personal, not like an announcer. Keep it natural and brief:",
+    "Read the following Japanese text as a casual user review comment for a YouTube Shorts video. Deliver it extremely rapid-fire — machine-gun pace, like an excited friend texting reactions in a group chat. Leave zero pause between words, phrases, and sentences. Sound personal and natural, not announcer-like, but keep the tempo aggressively tight — get through the entire line in a single breath. Do not add reflective pauses or trailing fade-outs:",
 };
 
 /**
@@ -61,7 +91,7 @@ export async function synthesizeNarration(
 ): Promise<TTSResult> {
   const withReadings = applyFurigana(text, opts.readings);
   const processed = applyFurigana(withReadings, opts.furigana);
-  const voiceName = opts.voiceName ?? process.env.GEMINI_TTS_VOICE ?? "Kore";
+  const voiceName = resolveNarratorVoice(opts.voiceName);
   const model = process.env.GEMINI_TTS_MODEL ?? "gemini-3.1-flash-tts-preview";
   const persona: VoicePersona = opts.persona ?? "narrator";
 

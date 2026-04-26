@@ -44,8 +44,19 @@ export const ThreePickItemSchema = z.object({
 export type ThreePickItem = z.infer<typeof ThreePickItemSchema>;
 
 export const VideoTitleSchema = z.object({
-  top: z.string().min(1).max(15).describe("タイトル上段（小）— 主語/前振り。例: 年収200億の男が / なぜ信長は"),
-  bottom: z.string().min(1).max(15).describe("タイトル下段（大）— 核/オチ。体言止め推奨。例: 毎朝行う2つの習慣。 / 裏切られた真相。"),
+  top: z
+    .string()
+    .max(15)
+    .describe(
+      "タイトル上段（小）— 主語/前振り。空文字 \"\" でサブタイトル無し（ranking 新仕様）。例: 年収200億の男が / なぜ信長は",
+    ),
+  bottom: z
+    .string()
+    .min(1)
+    .max(20)
+    .describe(
+      "タイトル下段（大）— 核/オチ。改行は \"/\" で指示可（ranking）。例: 毎朝行う2つの習慣。 / 目黒で外さない/デート飯3選",
+    ),
 });
 export type VideoTitle = z.infer<typeof VideoTitleSchema>;
 
