@@ -67,7 +67,7 @@ const STYLE_PROMPTS: Record<VoicePersona, string> = {
   narrator:
     "Say the following in natural, clear Japanese with a confident narrator's voice. Speak at a noticeably fast, brisk tempo — the punchy pace of a fast-cut YouTube Shorts video. Keep articulation crisp and minimize pauses between phrases. Stay natural; do not sound rushed or robotic:",
   reviewer:
-    "Read the following Japanese text as a casual user review comment for a YouTube Shorts video. Speak at a quick, snappy conversational pace — like an excited friend giving a fast hot take. Sound personal and natural, not announcer-like. Keep the tempo tight; no pauses between sentences:",
+    "Read the following Japanese text as a casual user review comment for a YouTube Shorts video. Deliver it extremely rapid-fire — machine-gun pace, like an excited friend texting reactions in a group chat. Leave zero pause between words, phrases, and sentences. Sound personal and natural, not announcer-like, but keep the tempo aggressively tight — get through the entire line in a single breath. Do not add reflective pauses or trailing fade-outs:",
 };
 
 /**

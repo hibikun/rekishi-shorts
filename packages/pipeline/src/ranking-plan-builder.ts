@@ -15,6 +15,8 @@ export interface BuildRankingPlanInput {
   backgroundImagePath: string;
   /** rank 1, 2, 3 の順番で並べた商品画像パス */
   itemImagePaths: [string, string, string];
+  /** opening 下部に表示するキャラ/ロゴ画像（最大 3 枚）。空配列なら非表示 */
+  openingIconImagePaths?: string[];
   audioPath?: string;
   bgmPath?: string;
   rankSfxPath?: string;
@@ -50,11 +52,20 @@ function ensureRankingScript(
 }
 
 function buildOpeningLines(script: Script): RankingPlan["opening"]["lines"] {
-  return [
-    { text: script.title.top, variant: "small-white" },
-    { text: script.title.bottom, variant: "gold" },
-    { text: script.hook, variant: "tiny-white" },
-  ];
+  // 新仕様: title.bottom にメインタイトルを書き、改行位置に "/" を入れる規約。
+  // "/" を改行に変換し、空白行は除外する。title.top は後方互換のため空でなければ
+  // small-white で残す（旧ジョブ向け）。
+  const lines: RankingPlan["opening"]["lines"] = [];
+  const top = (script.title.top ?? "").trim();
+  if (top.length > 0) {
+    lines.push({ text: top, variant: "small-white" });
+  }
+  const bottomRaw = (script.title.bottom ?? "").trim();
+  if (bottomRaw.length > 0) {
+    const bottom = bottomRaw.replace(/\s*\/\s*/g, "\n");
+    lines.push({ text: bottom, variant: "gold" });
+  }
+  return lines;
 }
 
 function toRankingItem(
@@ -105,9 +116,18 @@ export function buildRankingPlan(input: BuildRankingPlanInput): RankingPlan {
     script.estimatedDurationSec ??
     30;
 
+  const iconPaths = input.openingIconImagePaths ?? [];
+  const openingIcons =
+    iconPaths.length > 0
+      ? iconPaths.slice(0, 3).map((src) => ({ src }))
+      : undefined;
+
   return RankingPlanSchema.parse({
     id,
-    opening: { lines: buildOpeningLines(script) },
+    opening: {
+      lines: buildOpeningLines(script),
+      icons: openingIcons,
+    },
     items,
     backgroundImagePath: input.backgroundImagePath,
     closing: { text: script.closing },

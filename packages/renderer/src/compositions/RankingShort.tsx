@@ -270,8 +270,8 @@ const PremiumBackground: React.FC<{ src?: string }> = ({ src }) => {
             left: "-10%",
             transform: `translate(${translateX}px, ${translateY}px) scale(${scale})`,
             transformOrigin: "center center",
-            filter: "blur(22px) brightness(0.6) saturate(0.85)",
-            opacity: 0.62,
+            filter: "blur(12px) brightness(0.6) saturate(0.9)",
+            opacity: 0.65,
           }}
         />
       )}

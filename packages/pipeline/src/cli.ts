@@ -246,6 +246,10 @@ program
     "--job-id <id>",
     "ジョブID。指定すると data/<channel>/scripts/<id>/script.json に保存し NEXT_STEPS.md も出力",
   )
+  .option(
+    "--research-file <path>",
+    "プロンプトの {{research}} に注入する markdown ファイル（手動リサーチ資料）",
+  )
   .addOption(channelOption())
   .action(async (opts) => {
     const { generateScript } = await import("./script-generator.js");
@@ -256,7 +260,16 @@ program
       target: opts.target,
       format: opts.format,
     });
-    const { script } = await generateScript(topic);
+    let researchMd: string | undefined;
+    if (opts.researchFile) {
+      const researchPath = resolveCliPath(opts.researchFile);
+      if (!fs.existsSync(researchPath)) {
+        throw new Error(`research file が見当たりません: ${researchPath}`);
+      }
+      researchMd = fs.readFileSync(researchPath, "utf-8");
+      console.log(chalk.dim(`📚 research-file: ${researchPath} (${researchMd.length} chars)`));
+    }
+    const { script } = await generateScript(topic, researchMd);
     const json = JSON.stringify(script, null, 2);
 
     if (opts.jobId) {
@@ -762,7 +775,9 @@ program
     //   1. --bgm <path>                              (明示)
     //   2. data/<channel>/scripts/<id>/assets/bgm/*  (このジョブだけ別 BGM)
     //   3. packages/channels/<channel>/assets/bgm/*  (チャンネル既定)
-    const { resolveBgmPath, resolveRankingJobPaths } = await import("./ranking-paths.js");
+    const { resolveBgmPath, resolveOpeningIcons, resolveRankingJobPaths } = await import(
+      "./ranking-paths.js"
+    );
     const jobPathsForBgm = opts.jobId ? resolveRankingJobPaths(opts.jobId) : null;
     const cliBgmAbs = opts.bgm ? resolveCliPath(opts.bgm) : null;
     const resolvedBgm = resolveBgmPath(jobPathsForBgm, opts.channel, cliBgmAbs);
@@ -778,6 +793,20 @@ program
       );
     }
 
+    // opening-icons auto-detect (BGM と同じ優先順位):
+    //   1. data/<channel>/scripts/<id>/assets/opening-icons/*  (ジョブ override)
+    //   2. packages/channels/<channel>/assets/opening-icons/*  (チャンネル既定)
+    const resolvedIcons = resolveOpeningIcons(jobPathsForBgm, opts.channel);
+    if (resolvedIcons.paths.length > 0) {
+      const iconLabel =
+        resolvedIcons.source === "job-override" ? "ジョブ override" : "チャンネル既定";
+      console.log(
+        chalk.dim(
+          `🖼️  opening-icons (${iconLabel}): ${resolvedIcons.paths.length} 枚`,
+        ),
+      );
+    }
+
     const plan = buildRankingPlan({
       script,
       backgroundImagePath: resolveCliPath(backgroundPath),
@@ -786,6 +815,7 @@ program
         resolveCliPath(imagePaths[1]),
         resolveCliPath(imagePaths[2]),
       ],
+      openingIconImagePaths: resolvedIcons.paths,
       audioPath: narrationPath,
       bgmPath: resolvedBgm?.path,
       rankSfxPath: opts.rankSfx ? resolveCliPath(opts.rankSfx) : undefined,

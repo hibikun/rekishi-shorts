@@ -156,11 +156,14 @@ export async function renderRankingShort(
       )
     : "";
 
-  const hookSfxSrc = plan.hookSfxPath
+  // 動画冒頭 0.0 秒 SFX。plan.hookSfxPath が無ければ data/sfx/hyoshigi.mp3 を自動装着（rekishi と同パターン）
+  const hookSfxLocalPath =
+    plan.hookSfxPath ?? path.resolve(__dirname, "../../../data/sfx/hyoshigi.mp3");
+  const hookSfxSrc = fs.existsSync(hookSfxLocalPath)
     ? stageAsset(
-        plan.hookSfxPath,
+        hookSfxLocalPath,
         bundleDir,
-        `ranking-hook-sfx${path.extname(plan.hookSfxPath) || ".mp3"}`,
+        `ranking-hook-sfx${path.extname(hookSfxLocalPath) || ".mp3"}`,
       )
     : "";
 
@@ -189,6 +192,7 @@ export async function renderRankingShort(
     bgmSrc,
     rankSfxSrc,
     hookSfxSrc,
+    hookSfxVolume: 1,
     scenes: plan.scenes,
     audioClips: plan.audioClips,
   };

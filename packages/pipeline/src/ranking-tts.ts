@@ -40,6 +40,25 @@ const FALLBACK_REVIEWER_VOICES = ["Puck", "Aoede", "Leda"] as const;
 // デフォルトは 2 並列に抑える。tts-generator 側で 429 retry も入っている。
 const DEFAULT_CONCURRENCY = 2;
 
+// reviewer クリップに後段で掛ける ffmpeg 高速化フィルタの設定。
+// silenceremove で前後の無音を削り、atempo で発話速度を上げる。
+// atempo は 0.5〜2.0 の範囲、感覚値のスイートスポットは 1.15〜1.25。
+// env RANKING_REVIEWER_ATEMPO で 1.0 にすれば実質「無音トリムのみ」に退避できる。
+const REVIEWER_ATEMPO_DEFAULT = 1.2;
+const REVIEWER_ATEMPO_MIN = 0.5;
+const REVIEWER_ATEMPO_MAX = 2.0;
+// silenceremove の閾値: -40dB (静かな声でも声と判定する余裕)、最小 50ms の無音をカット。
+const REVIEWER_SILENCE_THRESHOLD_DB = -40;
+const REVIEWER_SILENCE_MIN_SEC = 0.05;
+
+function resolveReviewerAtempo(): number {
+  const raw = process.env.RANKING_REVIEWER_ATEMPO;
+  if (!raw) return REVIEWER_ATEMPO_DEFAULT;
+  const v = Number(raw);
+  if (!Number.isFinite(v)) return REVIEWER_ATEMPO_DEFAULT;
+  return Math.min(REVIEWER_ATEMPO_MAX, Math.max(REVIEWER_ATEMPO_MIN, v));
+}
+
 /**
  * 現在のチャンネルに応じて reviewer voice 配列を決める。優先順:
  *   1. 明示オーバーライド (input.reviewerVoices)
@@ -269,6 +288,8 @@ export async function synthesizeRankingClips(
   };
   const synthResults: SynthOutput[] = new Array(jobs.length);
 
+  const reviewerAtempo = resolveReviewerAtempo();
+
   await runWithConcurrency(
     jobs.map((job, idx) => async () => {
       const tts = await synthesizeNarration(job.text, job.outPath, {
@@ -277,8 +298,13 @@ export async function synthesizeRankingClips(
         voiceName: job.voice,
         persona: job.persona,
       });
+      let durationSec = tts.approxDurationSec;
+      if (job.persona === "reviewer") {
+        await applyReviewerPostProcess(job.outPath, reviewerAtempo);
+        durationSec = (await probeDurationSec(job.outPath)) ?? durationSec;
+      }
       synthResults[idx] = {
-        durationSec: tts.approxDurationSec,
+        durationSec,
         characters: tts.characters,
         usage: tts.usage,
       };
@@ -501,6 +527,48 @@ async function runWithConcurrency<T>(
   for (let i = 0; i < n; i++) workers.push(worker());
   await Promise.all(workers);
   return results;
+}
+
+/**
+ * reviewer クリップを ffmpeg で in-place 高速化＋無音除去する。
+ * - silenceremove で先頭/末尾の無音 (>= 50ms / -40dB) を削る (前後 reverse トリック)。
+ * - atempo で発話速度を上げる (デフォルト 1.20、env RANKING_REVIEWER_ATEMPO で上書き可)。
+ * - 出力は元の wav と同じ 24000Hz / mono / pcm_s16le。
+ *
+ * 後段の ffmpegConcatWavs は -c copy で結合するため、フォーマットを必ず元と揃える。
+ */
+async function applyReviewerPostProcess(
+  wavPath: string,
+  atempo: number,
+): Promise<void> {
+  const filterParts = [
+    `silenceremove=start_periods=1:start_silence=${REVIEWER_SILENCE_MIN_SEC}:start_threshold=${REVIEWER_SILENCE_THRESHOLD_DB}dB:detection=peak`,
+    "areverse",
+    `silenceremove=start_periods=1:start_silence=${REVIEWER_SILENCE_MIN_SEC}:start_threshold=${REVIEWER_SILENCE_THRESHOLD_DB}dB:detection=peak`,
+    "areverse",
+  ];
+  if (Math.abs(atempo - 1.0) > 1e-3) {
+    filterParts.push(`atempo=${atempo.toFixed(3)}`);
+  }
+  const tmpPath = `${wavPath}.fast.wav`;
+  await runFfmpeg([
+    "-y",
+    "-hide_banner",
+    "-loglevel",
+    "error",
+    "-i",
+    wavPath,
+    "-af",
+    filterParts.join(","),
+    "-ar",
+    "24000",
+    "-ac",
+    "1",
+    "-c:a",
+    "pcm_s16le",
+    tmpPath,
+  ]);
+  await fsp.rename(tmpPath, wavPath);
 }
 
 /**
