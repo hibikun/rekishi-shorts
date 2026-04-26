@@ -21,6 +21,7 @@ import { appendSnapshots } from "./analytics/store.js";
 import { buildSummary, renderSummaryTable, type SortKey } from "./analytics/summary.js";
 import { runResearch } from "./research/youtube-research.js";
 import { renderMarkdownReport } from "./research/report.js";
+import { loadUkiyoePlanAsRenderPlan } from "./ukiyoe-adapter.js";
 
 function log(msg: string): void {
   console.log(msg);
@@ -33,8 +34,20 @@ function buildVideoFilename(title: string, jobId: string): string {
 
 async function loadRenderPlan(jobId: string): Promise<RenderPlan> {
   const p = dataPath("scripts", jobId, "render-plan.json");
-  const raw = await fs.readFile(p, "utf-8");
-  return RenderPlanSchema.parse(JSON.parse(raw));
+  try {
+    const raw = await fs.readFile(p, "utf-8");
+    return RenderPlanSchema.parse(JSON.parse(raw));
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+    // ukiyoe チャンネルは独自スキーマ（ukiyoe-plan.json）。最小変換で読む。
+    const ukiyoePath = dataPath("scripts", jobId, "ukiyoe-plan.json");
+    try {
+      await fs.access(ukiyoePath);
+    } catch {
+      throw err;
+    }
+    return loadUkiyoePlanAsRenderPlan(jobId);
+  }
 }
 
 async function resolveVideoPath(plan: RenderPlan): Promise<string> {
