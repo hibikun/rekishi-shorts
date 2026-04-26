@@ -25,8 +25,8 @@ const DEFAULT_MIN_SCENE_DURATION_SEC = 1.5;
  * シーンごとの実時間 (startSec / endSec / durationSec) を返す。
  *
  * クリップ側カット方針: TTS は固定で、シーン尺をナレーションに合わせて短くする。
- * - 各シーンの終端 = そのシーンのナレーション最後の語の `endSec`
- * - 最終シーンの終端だけ `totalDurationSec` に揃える（WAV 末尾の自然な無音/余韻を保持）
+ * 最終シーン含め、各シーンの終端 = そのシーンのナレーション最後の語の `endSec`。
+ * WAV 末尾の無音は採用しない（余韻でクリップ／字幕が残るのを避けるため）。
  *
  * 整合が取れない場合は等間隔フォールバックを返す（broken-by-guard 等への保険）。
  */
@@ -74,19 +74,13 @@ export function alignUkiyoeScenes(input: AlignUkiyoeScenesInput): UkiyoeSceneTim
   // 全シーンの境界が確定しなければフォールバック
   if (sceneEndSec.some((v) => v === undefined)) return fallback();
 
-  // 最終シーンの終端は WAV 全体長に揃える（自然なテールを残す）
-  sceneEndSec[sceneEndSec.length - 1] = totalDurationSec;
-
   // 単調増加と最小尺を確保
   const timings: UkiyoeSceneTiming[] = [];
   let prevEnd = 0;
   for (let i = 0; i < sceneNarrations.length; i += 1) {
     const rawEnd = sceneEndSec[i] as number;
     const startSec = prevEnd;
-    let endSec = Math.max(rawEnd, startSec + minDur);
-    if (i === sceneNarrations.length - 1) {
-      endSec = Math.max(totalDurationSec, startSec + minDur);
-    }
+    const endSec = Math.max(rawEnd, startSec + minDur);
     timings.push({
       index: i,
       startSec,
