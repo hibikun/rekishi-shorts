@@ -1,5 +1,5 @@
 import React from "react";
-import { Video } from "remotion";
+import { OffthreadVideo } from "remotion";
 
 export interface VideoSceneClipProps {
   src: string;
@@ -22,7 +22,7 @@ export const VideoSceneClip: React.FC<VideoSceneClipProps> = ({ src }) => {
     );
   }
   return (
-    <Video
+    <OffthreadVideo
       src={src}
       muted
       volume={0}
