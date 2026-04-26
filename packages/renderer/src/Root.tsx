@@ -3,6 +3,7 @@ import { Composition, staticFile } from "remotion";
 import { VIDEO_FPS, VIDEO_HEIGHT, VIDEO_WIDTH } from "@rekishi/shared";
 import { HistoryShort, type HistoryShortProps } from "./compositions/HistoryShort";
 import { RankingShort, type RankingShortProps } from "./compositions/RankingShort";
+import { UkiyoeShort, type UkiyoeShortProps } from "./compositions/UkiyoeShort";
 
 const defaultProps: HistoryShortProps = {
   scenes: [],
@@ -82,6 +83,17 @@ const rankingDefaultProps: RankingShortProps = {
 
 const RankingShortComponent = RankingShort as unknown as React.FC<Record<string, unknown>>;
 
+const ukiyoeDefaultProps: UkiyoeShortProps = {
+  scenes: [],
+  audioSrc: "",
+  captions: [],
+  captionSegments: [],
+  totalDurationSec: 20,
+  keyTerms: [],
+};
+
+const UkiyoeShortComponent = UkiyoeShort as unknown as React.FC<Record<string, unknown>>;
+
 export const Root: React.FC = () => {
   return (
     <>
@@ -102,6 +114,15 @@ export const Root: React.FC = () => {
         width={VIDEO_WIDTH}
         height={VIDEO_HEIGHT}
         defaultProps={rankingDefaultProps as unknown as Record<string, unknown>}
+      />
+      <Composition
+        id="UkiyoeShort"
+        component={UkiyoeShortComponent}
+        durationInFrames={VIDEO_FPS * 60}
+        fps={VIDEO_FPS}
+        width={VIDEO_WIDTH}
+        height={VIDEO_HEIGHT}
+        defaultProps={ukiyoeDefaultProps as unknown as Record<string, unknown>}
       />
     </>
   );
