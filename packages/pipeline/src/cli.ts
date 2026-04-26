@@ -869,6 +869,219 @@ program
     console.log(chalk.green(`\n✅ 完成: ${outputPath}`));
   });
 
+// ============================================================
+// ukiyoe チャンネル: 浮世絵タッチ × img2video 動画
+// 既存 rekishi/ranking/kosei コマンドには触らない
+// ============================================================
+
+program
+  .command("ukiyoe-generate")
+  .description(
+    "ukiyoe チャンネルを一気通貫で生成（script→scene-plan→images→videos→tts→render）",
+  )
+  .requiredOption("--topic <title>", "トピック（例: 継飛脚）")
+  .option("--era <era>", "時代（例: 江戸）")
+  .option("--scenes <n>", "シーン数（5秒×N、試作は4で短尺化）", "4")
+  .option(
+    "--research-file <path>",
+    "research markdown を script-routine プロンプトに流し込む",
+  )
+  .option("--job-id <id>", "ジョブID。省略時は timestamp ベース")
+  .option("--no-images", "image-gen を skip（既存 scene-NN.png を使う）")
+  .option("--no-videos", "video-gen を skip（既存 scene-NN.mp4 を使う）")
+  .option("--no-tts", "TTS を skip（既存 narration.wav を使う）")
+  .option("--no-render", "Remotion レンダリングを skip")
+  .action(async (opts) => {
+    setChannel("ukiyoe");
+
+    const sceneCount = Number.parseInt(opts.scenes, 10);
+    if (!Number.isInteger(sceneCount) || sceneCount < 2 || sceneCount > 12) {
+      throw new Error(`--scenes は 2〜12 の整数で指定してください（got: ${opts.scenes}）`);
+    }
+
+    const jobId =
+      opts.jobId ??
+      `ukiyoe-${new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19)}`;
+
+    const { resolveUkiyoeJobPaths, sceneImagePath } = await import(
+      "./ukiyoe-paths.js"
+    );
+    const paths = resolveUkiyoeJobPaths(jobId);
+    fs.mkdirSync(paths.root, { recursive: true });
+
+    console.log(chalk.bold(`\n🎴 ukiyoe-generate`));
+    console.log(chalk.dim(`   topic   : ${opts.topic}`));
+    console.log(chalk.dim(`   scenes  : ${sceneCount} (${sceneCount * 5}s total)`));
+    console.log(chalk.dim(`   jobId   : ${jobId}`));
+    console.log(chalk.dim(`   root    : ${paths.root}`));
+
+    // ---- 1. script ----
+    let script: import("./ukiyoe-script-generator.js").UkiyoeScript;
+    if (fs.existsSync(paths.scriptJson)) {
+      console.log(chalk.dim(`\n📝 script 既存: ${paths.scriptJson}`));
+      script = JSON.parse(
+        fs.readFileSync(paths.scriptJson, "utf-8"),
+      ) as import("./ukiyoe-script-generator.js").UkiyoeScript;
+    } else {
+      console.log(chalk.bold(`\n📝 [1/7] script generation...`));
+      const { generateUkiyoeScript } = await import("./ukiyoe-script-generator.js");
+      const researchMd = opts.researchFile
+        ? fs.readFileSync(resolveCliPath(opts.researchFile), "utf-8")
+        : undefined;
+      const result = await generateUkiyoeScript({
+        topic: opts.topic,
+        era: opts.era,
+        researchMd,
+        targetSceneCount: sceneCount,
+        targetDurationSec: sceneCount * 5,
+      });
+      script = result.script;
+      fs.writeFileSync(paths.scriptJson, JSON.stringify(script, null, 2));
+      console.log(chalk.green(`   saved: ${paths.scriptJson}`));
+      console.log(chalk.dim(`   tokens in=${result.usage.inputTokens} out=${result.usage.outputTokens}`));
+    }
+
+    // ---- 2. scene-plan ----
+    let scenePlan: import("./ukiyoe-scene-planner.js").UkiyoeScenePlan;
+    if (fs.existsSync(paths.scenePlanJson)) {
+      console.log(chalk.dim(`\n🎬 scene-plan 既存: ${paths.scenePlanJson}`));
+      scenePlan = JSON.parse(
+        fs.readFileSync(paths.scenePlanJson, "utf-8"),
+      ) as import("./ukiyoe-scene-planner.js").UkiyoeScenePlan;
+    } else {
+      console.log(chalk.bold(`\n🎬 [2/7] scene-plan...`));
+      const { planUkiyoeScenes } = await import("./ukiyoe-scene-planner.js");
+      const result = await planUkiyoeScenes(script);
+      scenePlan = result.plan;
+      fs.writeFileSync(paths.scenePlanJson, JSON.stringify(scenePlan, null, 2));
+      console.log(chalk.green(`   saved: ${paths.scenePlanJson}`));
+      for (const s of scenePlan.scenes) {
+        console.log(chalk.dim(`   scene[${s.index}] ${s.actionTag} | ${s.narration}`));
+      }
+    }
+
+    // ---- 3. images ----
+    if (opts.images !== false) {
+      console.log(chalk.bold(`\n🎨 [3/7] image-gen (${scenePlan.scenes.length} scenes)...`));
+      const { generateUkiyoeImages } = await import("./ukiyoe-image-generator.js");
+      await generateUkiyoeImages(
+        scenePlan.scenes.map((s) => ({ index: s.index, scenePrompt: s.imagePrompt })),
+        paths.imagesDir,
+        { skipExisting: true, concurrency: 3 },
+      );
+    } else {
+      console.log(chalk.yellow(`\n⚠ image-gen skipped (--no-images)`));
+    }
+
+    // ---- 4. videos ----
+    if (opts.videos !== false) {
+      console.log(chalk.bold(`\n🎥 [4/7] video-gen (${scenePlan.scenes.length} scenes)...`));
+      const { generateUkiyoeVideos } = await import("./ukiyoe-video-generator.js");
+      await generateUkiyoeVideos(
+        scenePlan.scenes.map((s) => ({
+          index: s.index,
+          imagePath: sceneImagePath(paths, s.index),
+          scenePrompt: s.videoPrompt,
+          actionTag: s.actionTag,
+          cameraFixed: s.cameraFixed,
+        })),
+        paths.videosDir,
+        { skipExisting: true, concurrency: 3 },
+      );
+    } else {
+      console.log(chalk.yellow(`\n⚠ video-gen skipped (--no-videos)`));
+    }
+
+    // ---- 5. TTS ----
+    if (opts.tts !== false && !fs.existsSync(paths.narrationWav)) {
+      console.log(chalk.bold(`\n🎙️  [5/7] TTS (Gemini)...`));
+      const { synthesizeNarration } = await import("./tts-generator.js");
+      const { FURIGANA_MAP } = await import("./furigana.js");
+      const tts = await synthesizeNarration(script.narration, paths.narrationWav, {
+        readings: script.readings,
+        furigana: FURIGANA_MAP,
+        hook: script.hook,
+      });
+      console.log(
+        chalk.green(
+          `   saved: ${tts.path} (${tts.characters}文字, ~${tts.approxDurationSec.toFixed(2)}s)`,
+        ),
+      );
+    } else if (fs.existsSync(paths.narrationWav)) {
+      console.log(chalk.dim(`\n🎙️  TTS 既存: ${paths.narrationWav}`));
+    } else {
+      console.log(chalk.yellow(`\n⚠ TTS skipped (--no-tts)`));
+    }
+
+    // ---- 6. ASR alignment + caption segments ----
+    console.log(chalk.bold(`\n📝 [6/7] caption alignment (Whisper)...`));
+    const { alignCaptions } = await import("./asr-aligner.js");
+    const alignment = await alignCaptions(paths.narrationWav, {
+      scriptText: script.narration,
+      readings: script.readings,
+      keyTerms: script.keyTerms,
+    });
+    fs.writeFileSync(paths.wordsJson, JSON.stringify(alignment, null, 2));
+    console.log(
+      chalk.dim(`   ${alignment.words.length} words / ${alignment.totalDurationSec.toFixed(2)}s`),
+    );
+
+    // scene 単位の captionSegments を等間隔で割り付ける（試作の簡易版）
+    let segCursor = 0;
+    const captionSegments = scenePlan.scenes.map((s) => {
+      const startSec = segCursor;
+      segCursor += s.durationSec;
+      return { text: s.narration, startSec, endSec: segCursor };
+    });
+
+    // ---- 7. plan + render ----
+    console.log(chalk.bold(`\n🧩 [7/7] build-plan + render...`));
+    const { buildUkiyoePlan, writeUkiyoePlan } = await import("./ukiyoe-plan-builder.js");
+    const plan = buildUkiyoePlan({
+      jobId,
+      script,
+      scenePlan,
+      imagesDir: paths.imagesDir,
+      videosDir: paths.videosDir,
+      audioPath: paths.narrationWav,
+      captions: alignment.words,
+      captionSegments,
+    });
+    writeUkiyoePlan(plan, paths.planJson);
+    console.log(chalk.green(`   plan saved: ${paths.planJson}`));
+
+    if (opts.render !== false) {
+      const { renderUkiyoeShort } = await import("@rekishi/renderer");
+      const outputPath = path.join(getJobOutputDir(), `ukiyoe-${plan.id}.mp4`);
+      console.log(chalk.bold(`\n🎬 Remotion レンダリング中...`));
+      await renderUkiyoeShort(plan, outputPath);
+      console.log(chalk.green(`\n✅ 完成: ${outputPath}`));
+    }
+  });
+
+program
+  .command("render-ukiyoe")
+  .description("既存の ukiyoe-plan.json からレンダリングのみ実行")
+  .requiredOption("--job-id <id>", "ジョブID")
+  .option("--out <path>", "出力 mp4 のパス")
+  .action(async (opts) => {
+    setChannel("ukiyoe");
+    const { resolveUkiyoeJobPaths } = await import("./ukiyoe-paths.js");
+    const { readUkiyoePlan } = await import("./ukiyoe-plan-builder.js");
+    const paths = resolveUkiyoeJobPaths(opts.jobId);
+    if (!fs.existsSync(paths.planJson)) {
+      throw new Error(`ukiyoe-plan.json が見当たりません: ${paths.planJson}`);
+    }
+    const plan = readUkiyoePlan(paths.planJson);
+    const { renderUkiyoeShort } = await import("@rekishi/renderer");
+    const outputPath = opts.out
+      ? resolveCliPath(opts.out)
+      : path.join(getJobOutputDir(), `ukiyoe-${plan.id}.mp4`);
+    console.log(chalk.bold(`\n🎬 Remotion レンダリング中: ${plan.id}`));
+    await renderUkiyoeShort(plan, outputPath);
+    console.log(chalk.green(`\n✅ 完成: ${outputPath}`));
+  });
+
 program.parseAsync().catch((err) => {
   console.error(chalk.red("\n❌ Error:"), err instanceof Error ? err.message : err);
   if (err instanceof Error && err.stack) console.error(chalk.dim(err.stack));
