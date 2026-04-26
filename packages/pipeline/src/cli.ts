@@ -1026,13 +1026,39 @@ program
       chalk.dim(`   ${alignment.words.length} words / ${alignment.totalDurationSec.toFixed(2)}s`),
     );
 
-    // scene 単位の captionSegments を等間隔で割り付ける（試作の簡易版）
-    let segCursor = 0;
-    const captionSegments = scenePlan.scenes.map((s) => {
-      const startSec = segCursor;
-      segCursor += s.durationSec;
-      return { text: s.narration, startSec, endSec: segCursor };
+    // クリップ側カット方針: TTS は固定で、シーン尺をナレーション実時間に合わせて短縮する。
+    // - 各シーンの終端 = そのシーンナレーション最後の語の endSec
+    // - 最終シーンの終端 = WAV 全体長（自然な余韻を保持）
+    const { alignUkiyoeScenes } = await import("./ukiyoe-scene-aligner.js");
+    const sceneTimings = alignUkiyoeScenes({
+      words: alignment.words,
+      totalDurationSec: alignment.totalDurationSec,
+      sceneNarrations: scenePlan.scenes.map((s) => s.narration),
     });
+
+    const alignedScenePlan: typeof scenePlan = {
+      ...scenePlan,
+      totalDurationSec: sceneTimings.reduce((a, t) => a + t.durationSec, 0),
+      scenes: scenePlan.scenes.map((s, i) => {
+        const t = sceneTimings[i];
+        if (!t) throw new Error(`scene timing missing for index ${i}`);
+        return { ...s, durationSec: t.durationSec };
+      }),
+    };
+
+    const captionSegments = scenePlan.scenes.map((s, i) => {
+      const t = sceneTimings[i];
+      if (!t) throw new Error(`scene timing missing for index ${i}`);
+      return { text: s.narration, startSec: t.startSec, endSec: t.endSec };
+    });
+
+    for (const t of sceneTimings) {
+      console.log(
+        chalk.dim(
+          `   scene[${t.index}] ${t.startSec.toFixed(2)}s → ${t.endSec.toFixed(2)}s (${t.durationSec.toFixed(2)}s)`,
+        ),
+      );
+    }
 
     // ---- 7. plan + render ----
     console.log(chalk.bold(`\n🧩 [7/7] build-plan + render...`));
@@ -1040,7 +1066,7 @@ program
     const plan = buildUkiyoePlan({
       jobId,
       script,
-      scenePlan,
+      scenePlan: alignedScenePlan,
       imagesDir: paths.imagesDir,
       videosDir: paths.videosDir,
       audioPath: paths.narrationWav,
