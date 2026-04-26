@@ -46,7 +46,11 @@ export const UkiyoeShort: React.FC<UkiyoeShortProps> = ({
         </Sequence>
       ))}
 
-      <Caption captionSegments={captionSegments} keyTerms={keyTerms} />
+      <Caption
+        captionSegments={captionSegments}
+        keyTerms={keyTerms}
+        variant="ukiyoe"
+      />
       <NarrationAudio src={audioSrc} />
     </AbsoluteFill>
   );
