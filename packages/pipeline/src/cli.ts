@@ -46,12 +46,13 @@ program
 
 program
   .command("research")
-  .description("Gemini + Google Search でトピックのリサーチ資料（research.md）を生成。draft の前段")
+  .description("Gemini + Google Search でトピックのリサーチ資料（research.md）を生成。draft / script-only の前段")
   .requiredOption("--topic <title>", "トピック名（例: 生類憐みの令）")
-  .option("--era <era>", "時代（例: 江戸）")
-  .option("--subject <subject>", "科目（省略時は channel ごとのデフォルト）")
+  .option("--era <era>", "時代 / 絞り込み条件（ranking では「20代後半〜30代男性」など）")
+  .option("--subject <subject>", "科目 / カテゴリ（省略時は channel ごとのデフォルト）")
   .option("--target <target>", "対象試験（共通テスト | 二次 | 汎用）", "汎用")
   .option("--format <format>", "台本フォーマット（single | three-pick）", "single")
+  .option("--job-id <id>", "ジョブID（指定時は data/<channel>/scripts/<id>/research.md に保存。後段の script-only で auto-detect される）")
   .addOption(channelOption())
   .action(async (opts) => {
     const topic = TopicSchema.parse({
@@ -63,12 +64,23 @@ program
     });
     console.log(chalk.bold(`\n🔎 rekishi-shorts research: ${topic.title}\n`));
 
-    const { jobId, researchPath, tracker, sourceCount, queryCount } = await runResearchStage(topic);
+    const { jobId, researchPath, tracker, sourceCount, queryCount } = await runResearchStage(topic, opts.jobId);
     console.log(chalk.green(`\n✅ research 保存: ${researchPath}`));
     console.log(chalk.dim(`   jobId=${jobId} / sources=${sourceCount} / queries=${queryCount}`));
     console.log(chalk.bold("\n次のステップ:"));
     console.log(`  1. ${chalk.cyan(researchPath)} を開いて内容確認（必要なら編集）`);
-    console.log(`  2. ${chalk.cyan(`pnpm draft --job ${jobId} --topic "${topic.title}"${topic.era ? ` --era "${topic.era}"` : ""}`)} で台本生成`);
+    if (opts.channel === "ranking") {
+      const subjectFlag = topic.subject ? ` --subject "${topic.subject}"` : "";
+      const eraFlag = topic.era ? ` --era "${topic.era}"` : "";
+      const formatFlag = topic.format ? ` --format ${topic.format}` : "";
+      console.log(
+        `  2. ${chalk.cyan(
+          `pnpm --filter @rekishi/pipeline exec tsx src/cli.ts script-only --channel ranking --job-id ${jobId} --topic "${topic.title}"${subjectFlag}${eraFlag}${formatFlag}`,
+        )} で台本生成（research.md を自動注入）`,
+      );
+    } else {
+      console.log(`  2. ${chalk.cyan(`pnpm draft --job ${jobId} --topic "${topic.title}"${topic.era ? ` --era "${topic.era}"` : ""}`)} で台本生成`);
+    }
     console.log(chalk.bold("\n💰 research 段階のコスト:"));
     console.log(tracker.formatTable());
   });
@@ -260,6 +272,14 @@ program
       target: opts.target,
       format: opts.format,
     });
+    let jobPaths: Awaited<
+      ReturnType<typeof import("./ranking-paths.js")["resolveRankingJobPaths"]>
+    > | undefined;
+    if (opts.jobId) {
+      const { resolveRankingJobPaths } = await import("./ranking-paths.js");
+      jobPaths = resolveRankingJobPaths(opts.jobId);
+    }
+
     let researchMd: string | undefined;
     if (opts.researchFile) {
       const researchPath = resolveCliPath(opts.researchFile);
@@ -268,13 +288,22 @@ program
       }
       researchMd = fs.readFileSync(researchPath, "utf-8");
       console.log(chalk.dim(`📚 research-file: ${researchPath} (${researchMd.length} chars)`));
+    } else if (jobPaths) {
+      const autoResearchPath = path.join(jobPaths.root, "research.md");
+      if (fs.existsSync(autoResearchPath)) {
+        researchMd = fs.readFileSync(autoResearchPath, "utf-8");
+        console.log(
+          chalk.dim(
+            `📚 research auto-detected: ${autoResearchPath} (${researchMd.length} chars)`,
+          ),
+        );
+      }
     }
     const { script } = await generateScript(topic, researchMd);
     const json = JSON.stringify(script, null, 2);
 
-    if (opts.jobId) {
-      const { resolveRankingJobPaths } = await import("./ranking-paths.js");
-      const paths = resolveRankingJobPaths(opts.jobId);
+    if (jobPaths) {
+      const paths = jobPaths;
       fs.mkdirSync(paths.root, { recursive: true });
       fs.mkdirSync(paths.assetsDir, { recursive: true });
       fs.writeFileSync(paths.scriptJson, json);
@@ -290,7 +319,7 @@ program
         );
         const md = buildNextStepsMarkdown({
           script,
-          jobId: opts.jobId,
+          jobId: paths.jobId,
           channel: opts.channel,
           assetsDirRelative,
         });
@@ -300,7 +329,7 @@ program
         console.log(chalk.bold("次の手順:"));
         for (const line of buildStdoutGuideLines({
           script,
-          jobId: opts.jobId,
+          jobId: paths.jobId,
           channel: opts.channel,
           assetsDirAbsolute: paths.assetsDir,
           nextStepsPath: paths.nextStepsMd,
