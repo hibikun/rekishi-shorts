@@ -81,8 +81,9 @@ export function resolveRankingAssets(
       itemPaths.push("");
     }
   }
+  // background はジョブ別 override 専用。不在ならチャンネル既定（resolveBackgroundPath）に委ねる
+  // ため missing には載せない（必須アセットではなくなった）。
   const bg = findAssetByBasename(assetsDir, "background");
-  if (!bg) missing.push("background");
 
   return {
     itemImages: [itemPaths[0]!, itemPaths[1]!, itemPaths[2]!],
@@ -170,6 +171,56 @@ export function resolveOpeningIcons(
     return { paths: cap(channelIcons), source: "channel-default" };
   }
   return { paths: [], source: "none" };
+}
+
+export interface ResolvedBackground {
+  /** 検出された背景画像の絶対パス */
+  path: string;
+  /** どこから来たか（ログ表示用） */
+  source: "cli-flag" | "job-override" | "channel-default";
+}
+
+/**
+ * 利用可能な最初の画像ファイルを返す（ディレクトリ配下を IMAGE_EXTENSIONS 順で走査）。
+ * 見つからなければ null。
+ */
+function findFirstImage(dir: string): string | null {
+  if (!fs.existsSync(dir)) return null;
+  let entries: string[];
+  try {
+    entries = fs.readdirSync(dir);
+  } catch {
+    return null;
+  }
+  for (const ext of IMAGE_EXTENSIONS) {
+    const hit = entries.find((name) => name.toLowerCase().endsWith(`.${ext}`));
+    if (hit) return path.join(dir, hit);
+  }
+  return null;
+}
+
+/**
+ * 背景画像を解決する。優先順位:
+ *   1. `cliBackgroundPath` (--background <path> 明示指定)
+ *   2. ジョブ assets/background.{png|webp|jpg|jpeg}（このジョブだけ別背景したい時）
+ *   3. `packages/channels/<channel>/assets/backgrounds/` 配下の最初の画像（チャンネル既定）
+ *   4. null
+ */
+export function resolveBackgroundPath(
+  jobPaths: RankingJobPaths | null,
+  channel: string,
+  cliBackgroundPath: string | null,
+): ResolvedBackground | null {
+  if (cliBackgroundPath) {
+    return { path: cliBackgroundPath, source: "cli-flag" };
+  }
+  if (jobPaths) {
+    const jobBg = findAssetByBasename(jobPaths.assetsDir, "background");
+    if (jobBg) return { path: jobBg, source: "job-override" };
+  }
+  const channelBg = findFirstImage(channelAssetsDir("backgrounds", channel));
+  if (channelBg) return { path: channelBg, source: "channel-default" };
+  return null;
 }
 
 /**

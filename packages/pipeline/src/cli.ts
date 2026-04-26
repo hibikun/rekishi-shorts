@@ -536,9 +536,9 @@ program
     );
 
     let scriptPath: string | undefined = opts.script ? resolveCliPath(opts.script) : undefined;
-    let backgroundPath: string | undefined = opts.background
+    const cliBackgroundPath: string | null = opts.background
       ? resolveCliPath(opts.background)
-      : undefined;
+      : null;
     let imagePaths: [string, string, string] | undefined;
     let outPath: string | undefined = opts.out ? resolveCliPath(opts.out) : undefined;
     let planId: string | undefined = opts.id;
@@ -548,32 +548,32 @@ program
 
     let audioClipsJsonPath: string | undefined;
 
-    if (opts.jobId) {
-      const { resolveRankingJobPaths, resolveRankingAssets } = await import(
-        "./ranking-paths.js"
-      );
-      const paths = resolveRankingJobPaths(opts.jobId);
-      scriptPath = scriptPath ?? paths.scriptJson;
-      outPath = outPath ?? paths.planJson;
-      planId = planId ?? opts.jobId;
-      if (!narrationPath && fs.existsSync(paths.narrationWav)) {
-        narrationPath = paths.narrationWav;
-      }
-      audioClipsJsonPath = paths.audioClipsJson;
+    const { resolveRankingJobPaths, resolveRankingAssets, resolveBackgroundPath } =
+      await import("./ranking-paths.js");
 
-      if (!opts.background || !opts.images) {
-        if (!fs.existsSync(paths.assetsDir)) {
+    let jobPaths: ReturnType<typeof resolveRankingJobPaths> | null = null;
+
+    if (opts.jobId) {
+      jobPaths = resolveRankingJobPaths(opts.jobId);
+      scriptPath = scriptPath ?? jobPaths.scriptJson;
+      outPath = outPath ?? jobPaths.planJson;
+      planId = planId ?? opts.jobId;
+      if (!narrationPath && fs.existsSync(jobPaths.narrationWav)) {
+        narrationPath = jobPaths.narrationWav;
+      }
+      audioClipsJsonPath = jobPaths.audioClipsJson;
+
+      if (!opts.images) {
+        if (!fs.existsSync(jobPaths.assetsDir)) {
           throw new Error(
-            `アセットディレクトリが見当たりません: ${paths.assetsDir}\n` +
+            `アセットディレクトリが見当たりません: ${jobPaths.assetsDir}\n` +
               `先に script-only --job-id ${opts.jobId} を実行し、画像を配置してください。`,
           );
         }
-        const { itemImages, backgroundImage, missing } = resolveRankingAssets(
-          paths.assetsDir,
-        );
+        const { itemImages, missing } = resolveRankingAssets(jobPaths.assetsDir);
         if (missing.length > 0) {
-          const script = fs.existsSync(paths.scriptJson)
-            ? readScriptFile(paths.scriptJson)
+          const script = fs.existsSync(jobPaths.scriptJson)
+            ? readScriptFile(jobPaths.scriptJson)
             : null;
           const items = script?.items ?? [];
           console.error(chalk.red(`\n❌ 画像ファイルが見つかりません:`));
@@ -583,21 +583,42 @@ program
             const it = rank ? items.find((x) => x.rank === rank) : null;
             const ref = it?.officialUrl || it?.affiliateUrl || it?.searchKeywords;
             console.error(
-              chalk.red(`  - ${name}.(png|webp|jpg|jpeg) が ${paths.assetsDir}/ に不在`),
+              chalk.red(`  - ${name}.(png|webp|jpg|jpeg) が ${jobPaths.assetsDir}/ に不在`),
             );
             if (it?.name) console.error(chalk.dim(`      商品: ${it.name}`));
             if (ref) console.error(chalk.dim(`      参考: ${ref}`));
           }
-          console.error(chalk.yellow(`\n→ NEXT_STEPS.md を参照: ${paths.nextStepsMd}`));
+          console.error(chalk.yellow(`\n→ NEXT_STEPS.md を参照: ${jobPaths.nextStepsMd}`));
           process.exit(1);
         }
         imagePaths = itemImages;
-        backgroundPath = backgroundPath ?? backgroundImage;
       }
     }
 
+    // 背景画像は 3 ルートで解決:
+    //   1. --background <path> (cli-flag)
+    //   2. data/<channel>/scripts/<id>/assets/background.* (job-override)
+    //   3. packages/channels/<channel>/assets/backgrounds/* (channel-default、夜桜等)
+    const bgResolved = resolveBackgroundPath(jobPaths, opts.channel, cliBackgroundPath);
+    if (!bgResolved) {
+      throw new Error(
+        "背景画像が見つかりません。次のいずれかを用意してください:\n" +
+          "  - --background <path> で明示指定\n" +
+          "  - data/<channel>/scripts/<id>/assets/background.{png|webp|jpg|jpeg} (ジョブ別)\n" +
+          `  - packages/channels/${opts.channel}/assets/backgrounds/<file> (チャンネル既定)`,
+      );
+    }
+    const backgroundPath: string = bgResolved.path;
+    const bgRelative = path.relative(config.paths.repoRoot, backgroundPath);
+    const bgLabel =
+      bgResolved.source === "channel-default"
+        ? "チャンネル既定"
+        : bgResolved.source === "job-override"
+          ? "ジョブ別"
+          : "CLI 指定";
+    console.log(chalk.dim(`🌃 背景画像 (${bgLabel}): ${bgRelative}`));
+
     if (!scriptPath) throw new Error("--script または --job-id のいずれかが必要です");
-    if (!backgroundPath) throw new Error("--background または --job-id のいずれかが必要です");
 
     if (!imagePaths) {
       if (!opts.images) throw new Error("--images または --job-id のいずれかが必要です");
@@ -804,10 +825,10 @@ program
     //   1. --bgm <path>                              (明示)
     //   2. data/<channel>/scripts/<id>/assets/bgm/*  (このジョブだけ別 BGM)
     //   3. packages/channels/<channel>/assets/bgm/*  (チャンネル既定)
-    const { resolveBgmPath, resolveOpeningIcons, resolveRankingJobPaths } = await import(
+    const { resolveBgmPath, resolveOpeningIcons } = await import(
       "./ranking-paths.js"
     );
-    const jobPathsForBgm = opts.jobId ? resolveRankingJobPaths(opts.jobId) : null;
+    const jobPathsForBgm = jobPaths;
     const cliBgmAbs = opts.bgm ? resolveCliPath(opts.bgm) : null;
     const resolvedBgm = resolveBgmPath(jobPathsForBgm, opts.channel, cliBgmAbs);
     if (resolvedBgm) {
