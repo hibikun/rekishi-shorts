@@ -3,7 +3,13 @@ import { renderMedia, selectComposition } from "@remotion/renderer";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { VIDEO_FPS, type RankingPlan, type RenderPlan, type UkiyoePlan } from "@rekishi/shared";
+import {
+  UKIYOE_VIDEO_FPS,
+  VIDEO_FPS,
+  type RankingPlan,
+  type RenderPlan,
+  type UkiyoePlan,
+} from "@rekishi/shared";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -140,7 +146,7 @@ export async function renderUkiyoeShort(
 
   const durationInFrames = Math.max(
     1,
-    Math.ceil(plan.totalDurationSec * VIDEO_FPS),
+    Math.ceil(plan.totalDurationSec * UKIYOE_VIDEO_FPS),
   );
 
   const inputProps = {

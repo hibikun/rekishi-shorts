@@ -10,6 +10,9 @@ import {
 export const VIDEO_WIDTH = 1080;
 export const VIDEO_HEIGHT = 1920;
 export const VIDEO_FPS = 30;
+/** ukiyoe チャンネル用。Seedance 1.5 Pro が 24fps で吐くので Composition も揃える。
+ *  30fps composition で 24fps ソースを再生すると 6 frame 周期でジャダーが出る。 */
+export const UKIYOE_VIDEO_FPS = 24;
 
 export const RenderPlanSchema = z.object({
   id: z.string().describe("ジョブID (uuid or timestamp)"),

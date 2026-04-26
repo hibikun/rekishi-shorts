@@ -1,6 +1,6 @@
 import React from "react";
 import { Composition, staticFile } from "remotion";
-import { VIDEO_FPS, VIDEO_HEIGHT, VIDEO_WIDTH } from "@rekishi/shared";
+import { UKIYOE_VIDEO_FPS, VIDEO_FPS, VIDEO_HEIGHT, VIDEO_WIDTH } from "@rekishi/shared";
 import { HistoryShort, type HistoryShortProps } from "./compositions/HistoryShort";
 import { RankingShort, type RankingShortProps } from "./compositions/RankingShort";
 import { UkiyoeShort, type UkiyoeShortProps } from "./compositions/UkiyoeShort";
@@ -118,8 +118,8 @@ export const Root: React.FC = () => {
       <Composition
         id="UkiyoeShort"
         component={UkiyoeShortComponent}
-        durationInFrames={VIDEO_FPS * 60}
-        fps={VIDEO_FPS}
+        durationInFrames={UKIYOE_VIDEO_FPS * 60}
+        fps={UKIYOE_VIDEO_FPS}
         width={VIDEO_WIDTH}
         height={VIDEO_HEIGHT}
         defaultProps={ukiyoeDefaultProps as unknown as Record<string, unknown>}
