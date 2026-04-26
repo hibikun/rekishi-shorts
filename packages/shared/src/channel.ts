@@ -11,6 +11,7 @@ const CHANNEL_SUBJECT_DEFAULTS: Record<string, string> = {
   rekishi: "日本史",
   kosei: "生物",
   ranking: "ガジェット",
+  ukiyoe: "歴史",
 };
 
 const FALLBACK_SUBJECT = "日本史";
