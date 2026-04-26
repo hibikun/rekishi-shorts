@@ -144,6 +144,18 @@ export async function renderUkiyoeShort(
       )
     : "";
 
+  // 動画冒頭 0.0 秒 SFX。data/sfx/hyoshigi.mp3 が存在すれば自動で乗せる。
+  const openingSfxLocalPath = path.resolve(__dirname, "../../../data/sfx/hyoshigi.mp3");
+  const openingSfxSrc = fs.existsSync(openingSfxLocalPath)
+    ? stageAsset(openingSfxLocalPath, bundleDir, `ukiyoe-opening-sfx${path.extname(openingSfxLocalPath)}`)
+    : "";
+
+  // 偶数 index シーン末尾の男衆「オウ！」SFX。data/sfx/otokoshu.mp3 が存在すれば自動で乗せる。
+  const cheerSfxLocalPath = path.resolve(__dirname, "../../../data/sfx/otokoshu.mp3");
+  const cheerSfxSrc = fs.existsSync(cheerSfxLocalPath)
+    ? stageAsset(cheerSfxLocalPath, bundleDir, `ukiyoe-cheer-sfx${path.extname(cheerSfxLocalPath)}`)
+    : "";
+
   const durationInFrames = Math.max(
     1,
     Math.ceil(plan.totalDurationSec * UKIYOE_VIDEO_FPS),
@@ -156,6 +168,8 @@ export async function renderUkiyoeShort(
     captionSegments: plan.captionSegments,
     totalDurationSec: plan.totalDurationSec,
     keyTerms: plan.keyTerms,
+    openingSfxSrc,
+    cheerSfxSrc,
   };
 
   const composition = await selectComposition({

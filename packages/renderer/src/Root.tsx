@@ -90,6 +90,8 @@ const ukiyoeDefaultProps: UkiyoeShortProps = {
   captionSegments: [],
   totalDurationSec: 20,
   keyTerms: [],
+  openingSfxSrc: "",
+  cheerSfxSrc: "",
 };
 
 const UkiyoeShortComponent = UkiyoeShort as unknown as React.FC<Record<string, unknown>>;
