@@ -46,12 +46,13 @@ program
 
 program
   .command("research")
-  .description("Gemini + Google Search でトピックのリサーチ資料（research.md）を生成。draft の前段")
+  .description("Gemini + Google Search でトピックのリサーチ資料（research.md）を生成。draft / script-only の前段")
   .requiredOption("--topic <title>", "トピック名（例: 生類憐みの令）")
-  .option("--era <era>", "時代（例: 江戸）")
-  .option("--subject <subject>", "科目（省略時は channel ごとのデフォルト）")
+  .option("--era <era>", "時代 / 絞り込み条件（ranking では「20代後半〜30代男性」など）")
+  .option("--subject <subject>", "科目 / カテゴリ（省略時は channel ごとのデフォルト）")
   .option("--target <target>", "対象試験（共通テスト | 二次 | 汎用）", "汎用")
   .option("--format <format>", "台本フォーマット（single | three-pick）", "single")
+  .option("--job-id <id>", "ジョブID（指定時は data/<channel>/scripts/<id>/research.md に保存。後段の script-only で auto-detect される）")
   .addOption(channelOption())
   .action(async (opts) => {
     const topic = TopicSchema.parse({
@@ -63,12 +64,23 @@ program
     });
     console.log(chalk.bold(`\n🔎 rekishi-shorts research: ${topic.title}\n`));
 
-    const { jobId, researchPath, tracker, sourceCount, queryCount } = await runResearchStage(topic);
+    const { jobId, researchPath, tracker, sourceCount, queryCount } = await runResearchStage(topic, opts.jobId);
     console.log(chalk.green(`\n✅ research 保存: ${researchPath}`));
     console.log(chalk.dim(`   jobId=${jobId} / sources=${sourceCount} / queries=${queryCount}`));
     console.log(chalk.bold("\n次のステップ:"));
     console.log(`  1. ${chalk.cyan(researchPath)} を開いて内容確認（必要なら編集）`);
-    console.log(`  2. ${chalk.cyan(`pnpm draft --job ${jobId} --topic "${topic.title}"${topic.era ? ` --era "${topic.era}"` : ""}`)} で台本生成`);
+    if (opts.channel === "ranking") {
+      const subjectFlag = topic.subject ? ` --subject "${topic.subject}"` : "";
+      const eraFlag = topic.era ? ` --era "${topic.era}"` : "";
+      const formatFlag = topic.format ? ` --format ${topic.format}` : "";
+      console.log(
+        `  2. ${chalk.cyan(
+          `pnpm --filter @rekishi/pipeline exec tsx src/cli.ts script-only --channel ranking --job-id ${jobId} --topic "${topic.title}"${subjectFlag}${eraFlag}${formatFlag}`,
+        )} で台本生成（research.md を自動注入）`,
+      );
+    } else {
+      console.log(`  2. ${chalk.cyan(`pnpm draft --job ${jobId} --topic "${topic.title}"${topic.era ? ` --era "${topic.era}"` : ""}`)} で台本生成`);
+    }
     console.log(chalk.bold("\n💰 research 段階のコスト:"));
     console.log(tracker.formatTable());
   });
@@ -260,6 +272,14 @@ program
       target: opts.target,
       format: opts.format,
     });
+    let jobPaths: Awaited<
+      ReturnType<typeof import("./ranking-paths.js")["resolveRankingJobPaths"]>
+    > | undefined;
+    if (opts.jobId) {
+      const { resolveRankingJobPaths } = await import("./ranking-paths.js");
+      jobPaths = resolveRankingJobPaths(opts.jobId);
+    }
+
     let researchMd: string | undefined;
     if (opts.researchFile) {
       const researchPath = resolveCliPath(opts.researchFile);
@@ -268,13 +288,22 @@ program
       }
       researchMd = fs.readFileSync(researchPath, "utf-8");
       console.log(chalk.dim(`📚 research-file: ${researchPath} (${researchMd.length} chars)`));
+    } else if (jobPaths) {
+      const autoResearchPath = path.join(jobPaths.root, "research.md");
+      if (fs.existsSync(autoResearchPath)) {
+        researchMd = fs.readFileSync(autoResearchPath, "utf-8");
+        console.log(
+          chalk.dim(
+            `📚 research auto-detected: ${autoResearchPath} (${researchMd.length} chars)`,
+          ),
+        );
+      }
     }
     const { script } = await generateScript(topic, researchMd);
     const json = JSON.stringify(script, null, 2);
 
-    if (opts.jobId) {
-      const { resolveRankingJobPaths } = await import("./ranking-paths.js");
-      const paths = resolveRankingJobPaths(opts.jobId);
+    if (jobPaths) {
+      const paths = jobPaths;
       fs.mkdirSync(paths.root, { recursive: true });
       fs.mkdirSync(paths.assetsDir, { recursive: true });
       fs.writeFileSync(paths.scriptJson, json);
@@ -290,7 +319,7 @@ program
         );
         const md = buildNextStepsMarkdown({
           script,
-          jobId: opts.jobId,
+          jobId: paths.jobId,
           channel: opts.channel,
           assetsDirRelative,
         });
@@ -300,7 +329,7 @@ program
         console.log(chalk.bold("次の手順:"));
         for (const line of buildStdoutGuideLines({
           script,
-          jobId: opts.jobId,
+          jobId: paths.jobId,
           channel: opts.channel,
           assetsDirAbsolute: paths.assetsDir,
           nextStepsPath: paths.nextStepsMd,
@@ -507,9 +536,9 @@ program
     );
 
     let scriptPath: string | undefined = opts.script ? resolveCliPath(opts.script) : undefined;
-    let backgroundPath: string | undefined = opts.background
+    const cliBackgroundPath: string | null = opts.background
       ? resolveCliPath(opts.background)
-      : undefined;
+      : null;
     let imagePaths: [string, string, string] | undefined;
     let outPath: string | undefined = opts.out ? resolveCliPath(opts.out) : undefined;
     let planId: string | undefined = opts.id;
@@ -519,32 +548,32 @@ program
 
     let audioClipsJsonPath: string | undefined;
 
-    if (opts.jobId) {
-      const { resolveRankingJobPaths, resolveRankingAssets } = await import(
-        "./ranking-paths.js"
-      );
-      const paths = resolveRankingJobPaths(opts.jobId);
-      scriptPath = scriptPath ?? paths.scriptJson;
-      outPath = outPath ?? paths.planJson;
-      planId = planId ?? opts.jobId;
-      if (!narrationPath && fs.existsSync(paths.narrationWav)) {
-        narrationPath = paths.narrationWav;
-      }
-      audioClipsJsonPath = paths.audioClipsJson;
+    const { resolveRankingJobPaths, resolveRankingAssets, resolveBackgroundPath } =
+      await import("./ranking-paths.js");
 
-      if (!opts.background || !opts.images) {
-        if (!fs.existsSync(paths.assetsDir)) {
+    let jobPaths: ReturnType<typeof resolveRankingJobPaths> | null = null;
+
+    if (opts.jobId) {
+      jobPaths = resolveRankingJobPaths(opts.jobId);
+      scriptPath = scriptPath ?? jobPaths.scriptJson;
+      outPath = outPath ?? jobPaths.planJson;
+      planId = planId ?? opts.jobId;
+      if (!narrationPath && fs.existsSync(jobPaths.narrationWav)) {
+        narrationPath = jobPaths.narrationWav;
+      }
+      audioClipsJsonPath = jobPaths.audioClipsJson;
+
+      if (!opts.images) {
+        if (!fs.existsSync(jobPaths.assetsDir)) {
           throw new Error(
-            `アセットディレクトリが見当たりません: ${paths.assetsDir}\n` +
+            `アセットディレクトリが見当たりません: ${jobPaths.assetsDir}\n` +
               `先に script-only --job-id ${opts.jobId} を実行し、画像を配置してください。`,
           );
         }
-        const { itemImages, backgroundImage, missing } = resolveRankingAssets(
-          paths.assetsDir,
-        );
+        const { itemImages, missing } = resolveRankingAssets(jobPaths.assetsDir);
         if (missing.length > 0) {
-          const script = fs.existsSync(paths.scriptJson)
-            ? readScriptFile(paths.scriptJson)
+          const script = fs.existsSync(jobPaths.scriptJson)
+            ? readScriptFile(jobPaths.scriptJson)
             : null;
           const items = script?.items ?? [];
           console.error(chalk.red(`\n❌ 画像ファイルが見つかりません:`));
@@ -554,21 +583,42 @@ program
             const it = rank ? items.find((x) => x.rank === rank) : null;
             const ref = it?.officialUrl || it?.affiliateUrl || it?.searchKeywords;
             console.error(
-              chalk.red(`  - ${name}.(png|webp|jpg|jpeg) が ${paths.assetsDir}/ に不在`),
+              chalk.red(`  - ${name}.(png|webp|jpg|jpeg) が ${jobPaths.assetsDir}/ に不在`),
             );
             if (it?.name) console.error(chalk.dim(`      商品: ${it.name}`));
             if (ref) console.error(chalk.dim(`      参考: ${ref}`));
           }
-          console.error(chalk.yellow(`\n→ NEXT_STEPS.md を参照: ${paths.nextStepsMd}`));
+          console.error(chalk.yellow(`\n→ NEXT_STEPS.md を参照: ${jobPaths.nextStepsMd}`));
           process.exit(1);
         }
         imagePaths = itemImages;
-        backgroundPath = backgroundPath ?? backgroundImage;
       }
     }
 
+    // 背景画像は 3 ルートで解決:
+    //   1. --background <path> (cli-flag)
+    //   2. data/<channel>/scripts/<id>/assets/background.* (job-override)
+    //   3. packages/channels/<channel>/assets/backgrounds/* (channel-default、夜桜等)
+    const bgResolved = resolveBackgroundPath(jobPaths, opts.channel, cliBackgroundPath);
+    if (!bgResolved) {
+      throw new Error(
+        "背景画像が見つかりません。次のいずれかを用意してください:\n" +
+          "  - --background <path> で明示指定\n" +
+          "  - data/<channel>/scripts/<id>/assets/background.{png|webp|jpg|jpeg} (ジョブ別)\n" +
+          `  - packages/channels/${opts.channel}/assets/backgrounds/<file> (チャンネル既定)`,
+      );
+    }
+    const backgroundPath: string = bgResolved.path;
+    const bgRelative = path.relative(config.paths.repoRoot, backgroundPath);
+    const bgLabel =
+      bgResolved.source === "channel-default"
+        ? "チャンネル既定"
+        : bgResolved.source === "job-override"
+          ? "ジョブ別"
+          : "CLI 指定";
+    console.log(chalk.dim(`🌃 背景画像 (${bgLabel}): ${bgRelative}`));
+
     if (!scriptPath) throw new Error("--script または --job-id のいずれかが必要です");
-    if (!backgroundPath) throw new Error("--background または --job-id のいずれかが必要です");
 
     if (!imagePaths) {
       if (!opts.images) throw new Error("--images または --job-id のいずれかが必要です");
@@ -775,10 +825,10 @@ program
     //   1. --bgm <path>                              (明示)
     //   2. data/<channel>/scripts/<id>/assets/bgm/*  (このジョブだけ別 BGM)
     //   3. packages/channels/<channel>/assets/bgm/*  (チャンネル既定)
-    const { resolveBgmPath, resolveOpeningIcons, resolveRankingJobPaths } = await import(
+    const { resolveBgmPath, resolveOpeningIcons } = await import(
       "./ranking-paths.js"
     );
-    const jobPathsForBgm = opts.jobId ? resolveRankingJobPaths(opts.jobId) : null;
+    const jobPathsForBgm = jobPaths;
     const cliBgmAbs = opts.bgm ? resolveCliPath(opts.bgm) : null;
     const resolvedBgm = resolveBgmPath(jobPathsForBgm, opts.channel, cliBgmAbs);
     if (resolvedBgm) {
@@ -867,6 +917,515 @@ program
     console.log(chalk.bold(`\n🎥 RankingShort をレンダリング中...`));
     await renderRankingShort(plan, outputPath);
     console.log(chalk.green(`\n✅ 完成: ${outputPath}`));
+  });
+
+// ============================================================
+// ukiyoe チャンネル: 浮世絵タッチ × img2video 動画
+// 既存 rekishi/ranking/kosei コマンドには触らない
+// ============================================================
+
+program
+  .command("ukiyoe-generate")
+  .description(
+    "ukiyoe チャンネルを一気通貫で生成（script→scene-plan→images→videos→tts→render）",
+  )
+  .requiredOption("--topic <title>", "トピック（例: 継飛脚）")
+  .option("--era <era>", "時代（例: 江戸）")
+  .option("--scenes <n>", "シーン数（5秒×N、試作は4で短尺化）", "4")
+  .option(
+    "--research-file <path>",
+    "research markdown を script-routine プロンプトに流し込む",
+  )
+  .option("--job-id <id>", "ジョブID。省略時は timestamp ベース")
+  .option("--no-images", "image-gen を skip（既存 scene-NN.png を使う）")
+  .option("--no-videos", "video-gen を skip（既存 scene-NN.mp4 を使う）")
+  .option("--no-tts", "TTS を skip（既存 narration.wav を使う）")
+  .option("--no-render", "Remotion レンダリングを skip")
+  .action(async (opts) => {
+    setChannel("ukiyoe");
+
+    const sceneCount = Number.parseInt(opts.scenes, 10);
+    if (!Number.isInteger(sceneCount) || sceneCount < 2 || sceneCount > 12) {
+      throw new Error(`--scenes は 2〜12 の整数で指定してください（got: ${opts.scenes}）`);
+    }
+
+    const jobId =
+      opts.jobId ??
+      `ukiyoe-${new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19)}`;
+
+    const { resolveUkiyoeJobPaths, sceneImagePath } = await import(
+      "./ukiyoe-paths.js"
+    );
+    const paths = resolveUkiyoeJobPaths(jobId);
+    fs.mkdirSync(paths.root, { recursive: true });
+
+    console.log(chalk.bold(`\n🎴 ukiyoe-generate`));
+    console.log(chalk.dim(`   topic   : ${opts.topic}`));
+    console.log(chalk.dim(`   scenes  : ${sceneCount} (${sceneCount * 5}s total)`));
+    console.log(chalk.dim(`   jobId   : ${jobId}`));
+    console.log(chalk.dim(`   root    : ${paths.root}`));
+
+    // ---- 1. script ----
+    let script: import("./ukiyoe-script-generator.js").UkiyoeScript;
+    if (fs.existsSync(paths.scriptJson)) {
+      console.log(chalk.dim(`\n📝 script 既存: ${paths.scriptJson}`));
+      script = JSON.parse(
+        fs.readFileSync(paths.scriptJson, "utf-8"),
+      ) as import("./ukiyoe-script-generator.js").UkiyoeScript;
+    } else {
+      console.log(chalk.bold(`\n📝 [1/7] script generation...`));
+      const { generateUkiyoeScript } = await import("./ukiyoe-script-generator.js");
+      const researchMd = opts.researchFile
+        ? fs.readFileSync(resolveCliPath(opts.researchFile), "utf-8")
+        : undefined;
+      const result = await generateUkiyoeScript({
+        topic: opts.topic,
+        era: opts.era,
+        researchMd,
+        targetSceneCount: sceneCount,
+        targetDurationSec: sceneCount * 5,
+      });
+      script = result.script;
+      fs.writeFileSync(paths.scriptJson, JSON.stringify(script, null, 2));
+      console.log(chalk.green(`   saved: ${paths.scriptJson}`));
+      console.log(chalk.dim(`   tokens in=${result.usage.inputTokens} out=${result.usage.outputTokens}`));
+    }
+
+    // ---- 2. scene-plan ----
+    let scenePlan: import("./ukiyoe-scene-planner.js").UkiyoeScenePlan;
+    if (fs.existsSync(paths.scenePlanJson)) {
+      console.log(chalk.dim(`\n🎬 scene-plan 既存: ${paths.scenePlanJson}`));
+      scenePlan = JSON.parse(
+        fs.readFileSync(paths.scenePlanJson, "utf-8"),
+      ) as import("./ukiyoe-scene-planner.js").UkiyoeScenePlan;
+    } else {
+      console.log(chalk.bold(`\n🎬 [2/7] scene-plan...`));
+      const { planUkiyoeScenes } = await import("./ukiyoe-scene-planner.js");
+      const result = await planUkiyoeScenes(script);
+      scenePlan = result.plan;
+      fs.writeFileSync(paths.scenePlanJson, JSON.stringify(scenePlan, null, 2));
+      console.log(chalk.green(`   saved: ${paths.scenePlanJson}`));
+      for (const s of scenePlan.scenes) {
+        console.log(chalk.dim(`   scene[${s.index}] ${s.actionTag} | ${s.narration}`));
+      }
+    }
+
+    // ---- 3. images ----
+    if (opts.images !== false) {
+      console.log(chalk.bold(`\n🎨 [3/7] image-gen (${scenePlan.scenes.length} scenes)...`));
+      const { generateUkiyoeImages } = await import("./ukiyoe-image-generator.js");
+      await generateUkiyoeImages(
+        scenePlan.scenes.map((s) => ({ index: s.index, scenePrompt: s.imagePrompt })),
+        paths.imagesDir,
+        { skipExisting: true, concurrency: 3 },
+      );
+    } else {
+      console.log(chalk.yellow(`\n⚠ image-gen skipped (--no-images)`));
+    }
+
+    // ---- 4. videos ----
+    if (opts.videos !== false) {
+      console.log(chalk.bold(`\n🎥 [4/7] video-gen (${scenePlan.scenes.length} scenes)...`));
+      const { generateUkiyoeVideos } = await import("./ukiyoe-video-generator.js");
+      await generateUkiyoeVideos(
+        scenePlan.scenes.map((s) => ({
+          index: s.index,
+          imagePath: sceneImagePath(paths, s.index),
+          scenePrompt: s.videoPrompt,
+          actionTag: s.actionTag,
+          cameraFixed: s.cameraFixed,
+        })),
+        paths.videosDir,
+        { skipExisting: true, concurrency: 3 },
+      );
+    } else {
+      console.log(chalk.yellow(`\n⚠ video-gen skipped (--no-videos)`));
+    }
+
+    // ---- 5. TTS ----
+    if (opts.tts !== false && !fs.existsSync(paths.narrationWav)) {
+      console.log(chalk.bold(`\n🎙️  [5/7] TTS (Gemini)...`));
+      const { synthesizeNarration } = await import("./tts-generator.js");
+      const { FURIGANA_MAP } = await import("./furigana.js");
+      const tts = await synthesizeNarration(script.narration, paths.narrationWav, {
+        readings: script.readings,
+        furigana: FURIGANA_MAP,
+        hook: script.hook,
+      });
+      console.log(
+        chalk.green(
+          `   saved: ${tts.path} (${tts.characters}文字, ~${tts.approxDurationSec.toFixed(2)}s)`,
+        ),
+      );
+    } else if (fs.existsSync(paths.narrationWav)) {
+      console.log(chalk.dim(`\n🎙️  TTS 既存: ${paths.narrationWav}`));
+    } else {
+      console.log(chalk.yellow(`\n⚠ TTS skipped (--no-tts)`));
+    }
+
+    // ---- 6. ASR alignment + caption segments ----
+    console.log(chalk.bold(`\n📝 [6/7] caption alignment (Whisper)...`));
+    const { alignCaptions } = await import("./asr-aligner.js");
+    const alignment = await alignCaptions(paths.narrationWav, {
+      scriptText: script.narration,
+      readings: script.readings,
+      keyTerms: script.keyTerms,
+    });
+    fs.writeFileSync(paths.wordsJson, JSON.stringify(alignment, null, 2));
+    console.log(
+      chalk.dim(`   ${alignment.words.length} words / ${alignment.totalDurationSec.toFixed(2)}s`),
+    );
+
+    // クリップ側カット方針: TTS は固定で、シーン尺をナレーション実時間に合わせて短縮する。
+    // - 各シーンの終端 = そのシーンナレーション最後の語の endSec
+    // - 最終シーンの終端 = WAV 全体長（自然な余韻を保持）
+    const { alignUkiyoeScenes } = await import("./ukiyoe-scene-aligner.js");
+    const sceneTimings = alignUkiyoeScenes({
+      words: alignment.words,
+      totalDurationSec: alignment.totalDurationSec,
+      sceneNarrations: scenePlan.scenes.map((s) => s.narration),
+    });
+
+    const alignedScenePlan: typeof scenePlan = {
+      ...scenePlan,
+      totalDurationSec: sceneTimings.reduce((a, t) => a + t.durationSec, 0),
+      scenes: scenePlan.scenes.map((s, i) => {
+        const t = sceneTimings[i];
+        if (!t) throw new Error(`scene timing missing for index ${i}`);
+        return { ...s, durationSec: t.durationSec };
+      }),
+    };
+
+    const captionSegments = scenePlan.scenes.map((s, i) => {
+      const t = sceneTimings[i];
+      if (!t) throw new Error(`scene timing missing for index ${i}`);
+      return { text: s.narration, startSec: t.startSec, endSec: t.endSec };
+    });
+
+    for (const t of sceneTimings) {
+      console.log(
+        chalk.dim(
+          `   scene[${t.index}] ${t.startSec.toFixed(2)}s → ${t.endSec.toFixed(2)}s (${t.durationSec.toFixed(2)}s)`,
+        ),
+      );
+    }
+
+    // ---- 7. plan + render ----
+    console.log(chalk.bold(`\n🧩 [7/7] build-plan + render...`));
+    const { buildUkiyoePlan, writeUkiyoePlan } = await import("./ukiyoe-plan-builder.js");
+    const plan = buildUkiyoePlan({
+      jobId,
+      script,
+      scenePlan: alignedScenePlan,
+      imagesDir: paths.imagesDir,
+      videosDir: paths.videosDir,
+      audioPath: paths.narrationWav,
+      captions: alignment.words,
+      captionSegments,
+    });
+    writeUkiyoePlan(plan, paths.planJson);
+    console.log(chalk.green(`   plan saved: ${paths.planJson}`));
+
+    if (opts.render !== false) {
+      const { renderUkiyoeShort } = await import("@rekishi/renderer");
+      const outputPath = path.join(getJobOutputDir(), `${plan.id}.mp4`);
+      console.log(chalk.bold(`\n🎬 Remotion レンダリング中...`));
+      await renderUkiyoeShort(plan, outputPath);
+      console.log(chalk.green(`\n✅ 完成: ${outputPath}`));
+    }
+  });
+
+program
+  .command("render-ukiyoe")
+  .description("既存の ukiyoe-plan.json からレンダリングのみ実行")
+  .requiredOption("--job-id <id>", "ジョブID")
+  .option("--out <path>", "出力 mp4 のパス")
+  .action(async (opts) => {
+    setChannel("ukiyoe");
+    const { resolveUkiyoeJobPaths } = await import("./ukiyoe-paths.js");
+    const { readUkiyoePlan } = await import("./ukiyoe-plan-builder.js");
+    const paths = resolveUkiyoeJobPaths(opts.jobId);
+    if (!fs.existsSync(paths.planJson)) {
+      throw new Error(`ukiyoe-plan.json が見当たりません: ${paths.planJson}`);
+    }
+    const plan = readUkiyoePlan(paths.planJson);
+    const { renderUkiyoeShort } = await import("@rekishi/renderer");
+    const outputPath = opts.out
+      ? resolveCliPath(opts.out)
+      : path.join(getJobOutputDir(), `${plan.id}.mp4`);
+    console.log(chalk.bold(`\n🎬 Remotion レンダリング中: ${plan.id}`));
+    await renderUkiyoeShort(plan, outputPath);
+    console.log(chalk.green(`\n✅ 完成: ${outputPath}`));
+  });
+
+// ============================================================
+// ukiyoe チャンネル: オールインワン 3 コマンド
+// plan → build → ship の順で人間ゲートを 2 か所に置く
+// ============================================================
+
+async function promptForInteger(
+  question: string,
+  min: number,
+  max: number,
+): Promise<number> {
+  const readline = await import("node:readline/promises");
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+  try {
+    while (true) {
+      const ans = (await rl.question(question)).trim();
+      const n = Number.parseInt(ans, 10);
+      if (Number.isInteger(n) && n >= min && n <= max) return n;
+      console.log(chalk.yellow(`   ${min}〜${max} の整数を入力してください`));
+    }
+  } finally {
+    rl.close();
+  }
+}
+
+async function spawnPnpm(args: string[]): Promise<void> {
+  const { spawnSync } = await import("node:child_process");
+  const res = spawnSync("pnpm", args, {
+    stdio: "inherit",
+    cwd: config.paths.repoRoot,
+  });
+  if (res.status !== 0) {
+    throw new Error(`pnpm ${args.join(" ")} 失敗 (exit=${res.status})`);
+  }
+}
+
+program
+  .command("ukiyoe-plan")
+  .description(
+    "ukiyoe channel: topic-pool から選択して research + script + scene-plan を生成（ゲート1の手前で停止）",
+  )
+  .option("--scenes <n>", "シーン数（5秒×N、デフォルトは8）", "8")
+  .option("--slug <slug>", "プールから対話選択せず slug で直接指定")
+  .action(async (opts) => {
+    setChannel("ukiyoe");
+    const sceneCount = Number.parseInt(opts.scenes, 10);
+    if (!Number.isInteger(sceneCount) || sceneCount < 2 || sceneCount > 12) {
+      throw new Error(`--scenes は 2〜12 の整数で指定してください`);
+    }
+
+    const { listAvailableTopics, findTopicBySlug, updateTopicStatus } =
+      await import("./ukiyoe-topic-pool.js");
+
+    let entry;
+    if (opts.slug) {
+      entry = await findTopicBySlug(opts.slug);
+      if (!entry) {
+        throw new Error(`topic-pool に slug=${opts.slug} がありません`);
+      }
+      if (entry.status !== "available") {
+        throw new Error(
+          `slug=${opts.slug} は既に ${entry.status} です（jobId=${entry.jobId ?? "?"}）`,
+        );
+      }
+    } else {
+      const candidates = await listAvailableTopics(5);
+      if (candidates.length === 0) {
+        throw new Error(
+          "topic-pool に未使用トピックがありません。topic-pool.md を更新してください",
+        );
+      }
+      console.log(chalk.bold("\n📚 候補（番号で選択）"));
+      candidates.forEach((c, i) => {
+        console.log(
+          `  ${chalk.cyan(String(i + 1).padStart(2, " "))}. ${c.title}  ${chalk.dim(`[${c.category}]`)}`,
+        );
+      });
+      const idx = await promptForInteger(
+        `\n番号を入力 (1-${candidates.length}): `,
+        1,
+        candidates.length,
+      );
+      entry = candidates[idx - 1]!;
+    }
+
+    const dateStamp = new Date().toISOString().slice(0, 10);
+    const jobId = `ukiyoe-${entry.slug}-${dateStamp}`;
+
+    const { resolveUkiyoeJobPaths } = await import("./ukiyoe-paths.js");
+    const paths = resolveUkiyoeJobPaths(jobId);
+    fs.mkdirSync(paths.root, { recursive: true });
+
+    console.log(chalk.bold(`\n🎴 ukiyoe-plan`));
+    console.log(chalk.dim(`   topic   : ${entry.title}`));
+    console.log(chalk.dim(`   slug    : ${entry.slug}`));
+    console.log(chalk.dim(`   jobId   : ${jobId}`));
+    console.log(chalk.dim(`   scenes  : ${sceneCount} (${sceneCount * 5}s)`));
+
+    // 1. research (Gemini Grounding)
+    if (fs.existsSync(paths.researchMd)) {
+      console.log(chalk.dim(`\n🔎 research 既存: ${paths.researchMd}`));
+    } else {
+      console.log(chalk.bold(`\n🔎 [1/3] research (Gemini Grounding + Google Search)...`));
+      const { generateResearch } = await import("./research-generator.js");
+      const research = await generateResearch({
+        title: entry.title,
+        era: undefined,
+        subject: "歴史",
+        target: "汎用",
+        format: "single",
+      });
+      fs.writeFileSync(paths.researchMd, research.markdown);
+      console.log(chalk.green(`   saved: ${paths.researchMd}`));
+      console.log(
+        chalk.dim(`   sources=${research.sources.length} / queries=${research.queries.length}`),
+      );
+    }
+
+    // 2. script
+    let script: import("./ukiyoe-script-generator.js").UkiyoeScript;
+    if (fs.existsSync(paths.scriptJson)) {
+      console.log(chalk.dim(`\n📝 script 既存: ${paths.scriptJson}`));
+      script = JSON.parse(fs.readFileSync(paths.scriptJson, "utf-8"));
+    } else {
+      console.log(chalk.bold(`\n📝 [2/3] script generation...`));
+      const { generateUkiyoeScript } = await import("./ukiyoe-script-generator.js");
+      const researchMd = fs.readFileSync(paths.researchMd, "utf-8");
+      const result = await generateUkiyoeScript({
+        topic: entry.title,
+        era: undefined,
+        researchMd,
+        targetSceneCount: sceneCount,
+        targetDurationSec: sceneCount * 5,
+      });
+      script = result.script;
+      fs.writeFileSync(paths.scriptJson, JSON.stringify(script, null, 2));
+      console.log(chalk.green(`   saved: ${paths.scriptJson}`));
+    }
+
+    // 3. scene-plan
+    if (fs.existsSync(paths.scenePlanJson)) {
+      console.log(chalk.dim(`\n🎬 scene-plan 既存: ${paths.scenePlanJson}`));
+    } else {
+      console.log(chalk.bold(`\n🎬 [3/3] scene-plan...`));
+      const { planUkiyoeScenes } = await import("./ukiyoe-scene-planner.js");
+      const result = await planUkiyoeScenes(script);
+      fs.writeFileSync(paths.scenePlanJson, JSON.stringify(result.plan, null, 2));
+      console.log(chalk.green(`   saved: ${paths.scenePlanJson}`));
+      for (const s of result.plan.scenes) {
+        console.log(chalk.dim(`   scene[${s.index}] ${s.actionTag} | ${s.narration}`));
+      }
+    }
+
+    // pool を in-progress に
+    await updateTopicStatus(entry.slug, "in-progress", jobId);
+
+    console.log(chalk.bold(`\n✅ 構成生成完了 [ゲート1]`));
+    console.log(chalk.bold(`\n次のステップ:`));
+    console.log(`  1. ${chalk.cyan(paths.scenePlanJson)} を確認・編集`);
+    console.log(`     ${chalk.cyan(paths.scriptJson)} を確認・編集`);
+    console.log(`  2. OK なら ${chalk.cyan(`pnpm ukiyoe-build ${jobId}`)} で動画生成`);
+  });
+
+program
+  .command("ukiyoe-build")
+  .description(
+    "ukiyoe channel: 既存 script + scene-plan から動画とメタドラフトを生成（ゲート2の手前で停止）",
+  )
+  .argument("<jobId>", "ukiyoe-plan で確保した jobId")
+  .action(async (jobId: string) => {
+    setChannel("ukiyoe");
+    const { resolveUkiyoeJobPaths } = await import("./ukiyoe-paths.js");
+    const paths = resolveUkiyoeJobPaths(jobId);
+    if (!fs.existsSync(paths.scriptJson)) {
+      throw new Error(
+        `script.json が見つかりません: ${paths.scriptJson}\n   pnpm ukiyoe-plan を先に実行してください`,
+      );
+    }
+    const script = JSON.parse(fs.readFileSync(paths.scriptJson, "utf-8")) as {
+      topic: string;
+      targetSceneCount: number;
+    };
+
+    console.log(chalk.bold(`\n🎴 ukiyoe-build ${jobId}`));
+    console.log(chalk.dim(`   topic  : ${script.topic}`));
+    console.log(chalk.dim(`   scenes : ${script.targetSceneCount}`));
+
+    // image → video → TTS → render
+    await spawnPnpm([
+      "--filter",
+      "@rekishi/pipeline",
+      "exec",
+      "tsx",
+      "src/cli.ts",
+      "ukiyoe-generate",
+      "--topic",
+      script.topic,
+      "--scenes",
+      String(script.targetSceneCount),
+      "--job-id",
+      jobId,
+    ]);
+
+    // meta-draft
+    console.log(chalk.bold(`\n📝 meta-draft 生成...`));
+    await spawnPnpm([
+      "--filter",
+      "@rekishi/publisher",
+      "exec",
+      "tsx",
+      "src/cli.ts",
+      "meta",
+      jobId,
+      "--channel",
+      "ukiyoe",
+    ]);
+
+    console.log(chalk.bold(`\n✅ 動画 + メタドラフト生成完了 [ゲート2]`));
+    console.log(chalk.bold(`\n次のステップ:`));
+    console.log(`  1. ${chalk.cyan(`data/ukiyoe/videos/${jobId}.mp4`)} を再生確認`);
+    console.log(`  2. ${chalk.cyan(`${paths.root}/meta-draft.md`)} を確認・編集（必要なら）`);
+    console.log(`  3. ${chalk.cyan(`pnpm ukiyoe-ship ${jobId}`)} で投稿`);
+  });
+
+program
+  .command("ukiyoe-ship")
+  .description("ukiyoe channel: YouTube 投稿 + topic-pool 自動更新")
+  .argument("<jobId>", "ukiyoe-plan/build で確保した jobId")
+  .option("--privacy <status>", "公開状態 (public | unlisted | private)")
+  .action(async (jobId: string, opts) => {
+    setChannel("ukiyoe");
+
+    const args = [
+      "--filter",
+      "@rekishi/publisher",
+      "exec",
+      "tsx",
+      "src/cli.ts",
+      "youtube",
+      jobId,
+      "--channel",
+      "ukiyoe",
+    ];
+    if (opts.privacy) args.push("--privacy", opts.privacy);
+    await spawnPnpm(args);
+
+    // 投稿成功時に upload.json を読んで topic-pool 更新
+    const { resolveUkiyoeJobPaths } = await import("./ukiyoe-paths.js");
+    const paths = resolveUkiyoeJobPaths(jobId);
+    const uploadJson = path.join(paths.root, "upload.json");
+    if (!fs.existsSync(uploadJson)) {
+      console.log(chalk.yellow(`\n⚠ upload.json が見つかりません: topic-pool 更新をスキップ`));
+      return;
+    }
+    const upload = JSON.parse(fs.readFileSync(uploadJson, "utf-8")) as { url?: string };
+
+    const m = /^ukiyoe-(.+)-\d{4}-\d{2}-\d{2}$/.exec(jobId);
+    if (!m) {
+      console.log(chalk.yellow(`\n⚠ jobId からslug を抽出できません: ${jobId}`));
+      return;
+    }
+    const slug = m[1]!;
+
+    const { updateTopicStatus } = await import("./ukiyoe-topic-pool.js");
+    await updateTopicStatus(slug, "done", jobId, upload.url);
+    console.log(chalk.green(`\n✅ topic-pool 更新: ${slug} → done${upload.url ? ` (${upload.url})` : ""}`));
   });
 
 program.parseAsync().catch((err) => {

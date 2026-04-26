@@ -1,22 +1,37 @@
 import React from "react";
 import { useCurrentFrame, useVideoConfig } from "remotion";
 import { loadDefaultJapaneseParser } from "budoux";
+import { loadFont as loadReggaeOne } from "@remotion/google-fonts/ReggaeOne";
 import type { CaptionSegment } from "@rekishi/shared";
 
-const FONT_FAMILY =
+const DEFAULT_FONT_FAMILY =
   '"Noto Sans CJK JP", "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif';
+
+const { fontFamily: reggaeOneFamily } = loadReggaeOne("normal", {
+  weights: ["400"],
+  ignoreTooManyRequestsWarning: true,
+});
+
+const UKIYOE_FONT_FAMILY = `"${reggaeOneFamily}", "Hiragino Sans", "Hiragino Kaku Gothic ProN", sans-serif`;
 
 const KEY_TERM_COLOR = "#FFD54F";
 const TEXT_COLOR = "#FFFFFF";
 
 const parser = loadDefaultJapaneseParser();
 
+export type CaptionVariant = "default" | "ukiyoe";
+
 export interface CaptionProps {
   captionSegments: CaptionSegment[];
   keyTerms?: string[];
+  variant?: CaptionVariant;
 }
 
-export const Caption: React.FC<CaptionProps> = ({ captionSegments, keyTerms = [] }) => {
+export const Caption: React.FC<CaptionProps> = ({
+  captionSegments,
+  keyTerms = [],
+  variant = "default",
+}) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const currentSec = frame / fps;
@@ -35,6 +50,42 @@ export const Caption: React.FC<CaptionProps> = ({ captionSegments, keyTerms = []
 
   if (!active || elements.length === 0) return null;
 
+  const isUkiyoe = variant === "ukiyoe";
+
+  const innerStyle: React.CSSProperties = isUkiyoe
+    ? {
+        maxWidth: "88%",
+        textAlign: "center",
+        fontFamily: UKIYOE_FONT_FAMILY,
+        fontWeight: 400,
+        fontSize: 78,
+        color: TEXT_COLOR,
+        background: "transparent",
+        padding: "8px 20px",
+        textShadow:
+          "0 0 18px #000, 0 0 14px #000, 0 0 10px #000, 0 3px 6px rgba(0,0,0,1)",
+        WebkitTextStroke: "4px #000",
+        paintOrder: "stroke fill",
+        letterSpacing: "0.03em",
+        lineHeight: 1.25,
+        wordBreak: "keep-all",
+        overflowWrap: "anywhere",
+      }
+    : {
+        maxWidth: "88%",
+        textAlign: "center",
+        fontFamily: DEFAULT_FONT_FAMILY,
+        fontWeight: 700,
+        fontSize: 64,
+        color: TEXT_COLOR,
+        background: "rgba(0,0,0,0.5)",
+        padding: "16px 28px",
+        textShadow: "0 0 10px #000, 0 0 6px #000, 0 0 4px #000",
+        lineHeight: 1.2,
+        wordBreak: "keep-all",
+        overflowWrap: "anywhere",
+      };
+
   return (
     <div
       style={{
@@ -48,24 +99,7 @@ export const Caption: React.FC<CaptionProps> = ({ captionSegments, keyTerms = []
         zIndex: 10,
       }}
     >
-      <div
-        style={{
-          maxWidth: "88%",
-          textAlign: "center",
-          fontFamily: FONT_FAMILY,
-          fontWeight: 700,
-          fontSize: 64,
-          color: TEXT_COLOR,
-          background: "rgba(0,0,0,0.5)",
-          padding: "16px 28px",
-          textShadow: "0 0 10px #000, 0 0 6px #000, 0 0 4px #000",
-          lineHeight: 1.2,
-          wordBreak: "keep-all",
-          overflowWrap: "anywhere",
-        }}
-      >
-        {elements}
-      </div>
+      <div style={innerStyle}>{elements}</div>
     </div>
   );
 };

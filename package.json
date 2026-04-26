@@ -11,7 +11,10 @@
     "build": "pnpm --filter @rekishi/pipeline build",
     "generate": "pnpm --filter @rekishi/pipeline generate",
     "studio": "pnpm --filter @rekishi/renderer studio",
-    "post": "pnpm --filter @rekishi/publisher post"
+    "post": "pnpm --filter @rekishi/publisher post",
+    "ukiyoe-plan": "pnpm --filter @rekishi/pipeline exec tsx src/cli.ts ukiyoe-plan",
+    "ukiyoe-build": "pnpm --filter @rekishi/pipeline exec tsx src/cli.ts ukiyoe-build",
+    "ukiyoe-ship": "pnpm --filter @rekishi/pipeline exec tsx src/cli.ts ukiyoe-ship"
   },
   "packageManager": "pnpm@10.30.2",
   "engines": {

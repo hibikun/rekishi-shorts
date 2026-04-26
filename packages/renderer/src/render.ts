@@ -3,7 +3,13 @@ import { renderMedia, selectComposition } from "@remotion/renderer";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { VIDEO_FPS, type RankingPlan, type RenderPlan } from "@rekishi/shared";
+import {
+  UKIYOE_VIDEO_FPS,
+  VIDEO_FPS,
+  type RankingPlan,
+  type RenderPlan,
+  type UkiyoePlan,
+} from "@rekishi/shared";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -87,6 +93,88 @@ export async function renderHistoryShort(plan: RenderPlan, outputPath: string): 
   const composition = await selectComposition({
     serveUrl: bundleDir,
     id: "HistoryShort",
+    inputProps,
+  });
+
+  fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+
+  await renderMedia({
+    composition: { ...composition, durationInFrames },
+    serveUrl: bundleDir,
+    codec: "h264",
+    outputLocation: outputPath,
+    inputProps,
+    onProgress: ({ progress }) => {
+      if (progress % 0.1 < 0.01) {
+        process.stdout.write(`\r   render ${(progress * 100).toFixed(0)}%`);
+      }
+    },
+  });
+  process.stdout.write("\n");
+}
+
+/**
+ * UkiyoePlan を読んで Remotion でレンダリングする。各シーンの mp4 と
+ * narration を bundleDir に hardlink してから UkiyoeShort を組み立てる。
+ */
+export async function renderUkiyoeShort(
+  plan: UkiyoePlan,
+  outputPath: string,
+): Promise<void> {
+  const bundleDir = await bundle({
+    entryPoint: getEntryPoint(),
+    webpackOverride: (c) => c,
+  });
+
+  const stagedScenes = plan.scenes.map((scene) => {
+    const token = String(scene.index).padStart(2, "0");
+    const stagedVideoName = stageAsset(
+      scene.videoPath,
+      bundleDir,
+      `ukiyoe-scene-${token}.mp4`,
+    );
+    return { ...scene, videoPath: stagedVideoName };
+  });
+
+  const audioSrc = plan.audioPath
+    ? stageAsset(
+        plan.audioPath,
+        bundleDir,
+        `ukiyoe-narration${path.extname(plan.audioPath) || ".wav"}`,
+      )
+    : "";
+
+  // 動画冒頭 0.0 秒 SFX。data/sfx/hyoshigi.mp3 が存在すれば自動で乗せる。
+  const openingSfxLocalPath = path.resolve(__dirname, "../../../data/sfx/hyoshigi.mp3");
+  const openingSfxSrc = fs.existsSync(openingSfxLocalPath)
+    ? stageAsset(openingSfxLocalPath, bundleDir, `ukiyoe-opening-sfx${path.extname(openingSfxLocalPath)}`)
+    : "";
+
+  // 偶数 index シーン末尾の男衆「オウ！」SFX。data/sfx/otokoshu.mp3 が存在すれば自動で乗せる。
+  const cheerSfxLocalPath = path.resolve(__dirname, "../../../data/sfx/otokoshu.mp3");
+  const cheerSfxSrc = fs.existsSync(cheerSfxLocalPath)
+    ? stageAsset(cheerSfxLocalPath, bundleDir, `ukiyoe-cheer-sfx${path.extname(cheerSfxLocalPath)}`)
+    : "";
+
+  const durationInFrames = Math.max(
+    1,
+    Math.ceil(plan.totalDurationSec * UKIYOE_VIDEO_FPS),
+  );
+
+  const inputProps = {
+    scenes: stagedScenes,
+    audioSrc,
+    captions: plan.captions,
+    captionSegments: plan.captionSegments,
+    totalDurationSec: plan.totalDurationSec,
+    keyTerms: plan.keyTerms,
+    openingSfxSrc,
+    cheerSfxSrc,
+  };
+
+  const composition = await selectComposition({
+    serveUrl: bundleDir,
+    id: "UkiyoeShort",
     inputProps,
   });
 
