@@ -1052,7 +1052,7 @@ program
 
     if (opts.render !== false) {
       const { renderUkiyoeShort } = await import("@rekishi/renderer");
-      const outputPath = path.join(getJobOutputDir(), `ukiyoe-${plan.id}.mp4`);
+      const outputPath = path.join(getJobOutputDir(), `${plan.id}.mp4`);
       console.log(chalk.bold(`\n🎬 Remotion レンダリング中...`));
       await renderUkiyoeShort(plan, outputPath);
       console.log(chalk.green(`\n✅ 完成: ${outputPath}`));
@@ -1076,7 +1076,7 @@ program
     const { renderUkiyoeShort } = await import("@rekishi/renderer");
     const outputPath = opts.out
       ? resolveCliPath(opts.out)
-      : path.join(getJobOutputDir(), `ukiyoe-${plan.id}.mp4`);
+      : path.join(getJobOutputDir(), `${plan.id}.mp4`);
     console.log(chalk.bold(`\n🎬 Remotion レンダリング中: ${plan.id}`));
     await renderUkiyoeShort(plan, outputPath);
     console.log(chalk.green(`\n✅ 完成: ${outputPath}`));
