@@ -21,9 +21,10 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@rekishi/shared": "workspace:*",
-    "@rekishi/renderer": "workspace:*",
+    "@fal-ai/client": "^1.10.0",
     "@google/genai": "^1.50.0",
+    "@rekishi/renderer": "workspace:*",
+    "@rekishi/shared": "workspace:*",
     "chalk": "^5.4.1",
     "commander": "^13.1.0",
     "dotenv": "^16.5.0",
