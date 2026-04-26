@@ -1,18 +1,18 @@
 import React from "react";
 import { useCurrentFrame, useVideoConfig } from "remotion";
 import { loadDefaultJapaneseParser } from "budoux";
-import { loadFont as loadShipporiMincho } from "@remotion/google-fonts/ShipporiMincho";
+import { loadFont as loadReggaeOne } from "@remotion/google-fonts/ReggaeOne";
 import type { CaptionSegment } from "@rekishi/shared";
 
 const DEFAULT_FONT_FAMILY =
   '"Noto Sans CJK JP", "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif';
 
-const { fontFamily: shipporiMinchoFamily } = loadShipporiMincho("normal", {
-  weights: ["700", "800"],
+const { fontFamily: reggaeOneFamily } = loadReggaeOne("normal", {
+  weights: ["400"],
   ignoreTooManyRequestsWarning: true,
 });
 
-const UKIYOE_FONT_FAMILY = `"${shipporiMinchoFamily}", "Hiragino Mincho ProN", "YuMincho", serif`;
+const UKIYOE_FONT_FAMILY = `"${reggaeOneFamily}", "Hiragino Sans", "Hiragino Kaku Gothic ProN", sans-serif`;
 
 const KEY_TERM_COLOR = "#FFD54F";
 const TEXT_COLOR = "#FFFFFF";
@@ -57,15 +57,16 @@ export const Caption: React.FC<CaptionProps> = ({
         maxWidth: "88%",
         textAlign: "center",
         fontFamily: UKIYOE_FONT_FAMILY,
-        fontWeight: 800,
-        fontSize: 68,
+        fontWeight: 400,
+        fontSize: 78,
         color: TEXT_COLOR,
         background: "transparent",
         padding: "8px 20px",
         textShadow:
-          "0 0 14px #000, 0 0 10px #000, 0 0 6px #000, 0 2px 4px rgba(0,0,0,0.9)",
-        WebkitTextStroke: "2px rgba(0,0,0,0.9)",
-        letterSpacing: "0.04em",
+          "0 0 18px #000, 0 0 14px #000, 0 0 10px #000, 0 3px 6px rgba(0,0,0,1)",
+        WebkitTextStroke: "4px #000",
+        paintOrder: "stroke fill",
+        letterSpacing: "0.03em",
         lineHeight: 1.25,
         wordBreak: "keep-all",
         overflowWrap: "anywhere",
