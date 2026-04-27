@@ -329,7 +329,7 @@ program
   .action(async (opts) => {
     const { loadScriptFromJob } = await import("./orchestrator.js");
     const { planScenes } = await import("./scene-planner.js");
-    const { jobPath } = await import("@rekishi/shared/channel");
+    const { jobPath } = await import("./storage/local.js");
 
     console.log(chalk.bold(`\n🎬 rekishi-shorts scene-plan preview: ${opts.jobId}\n`));
     const script = await loadScriptFromJob(opts.jobId);
