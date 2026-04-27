@@ -174,33 +174,33 @@ async function runRemaining(
 }
 
 function computeStepsToRun(state: AutoState, opts: RunOptions): AutoStep[] {
-  const start = opts.fromStep ?? state.currentStep;
-  const startIdx = STEP_ORDER.indexOf(start);
-  if (startIdx < 0) {
-    throw new Error(`無効な fromStep: ${start}`);
+  // 起点を決める優先順位:
+  //   1. --from <step> 明示指定
+  //   2. failed なら state.error.step から再実行
+  //   3. awaiting-confirmation なら次のステップから
+  //   4. それ以外は state.currentStep から
+  let start: AutoStep;
+  if (opts.fromStep) {
+    start = opts.fromStep;
+  } else if (state.status === "failed" && state.error) {
+    start = state.error.step;
+  } else if (state.status === "awaiting-confirmation") {
+    const idx = STEP_ORDER.indexOf(state.currentStep);
+    start = idx >= 0 ? (STEP_ORDER[Math.min(idx + 1, STEP_ORDER.length - 1)] ?? state.currentStep) : state.currentStep;
+  } else {
+    start = state.currentStep;
   }
 
-  // resume 中 (failed) で、currentStep == "failed" の場合は state.error.step から再開
-  let realStart = startIdx;
-  if (state.status === "failed" && state.error) {
-    const failedIdx = STEP_ORDER.indexOf(state.error.step);
-    if (failedIdx >= 0) realStart = failedIdx;
-  } else if (state.currentStep !== "pick-topic" && start === state.currentStep) {
-    // running/awaiting-confirmation で再開する場合は、currentStep が完了済みなら次から
-    if (state.status === "running") {
-      // 同ステップから再実行（途中失敗の冪等性で skip 判定）
-      realStart = startIdx;
-    } else if (state.status === "awaiting-confirmation") {
-      // review で abort した直後は次のステップから
-      realStart = Math.min(startIdx + 1, STEP_ORDER.length - 1);
-    }
+  const startIdx = STEP_ORDER.indexOf(start);
+  if (startIdx < 0) {
+    throw new Error(`無効な開始ステップ: ${start}（state.status=${state.status}, currentStep=${state.currentStep}）`);
   }
 
   const endStep = opts.toStep ?? "post";
   const endIdx = STEP_ORDER.indexOf(endStep);
   if (endIdx < 0) throw new Error(`無効な toStep: ${endStep}`);
 
-  return STEP_ORDER.slice(realStart, endIdx + 1).filter((s) => s !== "pick-topic" || realStart === 0);
+  return STEP_ORDER.slice(startIdx, endIdx + 1).filter((s) => s !== "pick-topic" || startIdx === 0);
 }
 
 async function execStep(

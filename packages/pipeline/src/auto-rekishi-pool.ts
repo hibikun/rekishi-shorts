@@ -138,7 +138,7 @@ export async function markInProgress(entry: PoolEntry, opts: MarkOptions): Promi
   const startedIso = (opts.startedAt ?? new Date()).toISOString();
   const newLine = replaceMarker(entry.rawLine, "~") +
     ` — jobId \`${opts.jobId}\` startedAt ${startedIso}`;
-  await replaceLine(entry.lineNumber, entry.rawLine, newLine);
+  await replaceLineByEntry(entry, newLine);
 }
 
 /**
@@ -157,7 +157,7 @@ export async function markDone(
   const titlePart = `**${entry.title}**${entry.pattern ? ` [${entry.pattern}]` : ""}`;
   const newLine =
     `- [✅] ${titlePart} — ${baseDesc} — jobId \`${opts.jobId}\` (${channel} / ${privacy}) — ${opts.url}`;
-  await replaceLine(entry.lineNumber, entry.rawLine, newLine);
+  await replaceLineByEntry(entry, newLine);
 }
 
 /** `[~]` を `[ ]` に戻し、行末の jobId/startedAt 付帯情報を削除する。 */
@@ -165,7 +165,7 @@ export async function unlock(entry: PoolEntry): Promise<void> {
   const baseDesc = stripTrailingMeta(entry.description);
   const titlePart = `**${entry.title}**${entry.pattern ? ` [${entry.pattern}]` : ""}`;
   const newLine = `- [ ] ${titlePart} — ${baseDesc}`;
-  await replaceLine(entry.lineNumber, entry.rawLine, newLine);
+  await replaceLineByEntry(entry, newLine);
 }
 
 function replaceMarker(rawLine: string, marker: "~" | "✅" | " "): string {
@@ -209,23 +209,46 @@ async function withPoolLock<T>(fn: () => Promise<T>): Promise<T> {
   throw new Error("unreachable");
 }
 
-async function replaceLine(lineNumber: number, oldLine: string, newLine: string): Promise<void> {
+/**
+ * pool ファイルから entry 該当行を特定して newLine に置換する。
+ * 同一トピックを再 pop しないよう、特定は以下の優先順位で行う:
+ *   1. lineNumber の行が rawLine と完全一致
+ *   2. lineNumber の行が `**title**` を含む（マーカーが書き換わっていても可）
+ *   3. ファイル全体から `**title**` を含む最初の行
+ */
+async function replaceLineByEntry(entry: PoolEntry, newLine: string): Promise<void> {
   await withPoolLock(async () => {
     const file = poolPath();
     const raw = await fs.readFile(file, "utf-8");
     const lines = raw.split("\n");
-    if (lines[lineNumber] !== oldLine) {
-      // 行番号がずれている可能性があるので、内容で再走査して同一行を探す
-      const idx = lines.indexOf(oldLine);
-      if (idx < 0) {
-        throw new Error(
-          `topic-ideas-pool.md の対象行が見つかりません (lineNumber=${lineNumber}): ${oldLine.slice(0, 80)}`,
-        );
+
+    const titleMarker = `**${entry.title}**`;
+    let targetIdx = -1;
+
+    if (entry.lineNumber >= 0 && entry.lineNumber < lines.length) {
+      const candidate = lines[entry.lineNumber];
+      if (candidate === entry.rawLine || (candidate && candidate.includes(titleMarker))) {
+        targetIdx = entry.lineNumber;
       }
-      lines[idx] = newLine;
-    } else {
-      lines[lineNumber] = newLine;
     }
+
+    if (targetIdx < 0) {
+      for (let i = 0; i < lines.length; i++) {
+        const l = lines[i];
+        if (l && l.includes(titleMarker)) {
+          targetIdx = i;
+          break;
+        }
+      }
+    }
+
+    if (targetIdx < 0) {
+      throw new Error(
+        `topic-ideas-pool.md の対象行が見つかりません (title=${entry.title})`,
+      );
+    }
+
+    lines[targetIdx] = newLine;
     await fs.writeFile(file, lines.join("\n"), "utf-8");
   });
 }
