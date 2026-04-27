@@ -160,6 +160,10 @@ program
   .description("meta-draft.md を読み込んで YouTube にアップロード")
   .argument("<jobId>", "ジョブID")
   .option("--privacy <status>", "公開状態 (public | unlisted | private)")
+  .option(
+    "--publish-at <iso>",
+    "予約投稿の公開時刻 (ISO 8601, 未来時刻。例: 2026-04-30T18:00:00+09:00)。指定すると privacyStatus は自動で private に変わり、その時刻に YouTube 側で公開される",
+  )
   .option("--force", "同一 jobId の投稿履歴があっても続行", false)
   .option("--dry-run", "送信せずペイロードだけ表示", false)
   .addOption(channelOption())
@@ -176,14 +180,38 @@ program
     const plan = await loadRenderPlan(jobId);
     const { metadata } = await loadOrBuildMetaDraft(plan, { regenerate: false });
 
-    const finalMetadata: YouTubeMetadata = opts.privacy
-      ? YouTubeMetadataSchema.parse({ ...metadata, privacyStatus: opts.privacy })
-      : metadata;
+    let publishAtIso: string | undefined;
+    if (opts.publishAt) {
+      const dt = new Date(String(opts.publishAt));
+      if (Number.isNaN(dt.getTime())) {
+        log(chalk.red(`❌ --publish-at の形式が不正です: "${opts.publishAt}"`));
+        log(chalk.dim("   ISO 8601 で指定してください。例: 2026-04-30T18:00:00+09:00"));
+        process.exit(1);
+      }
+      if (dt.getTime() <= Date.now()) {
+        log(chalk.red(`❌ --publish-at は未来時刻である必要があります: ${dt.toISOString()}`));
+        process.exit(1);
+      }
+      publishAtIso = dt.toISOString();
+    }
+
+    const overrides: Partial<YouTubeMetadata> = {};
+    if (opts.privacy) overrides.privacyStatus = opts.privacy;
+    if (publishAtIso) overrides.publishAt = publishAtIso;
+    const finalMetadata: YouTubeMetadata =
+      Object.keys(overrides).length > 0
+        ? YouTubeMetadataSchema.parse({ ...metadata, ...overrides })
+        : metadata;
 
     const videoPath = await resolveVideoPath(plan);
     log(chalk.dim(`   video: ${videoPath}`));
     log(chalk.dim(`   title: ${finalMetadata.title}`));
-    log(chalk.dim(`   privacy: ${finalMetadata.privacyStatus}`));
+    if (finalMetadata.publishAt) {
+      log(chalk.dim(`   privacy: private (scheduled)`));
+      log(chalk.dim(`   publishAt: ${finalMetadata.publishAt} (${new Date(finalMetadata.publishAt).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })} JST)`));
+    } else {
+      log(chalk.dim(`   privacy: ${finalMetadata.privacyStatus}`));
+    }
     log(chalk.dim(`   tags: ${finalMetadata.tags.length} 個 (${finalMetadata.tags.join(", ")})`));
 
     if (opts.dryRun) {

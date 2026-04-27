@@ -10,6 +10,13 @@ export const YouTubeMetadataSchema = z.object({
   categoryId: z.string().default("27"),
   privacyStatus: PrivacyStatusSchema.default("public"),
   containsSyntheticMedia: z.boolean().default(true),
+  /**
+   * 予約投稿の公開時刻（ISO 8601, 未来時刻）。
+   * セットされた場合、YouTube 側で `privacyStatus` は強制的に `private` 扱いになり、
+   * `publishAt` が来たタイミングで自動的に `public` に切り替わる。
+   * 未指定なら通常の即時公開。
+   */
+  publishAt: z.string().datetime({ offset: true }).optional(),
 });
 export type YouTubeMetadata = z.infer<typeof YouTubeMetadataSchema>;
 

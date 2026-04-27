@@ -32,6 +32,11 @@ export async function uploadToYouTube(input: UploadInput): Promise<UploadResult>
   // Studio の「動画編集」画面からのみ設定可能。metadata では保持して
   // 将来 API サポート時に即座に送信できるようにしているが、現状は
   // アップロード後に手動で Studio で設定する必要がある。
+
+  // 予約投稿: publishAt がある場合 YouTube 仕様で privacyStatus は private 必須
+  const scheduled = !!metadata.publishAt;
+  const effectivePrivacyStatus = scheduled ? "private" : metadata.privacyStatus;
+
   const res = await youtube.videos.insert({
     part: ["snippet", "status"],
     notifySubscribers: true,
@@ -43,7 +48,8 @@ export async function uploadToYouTube(input: UploadInput): Promise<UploadResult>
         categoryId: metadata.categoryId,
       },
       status: {
-        privacyStatus: metadata.privacyStatus,
+        privacyStatus: effectivePrivacyStatus,
+        publishAt: metadata.publishAt,
         selfDeclaredMadeForKids: false,
       },
     },
