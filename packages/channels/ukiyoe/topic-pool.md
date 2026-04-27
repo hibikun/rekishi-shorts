@@ -58,7 +58,7 @@ slug は jobId に使われる（英数字とハイフンのみ。例: `ukiyoe-<
 
 - [ ] `ako-roshi` 大石内蔵助 赤穂浪士討ち入り 1702年12月14日の1日
 - [ ] `taira-no-masakado` 平将門 関東独立を宣言した1日
-- [ ] `ino-tadataka` 伊能忠敬 55歳から始めた測量の1日
+- [✅] `ino-tadataka` 伊能忠敬 55歳から始めた測量の1日 — ukiyoe-ino-tadataka-2026-04-27 — https://youtube.com/shorts/9K6LxvNQfeE
 - [ ] `basho-okuno-hosomichi` 松尾芭蕉 奥の細道へ江戸を旅立った1日
 - [ ] `ninomiya-kinjiro` 二宮金次郎 薪を背負って読書した1日
 - [ ] `saika-magoichi` 雑賀孫一 鉄砲集団・雑賀衆を率いた1日
