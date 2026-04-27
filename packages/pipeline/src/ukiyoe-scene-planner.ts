@@ -151,6 +151,10 @@ export async function planUkiyoeScenes(
     );
   }
 
+  // 元 narration を改変・水増ししていないか検証する。
+  // 句読点・空白・括弧などの装飾差は無視して比較。
+  assertNarrationFidelity(script.narration, scenes);
+
   const plan: UkiyoeScenePlan = {
     topic: raw.topic ?? script.topic,
     totalDurationSec: raw.totalDurationSec ?? targetDurationSec,
@@ -165,4 +169,76 @@ export async function planUkiyoeScenes(
       model: config.gemini.sceneModel,
     },
   };
+}
+
+/**
+ * 句読点・空白・括弧・記号を取り除いて比較用に正規化する。
+ * Gemini が「夜の十時」→「夜十時」のような微差を出すこともあるが、
+ * ほとんどのケースは句読点や装飾の差なのでここでは記号類だけ落とす。
+ */
+function normalizeForCompare(s: string): string {
+  return s
+    .replace(/[\s　、。．，「」『』（）()！？!?・…—\-]/g, "")
+    .trim();
+}
+
+/**
+ * scene-planner が元 narration を改変・水増しせず分割しているかを検証する。
+ *
+ * 検出する代表的な違反:
+ *   - 元になかった装飾文の追加（例: 「夜の帳が降りる」「驚愕の事実」）
+ *   - 行動の捏造（例: 入力に「竹光」しかないのに「竹光を抜き放ち命を懸ける」）
+ *   - 締めの差し替え（最終シーンが元の最終文と全く別の感想文になる）
+ *
+ * チェック方法は2段階:
+ *   1) 各シーン narration が元 narration の連続部分文字列か（部分一致）
+ *   2) 全シーン連結が元 narration とおおむね一致するか（被覆 95%+）
+ *
+ * 違反を検出した場合は人間が直すか再生成するかを判断できるように、
+ * 詳細を載せた Error を投げる。
+ */
+function assertNarrationFidelity(
+  sourceNarration: string,
+  scenes: UkiyoeSceneSpec[],
+): void {
+  const sourceNorm = normalizeForCompare(sourceNarration);
+  if (!sourceNorm) return;
+
+  const violations: string[] = [];
+  for (const s of scenes) {
+    const sceneNorm = normalizeForCompare(s.narration);
+    if (!sceneNorm) continue;
+    if (!sourceNorm.includes(sceneNorm)) {
+      violations.push(
+        `scene[${s.index}] narration が元に存在しない: "${s.narration}"`,
+      );
+    }
+  }
+
+  const concatNorm = scenes
+    .map((s) => normalizeForCompare(s.narration))
+    .join("");
+  // 被覆: 連結結果が元 narration の 95% 以上をカバーしていること
+  // （改変なし分割なら 100% 一致するはず）
+  const coverageRatio =
+    sourceNorm.length === 0 ? 1 : concatNorm.length / sourceNorm.length;
+  if (coverageRatio < 0.95 || coverageRatio > 1.05) {
+    violations.push(
+      `全シーン連結の文字数が元 narration と乖離: source=${sourceNorm.length} chars, concat=${concatNorm.length} chars (ratio=${coverageRatio.toFixed(2)})`,
+    );
+  }
+
+  if (violations.length > 0) {
+    throw new Error(
+      [
+        "scene-planner が元 narration を改変・水増しした疑いがあります。",
+        "プロンプト（scene-plan-routine.md）の「ナレーション分割の絶対ルール」を確認するか、再生成してください。",
+        "",
+        "違反:",
+        ...violations.map((v) => `  - ${v}`),
+        "",
+        `元 narration: ${sourceNarration}`,
+      ].join("\n"),
+    );
+  }
 }

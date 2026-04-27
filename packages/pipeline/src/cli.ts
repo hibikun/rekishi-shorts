@@ -351,6 +351,37 @@ program
   });
 
 program
+  .command("scene-plan")
+  .description("既存ジョブの draft.md/script.json からシーン分割のみ実行（TTS/画像/レンダなし）")
+  .requiredOption("--job-id <id>", "draft で生成したジョブID")
+  .addOption(channelOption())
+  .action(async (opts) => {
+    const { loadScriptFromJob } = await import("./orchestrator.js");
+    const { planScenes } = await import("./scene-planner.js");
+    const { jobPath } = await import("./storage/local.js");
+
+    console.log(chalk.bold(`\n🎬 rekishi-shorts scene-plan preview: ${opts.jobId}\n`));
+    const script = await loadScriptFromJob(opts.jobId);
+    const { plan, usage } = await planScenes(script);
+
+    const outPath = jobPath(opts.jobId, "scripts", "scene-plan.json");
+    fs.mkdirSync(path.dirname(outPath), { recursive: true });
+    fs.writeFileSync(outPath, JSON.stringify(plan, null, 2));
+
+    console.log(chalk.green(`✅ scene-plan 保存: ${outPath}`));
+    console.log(chalk.dim(`   ${plan.scenes.length}シーン / in=${usage.inputTokens}tok out=${usage.outputTokens}tok`));
+    console.log();
+    for (const s of plan.scenes) {
+      console.log(chalk.bold(`#${s.index} (${s.durationSec}s)`));
+      console.log(`  ナレ: ${s.narration}`);
+      console.log(chalk.dim(`  画像クエリ(JA): ${s.imageQueryJa}`));
+      console.log(chalk.dim(`  画像クエリ(EN): ${s.imageQueryEn}`));
+      console.log(chalk.dim(`  生成プロンプト: ${s.imagePromptEn}`));
+      console.log();
+    }
+  });
+
+program
   .command("tts-only")
   .description(
     "script.json から Gemini TTS でナレーション音声を合成（ranking 手動フロー用）",
