@@ -1,8 +1,17 @@
 import React from "react";
 import { Composition, staticFile } from "remotion";
-import { VIDEO_FPS, VIDEO_HEIGHT, VIDEO_WIDTH } from "@rekishi/shared";
+import {
+  KOSEI_ANIMATION_VIDEO_FPS,
+  VIDEO_FPS,
+  VIDEO_HEIGHT,
+  VIDEO_WIDTH,
+} from "@rekishi/shared";
 import { HistoryShort, type HistoryShortProps } from "./compositions/HistoryShort";
 import { RankingShort, type RankingShortProps } from "./compositions/RankingShort";
+import {
+  KoseiAnimationShort,
+  type KoseiAnimationShortProps,
+} from "./compositions/KoseiAnimationShort";
 
 const defaultProps: HistoryShortProps = {
   scenes: [],
@@ -82,6 +91,19 @@ const rankingDefaultProps: RankingShortProps = {
 
 const RankingShortComponent = RankingShort as unknown as React.FC<Record<string, unknown>>;
 
+const koseiAnimationDefaultProps: KoseiAnimationShortProps = {
+  scenes: [],
+  audioSrc: "",
+  captions: [],
+  captionSegments: [],
+  totalDurationSec: 40,
+  keyTerms: [],
+  title: { top: "", bottom: "" },
+};
+
+const KoseiAnimationShortComponent =
+  KoseiAnimationShort as unknown as React.FC<Record<string, unknown>>;
+
 export const Root: React.FC = () => {
   return (
     <>
@@ -102,6 +124,15 @@ export const Root: React.FC = () => {
         width={VIDEO_WIDTH}
         height={VIDEO_HEIGHT}
         defaultProps={rankingDefaultProps as unknown as Record<string, unknown>}
+      />
+      <Composition
+        id="KoseiAnimationShort"
+        component={KoseiAnimationShortComponent}
+        durationInFrames={KOSEI_ANIMATION_VIDEO_FPS * 60}
+        fps={KOSEI_ANIMATION_VIDEO_FPS}
+        width={VIDEO_WIDTH}
+        height={VIDEO_HEIGHT}
+        defaultProps={koseiAnimationDefaultProps as unknown as Record<string, unknown>}
       />
     </>
   );

@@ -3,7 +3,13 @@ import { renderMedia, selectComposition } from "@remotion/renderer";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { VIDEO_FPS, type RankingPlan, type RenderPlan } from "@rekishi/shared";
+import {
+  KOSEI_ANIMATION_VIDEO_FPS,
+  VIDEO_FPS,
+  type KoseiAnimationPlan,
+  type RankingPlan,
+  type RenderPlan,
+} from "@rekishi/shared";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -87,6 +93,71 @@ export async function renderHistoryShort(plan: RenderPlan, outputPath: string): 
   const composition = await selectComposition({
     serveUrl: bundleDir,
     id: "HistoryShort",
+    inputProps,
+  });
+
+  fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+
+  await renderMedia({
+    composition: { ...composition, durationInFrames },
+    serveUrl: bundleDir,
+    codec: "h264",
+    outputLocation: outputPath,
+    inputProps,
+    onProgress: ({ progress }) => {
+      if (progress % 0.1 < 0.01) {
+        process.stdout.write(`\r   render ${(progress * 100).toFixed(0)}%`);
+      }
+    },
+  });
+  process.stdout.write("\n");
+}
+
+export async function renderKoseiAnimationShort(
+  plan: KoseiAnimationPlan,
+  outputPath: string,
+): Promise<void> {
+  const bundleDir = await bundle({
+    entryPoint: getEntryPoint(),
+    webpackOverride: (c) => c,
+  });
+
+  const stagedScenes = plan.scenes.map((scene) => {
+    const token = String(scene.index).padStart(2, "0");
+    const stagedVideoName = stageAsset(
+      scene.videoPath,
+      bundleDir,
+      `kosei-animation-scene-${token}.mp4`,
+    );
+    return { ...scene, videoPath: stagedVideoName };
+  });
+
+  const audioSrc = plan.audioPath
+    ? stageAsset(
+        plan.audioPath,
+        bundleDir,
+        `kosei-animation-narration${path.extname(plan.audioPath) || ".wav"}`,
+      )
+    : "";
+
+  const durationInFrames = Math.max(
+    1,
+    Math.ceil(plan.totalDurationSec * KOSEI_ANIMATION_VIDEO_FPS),
+  );
+
+  const inputProps = {
+    scenes: stagedScenes,
+    audioSrc,
+    captions: plan.captions,
+    captionSegments: plan.captionSegments,
+    totalDurationSec: plan.totalDurationSec,
+    keyTerms: plan.keyTerms,
+    title: plan.title,
+  };
+
+  const composition = await selectComposition({
+    serveUrl: bundleDir,
+    id: "KoseiAnimationShort",
     inputProps,
   });
 

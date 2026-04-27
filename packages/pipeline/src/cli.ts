@@ -322,6 +322,37 @@ program
   });
 
 program
+  .command("scene-plan")
+  .description("既存ジョブの draft.md/script.json からシーン分割のみ実行（TTS/画像/レンダなし）")
+  .requiredOption("--job-id <id>", "draft で生成したジョブID")
+  .addOption(channelOption())
+  .action(async (opts) => {
+    const { loadScriptFromJob } = await import("./orchestrator.js");
+    const { planScenes } = await import("./scene-planner.js");
+    const { jobPath } = await import("@rekishi/shared/channel");
+
+    console.log(chalk.bold(`\n🎬 rekishi-shorts scene-plan preview: ${opts.jobId}\n`));
+    const script = await loadScriptFromJob(opts.jobId);
+    const { plan, usage } = await planScenes(script);
+
+    const outPath = jobPath(opts.jobId, "scripts", "scene-plan.json");
+    fs.mkdirSync(path.dirname(outPath), { recursive: true });
+    fs.writeFileSync(outPath, JSON.stringify(plan, null, 2));
+
+    console.log(chalk.green(`✅ scene-plan 保存: ${outPath}`));
+    console.log(chalk.dim(`   ${plan.scenes.length}シーン / in=${usage.inputTokens}tok out=${usage.outputTokens}tok`));
+    console.log();
+    for (const s of plan.scenes) {
+      console.log(chalk.bold(`#${s.index} (${s.durationSec}s)`));
+      console.log(`  ナレ: ${s.narration}`);
+      console.log(chalk.dim(`  画像クエリ(JA): ${s.imageQueryJa}`));
+      console.log(chalk.dim(`  画像クエリ(EN): ${s.imageQueryEn}`));
+      console.log(chalk.dim(`  生成プロンプト: ${s.imagePromptEn}`));
+      console.log();
+    }
+  });
+
+program
   .command("tts-only")
   .description(
     "script.json から Gemini TTS でナレーション音声を合成（ranking 手動フロー用）",
@@ -866,6 +897,264 @@ program
     const { renderRankingShort } = await import("@rekishi/renderer");
     console.log(chalk.bold(`\n🎥 RankingShort をレンダリング中...`));
     await renderRankingShort(plan, outputPath);
+    console.log(chalk.green(`\n✅ 完成: ${outputPath}`));
+  });
+
+// ============================================================
+// kosei-animation チャンネル: リアル復元画像 × img2video
+// 既存 kosei は触らず、別チャンネルとして一気通貫 MVP を持つ
+// ============================================================
+
+program
+  .command("kosei-animation-generate")
+  .description(
+    "kosei-animation チャンネルを一気通貫で生成（research/script→scene-plan→images→videos→tts→render）",
+  )
+  .requiredOption("--topic <title>", "トピック（例: ティラノサウルスの歯は唇に覆われていた）")
+  .option("--era <era>", "時代・分類（例: 白亜紀後期）")
+  .option("--scenes <n>", "シーン数（5秒×N、初期値は8）", "8")
+  .option("--research-file <path>", "research markdown を script-routine プロンプトに流し込む")
+  .option("--job-id <id>", "ジョブID。省略時は timestamp ベース")
+  .option("--no-research", "research.md 自動生成を skip")
+  .option("--no-images", "image-gen を skip（既存 scene-NN.png を使う）")
+  .option("--no-videos", "video-gen を skip（既存 scene-NN.mp4 を使う）")
+  .option("--no-tts", "TTS を skip（既存 narration.wav を使う）")
+  .option("--no-render", "Remotion レンダリングを skip")
+  .action(async (opts) => {
+    setChannel("kosei-animation");
+
+    const sceneCount = Number.parseInt(opts.scenes, 10);
+    if (!Number.isInteger(sceneCount) || sceneCount < 2 || sceneCount > 12) {
+      throw new Error(`--scenes は 2〜12 の整数で指定してください（got: ${opts.scenes}）`);
+    }
+
+    const jobId =
+      opts.jobId ??
+      `kosei-animation-${new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19)}`;
+
+    const { resolveKoseiAnimationJobPaths, sceneImagePath } = await import(
+      "./kosei-animation-paths.js"
+    );
+    const paths = resolveKoseiAnimationJobPaths(jobId);
+    fs.mkdirSync(paths.root, { recursive: true });
+
+    console.log(chalk.bold(`\n🦖 kosei-animation-generate`));
+    console.log(chalk.dim(`   topic  : ${opts.topic}`));
+    console.log(chalk.dim(`   scenes : ${sceneCount} (${sceneCount * 5}s base)`));
+    console.log(chalk.dim(`   jobId  : ${jobId}`));
+    console.log(chalk.dim(`   root   : ${paths.root}`));
+
+    // ---- 1. research ----
+    if (opts.research !== false && !opts.researchFile && !fs.existsSync(paths.researchMd)) {
+      console.log(chalk.bold(`\n🔎 [1/8] research (Gemini Grounding + Google Search)...`));
+      const { generateResearch } = await import("./research-generator.js");
+      const topic = TopicSchema.parse({
+        title: opts.topic,
+        era: opts.era,
+        subject: "生物",
+        target: "汎用",
+        format: "single",
+      });
+      const research = await generateResearch(topic);
+      fs.writeFileSync(paths.researchMd, research.markdown);
+      console.log(chalk.green(`   saved: ${paths.researchMd}`));
+      console.log(
+        chalk.dim(`   sources=${research.sources.length} / queries=${research.queries.length}`),
+      );
+    } else if (opts.researchFile) {
+      console.log(chalk.dim(`\n🔎 research-file 指定: ${resolveCliPath(opts.researchFile)}`));
+    } else if (fs.existsSync(paths.researchMd)) {
+      console.log(chalk.dim(`\n🔎 research 既存: ${paths.researchMd}`));
+    } else {
+      console.log(chalk.yellow(`\n⚠ research skipped (--no-research)`));
+    }
+
+    // ---- 2. script ----
+    let script: import("./kosei-animation-script-generator.js").KoseiAnimationScript;
+    if (fs.existsSync(paths.scriptJson)) {
+      console.log(chalk.dim(`\n📝 script 既存: ${paths.scriptJson}`));
+      script = JSON.parse(fs.readFileSync(paths.scriptJson, "utf-8"));
+    } else {
+      console.log(chalk.bold(`\n📝 [2/8] script generation...`));
+      const { generateKoseiAnimationScript } = await import(
+        "./kosei-animation-script-generator.js"
+      );
+      const researchMd = opts.researchFile
+        ? fs.readFileSync(resolveCliPath(opts.researchFile), "utf-8")
+        : fs.existsSync(paths.researchMd)
+          ? fs.readFileSync(paths.researchMd, "utf-8")
+          : undefined;
+      const result = await generateKoseiAnimationScript({
+        topic: opts.topic,
+        era: opts.era,
+        researchMd,
+        targetSceneCount: sceneCount,
+        targetDurationSec: sceneCount * 5,
+      });
+      script = result.script;
+      fs.writeFileSync(paths.scriptJson, JSON.stringify(script, null, 2));
+      console.log(chalk.green(`   saved: ${paths.scriptJson}`));
+      console.log(chalk.dim(`   tokens in=${result.usage.inputTokens} out=${result.usage.outputTokens}`));
+    }
+
+    // ---- 3. scene-plan ----
+    let scenePlan: import("./kosei-animation-scene-planner.js").KoseiAnimationScenePlan;
+    if (fs.existsSync(paths.scenePlanJson)) {
+      console.log(chalk.dim(`\n🎬 scene-plan 既存: ${paths.scenePlanJson}`));
+      scenePlan = JSON.parse(fs.readFileSync(paths.scenePlanJson, "utf-8"));
+    } else {
+      console.log(chalk.bold(`\n🎬 [3/8] scene-plan...`));
+      const { planKoseiAnimationScenes } = await import(
+        "./kosei-animation-scene-planner.js"
+      );
+      const result = await planKoseiAnimationScenes(script);
+      scenePlan = result.plan;
+      fs.writeFileSync(paths.scenePlanJson, JSON.stringify(scenePlan, null, 2));
+      console.log(chalk.green(`   saved: ${paths.scenePlanJson}`));
+      for (const s of scenePlan.scenes) {
+        console.log(chalk.dim(`   scene[${s.index}] ${s.motionTag} | ${s.narration}`));
+      }
+    }
+
+    // ---- 4. images ----
+    if (opts.images !== false) {
+      console.log(chalk.bold(`\n🎨 [4/8] image-gen (${scenePlan.scenes.length} scenes)...`));
+      const { generateKoseiAnimationImages } = await import(
+        "./kosei-animation-image-generator.js"
+      );
+      await generateKoseiAnimationImages(
+        scenePlan.scenes.map((s) => ({ index: s.index, scenePrompt: s.imagePrompt })),
+        paths.imagesDir,
+        { skipExisting: true, concurrency: 3 },
+      );
+    } else {
+      console.log(chalk.yellow(`\n⚠ image-gen skipped (--no-images)`));
+    }
+
+    // ---- 5. videos ----
+    if (opts.videos !== false) {
+      console.log(chalk.bold(`\n🎥 [5/8] video-gen (${scenePlan.scenes.length} scenes)...`));
+      const { generateKoseiAnimationVideos } = await import(
+        "./kosei-animation-video-generator.js"
+      );
+      await generateKoseiAnimationVideos(
+        scenePlan.scenes.map((s) => ({
+          index: s.index,
+          imagePath: sceneImagePath(paths, s.index),
+          scenePrompt: s.videoPrompt,
+          motionTag: s.motionTag,
+          cameraFixed: s.cameraFixed,
+        })),
+        paths.videosDir,
+        { skipExisting: true, concurrency: 3 },
+      );
+    } else {
+      console.log(chalk.yellow(`\n⚠ video-gen skipped (--no-videos)`));
+    }
+
+    // ---- 6. TTS ----
+    if (opts.tts !== false && !fs.existsSync(paths.narrationWav)) {
+      console.log(chalk.bold(`\n🎙️  [6/8] TTS (Gemini)...`));
+      const { synthesizeNarration } = await import("./tts-generator.js");
+      const { FURIGANA_MAP } = await import("./furigana.js");
+      const tts = await synthesizeNarration(script.narration, paths.narrationWav, {
+        readings: script.readings,
+        furigana: FURIGANA_MAP,
+        hook: script.hook,
+      });
+      console.log(
+        chalk.green(
+          `   saved: ${tts.path} (${tts.characters}文字, ~${tts.approxDurationSec.toFixed(2)}s)`,
+        ),
+      );
+    } else if (fs.existsSync(paths.narrationWav)) {
+      console.log(chalk.dim(`\n🎙️  TTS 既存: ${paths.narrationWav}`));
+    } else {
+      console.log(chalk.yellow(`\n⚠ TTS skipped (--no-tts)`));
+    }
+
+    // ---- 7. ASR alignment ----
+    console.log(chalk.bold(`\n📝 [7/8] caption alignment (Whisper)...`));
+    if (!fs.existsSync(paths.narrationWav)) {
+      throw new Error(`narration.wav が見当たりません: ${paths.narrationWav}`);
+    }
+    const { alignCaptions } = await import("./asr-aligner.js");
+    const alignment = await alignCaptions(paths.narrationWav, {
+      scriptText: script.narration,
+      readings: script.readings,
+      keyTerms: script.keyTerms,
+    });
+    fs.writeFileSync(paths.wordsJson, JSON.stringify(alignment, null, 2));
+    console.log(
+      chalk.dim(`   ${alignment.words.length} words / ${alignment.totalDurationSec.toFixed(2)}s`),
+    );
+
+    const { alignKoseiAnimationScenes } = await import(
+      "./kosei-animation-scene-aligner.js"
+    );
+    const sceneAlignment = alignKoseiAnimationScenes({
+      scenePlan,
+      words: alignment.words,
+      totalDurationSec: alignment.totalDurationSec,
+      audioPath: paths.narrationWav,
+      brokenAsr: alignment.brokenByGuard,
+    });
+    scenePlan = sceneAlignment.scenePlan;
+    for (const s of scenePlan.scenes) {
+      console.log(chalk.dim(`   scene[${s.index}] duration=${s.durationSec.toFixed(2)}s`));
+    }
+
+    // ---- 8. plan + render ----
+    console.log(chalk.bold(`\n🧩 [8/8] build-plan + render...`));
+    const { buildKoseiAnimationPlan, writeKoseiAnimationPlan } = await import(
+      "./kosei-animation-plan-builder.js"
+    );
+    const plan = buildKoseiAnimationPlan({
+      jobId,
+      script,
+      scenePlan,
+      imagesDir: paths.imagesDir,
+      videosDir: paths.videosDir,
+      audioPath: paths.narrationWav,
+      captions: alignment.words,
+      captionSegments: sceneAlignment.captionSegments,
+    });
+    writeKoseiAnimationPlan(plan, paths.planJson);
+    console.log(chalk.green(`   plan saved: ${paths.planJson}`));
+
+    if (opts.render !== false) {
+      const { renderKoseiAnimationShort } = await import("@rekishi/renderer");
+      const outputPath = path.join(getJobOutputDir(), `${plan.id}.mp4`);
+      console.log(chalk.bold(`\n🎬 Remotion レンダリング中...`));
+      await renderKoseiAnimationShort(plan, outputPath);
+      console.log(chalk.green(`\n✅ 完成: ${outputPath}`));
+    }
+  });
+
+program
+  .command("render-kosei-animation")
+  .description("既存の kosei-animation-plan.json からレンダリングのみ実行")
+  .requiredOption("--job-id <id>", "ジョブID")
+  .option("--out <path>", "出力 mp4 のパス")
+  .action(async (opts) => {
+    setChannel("kosei-animation");
+    const { resolveKoseiAnimationJobPaths } = await import(
+      "./kosei-animation-paths.js"
+    );
+    const { readKoseiAnimationPlan } = await import(
+      "./kosei-animation-plan-builder.js"
+    );
+    const paths = resolveKoseiAnimationJobPaths(opts.jobId);
+    if (!fs.existsSync(paths.planJson)) {
+      throw new Error(`kosei-animation-plan.json が見当たりません: ${paths.planJson}`);
+    }
+    const plan = readKoseiAnimationPlan(paths.planJson);
+    const { renderKoseiAnimationShort } = await import("@rekishi/renderer");
+    const outputPath = opts.out
+      ? resolveCliPath(opts.out)
+      : path.join(getJobOutputDir(), `${plan.id}.mp4`);
+    console.log(chalk.bold(`\n🎬 Remotion レンダリング中: ${plan.id}`));
+    await renderKoseiAnimationShort(plan, outputPath);
     console.log(chalk.green(`\n✅ 完成: ${outputPath}`));
   });
 
