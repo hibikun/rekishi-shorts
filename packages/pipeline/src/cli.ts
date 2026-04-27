@@ -1464,6 +1464,175 @@ program
     console.log(chalk.green(`\n✅ topic-pool 更新: ${slug} → done${upload.url ? ` (${upload.url})` : ""}`));
   });
 
+// ============================================================
+// rekishi auto: 完全自動投稿パイプライン
+// pool pop → research → draft → build → render → meta → post
+// /schedule から朝・夕に呼ばれる前提（A 案 = 薄いトリガー、a 案 = 先頭 pop）
+// 詳細: docs/phases/auto-rekishi.md
+// ============================================================
+
+const autoCmd = program
+  .command("auto")
+  .description("rekishi 完全自動投稿パイプライン (run | resume | pick-topic | status | list-pool | unlock-pool)");
+
+function ensureRekishiChannel(channel: string | undefined): void {
+  const ch = channel ?? "rekishi";
+  if (ch !== "rekishi") {
+    console.error(chalk.red(`❌ auto は現状 rekishi 専用です（指定: ${ch}）`));
+    process.exit(2);
+  }
+  setChannel("rekishi");
+}
+
+function parseMode(raw: string | undefined): "unattended" | "review" {
+  return raw === "review" ? "review" : "unattended";
+}
+
+autoCmd
+  .command("run")
+  .description("pool から 1 件 pop して投稿まで一気通貫実行")
+  .option("--channel <id>", "(現状 rekishi 専用)", "rekishi")
+  .option("--mode <mode>", "unattended | review", "unattended")
+  .option("--from <step>", "開始ステップ (pick-topic|research|draft|build|render|meta|post)")
+  .option("--to <step>", "終了ステップ")
+  .option("--dry-run", "post を skip（mp4 まで生成、pool は [~] のまま）", false)
+  .option("--no-allow-image-generation", "Nano Banana 画像生成を無効化（Wikimedia のみ）")
+  .action(async (opts) => {
+    ensureRekishiChannel(opts.channel);
+    const { runAutoOnce } = await import("./auto-rekishi-runner.js");
+    await runAutoOnce({
+      mode: parseMode(opts.mode),
+      dryRun: !!opts.dryRun,
+      allowImageGeneration: opts.allowImageGeneration !== false,
+      fromStep: opts.from,
+      toStep: opts.to,
+    });
+  });
+
+autoCmd
+  .command("resume <jobId>")
+  .description("失敗 / 保留ジョブの続きから再開")
+  .option("--channel <id>", "(現状 rekishi 専用)", "rekishi")
+  .option("--mode <mode>", "unattended | review", "unattended")
+  .option("--from <step>", "開始ステップ（state.currentStep より優先）")
+  .option("--to <step>", "終了ステップ")
+  .option("--dry-run", "post を skip", false)
+  .option("--no-allow-image-generation", "Nano Banana 画像生成を無効化")
+  .action(async (jobId, opts) => {
+    ensureRekishiChannel(opts.channel);
+    const { resumeAuto } = await import("./auto-rekishi-runner.js");
+    await resumeAuto(jobId, {
+      mode: parseMode(opts.mode),
+      dryRun: !!opts.dryRun,
+      allowImageGeneration: opts.allowImageGeneration !== false,
+      fromStep: opts.from,
+      toStep: opts.to,
+    });
+  });
+
+autoCmd
+  .command("pick-topic")
+  .description("pool から 1 件 pop して jobId を確保するだけ（debug 用）")
+  .option("--channel <id>", "(現状 rekishi 専用)", "rekishi")
+  .option("--dry-run", "pool を書き戻さない", false)
+  .action(async (opts) => {
+    ensureRekishiChannel(opts.channel);
+    const { pickNextAvailable, markInProgress } = await import("./auto-rekishi-pool.js");
+    const { randomUUID } = await import("node:crypto");
+    const entry = await pickNextAvailable();
+    if (!entry) {
+      console.error(chalk.red("❌ 日本史セクションに利用可能なトピックがありません"));
+      process.exit(3);
+    }
+    const jobId = randomUUID().slice(0, 8);
+    console.log(chalk.bold(`✅ pick: ${entry.title}`));
+    console.log(chalk.dim(`   era=${entry.era} / lineNumber=${entry.lineNumber}`));
+    console.log(chalk.dim(`   jobId=${jobId}`));
+    if (opts.dryRun) {
+      console.log(chalk.yellow("--dry-run: pool 書き戻しなし"));
+    } else {
+      await markInProgress(entry, { jobId });
+      console.log(chalk.green("   pool: [~] にマーク済み"));
+    }
+  });
+
+autoCmd
+  .command("status")
+  .description("進行中・失敗ジョブと pool 残数を表示")
+  .option("--channel <id>", "(現状 rekishi 専用)", "rekishi")
+  .option("--all", "完了済みも含む", false)
+  .action(async (opts) => {
+    ensureRekishiChannel(opts.channel);
+    const { listStates } = await import("./auto-rekishi-state.js");
+    const { listAvailable } = await import("./auto-rekishi-pool.js");
+    const states = await listStates({
+      includeFailed: true,
+      includeDone: !!opts.all,
+    });
+    console.log(chalk.bold("\n📋 ジョブ一覧"));
+    if (states.length === 0) {
+      console.log(chalk.dim("   (進行中・失敗ジョブなし)"));
+    } else {
+      for (const s of states) {
+        const tag =
+          s.status === "failed"
+            ? chalk.red("FAIL")
+            : s.status === "running"
+              ? chalk.yellow("RUN ")
+              : s.status === "awaiting-confirmation"
+                ? chalk.cyan("WAIT")
+                : chalk.green("DONE");
+        console.log(`   ${tag} ${s.jobId} [${s.currentStep.padEnd(11)}] ${s.topic.title}`);
+        if (s.error) {
+          console.log(chalk.dim(`        └─ error@${s.error.step}: ${s.error.message}`));
+        }
+      }
+    }
+    const available = await listAvailable(100);
+    console.log(chalk.bold(`\n📚 pool 在庫（日本史 / 利用可能）: ${available.length} 本`));
+  });
+
+autoCmd
+  .command("list-pool")
+  .description("利用可能トピックを上から N 件表示")
+  .option("--channel <id>", "(現状 rekishi 専用)", "rekishi")
+  .option("--limit <n>", "件数", "10")
+  .action(async (opts) => {
+    ensureRekishiChannel(opts.channel);
+    const { listAvailable } = await import("./auto-rekishi-pool.js");
+    const limit = Number.parseInt(opts.limit, 10);
+    const entries = await listAvailable(limit);
+    console.log(chalk.bold(`\n📚 利用可能 ${entries.length} 件`));
+    for (const e of entries) {
+      console.log(`   - [${e.era}] ${e.title}`);
+    }
+  });
+
+autoCmd
+  .command("unlock-pool <jobId>")
+  .description("失敗ジョブの pool [~] を [ ] に戻す（手動救済）")
+  .option("--channel <id>", "(現状 rekishi 専用)", "rekishi")
+  .action(async (jobId, opts) => {
+    ensureRekishiChannel(opts.channel);
+    const { tryReadState } = await import("./auto-rekishi-state.js");
+    const { readPool, unlock } = await import("./auto-rekishi-pool.js");
+    const state = await tryReadState(jobId);
+    if (!state) {
+      console.error(chalk.red(`❌ state.json が見つかりません: ${jobId}`));
+      process.exit(1);
+    }
+    const entries = await readPool();
+    const entry = entries.find(
+      (e) => e.lineNumber === state.pool.lineNumber || e.title === state.topic.title,
+    );
+    if (!entry) {
+      console.error(chalk.red(`❌ pool に該当エントリが見つかりません`));
+      process.exit(1);
+    }
+    await unlock(entry);
+    console.log(chalk.green(`✅ pool: ${entry.title} を [ ] に戻しました`));
+  });
+
 program.parseAsync().catch((err) => {
   console.error(chalk.red("\n❌ Error:"), err instanceof Error ? err.message : err);
   if (err instanceof Error && err.stack) console.error(chalk.dim(err.stack));
