@@ -23,6 +23,8 @@ data/*/uploads/*
 data/*/design-mockups/*
 data/*/voice-compare/*
 data/*/poc-videos/*
+data/*/character/*
+data/*/test/*
 data/sfx/*
 
 # 大容量メディア (ローカルプレビュー用、git では追跡しない)
