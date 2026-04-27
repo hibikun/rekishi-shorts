@@ -1420,6 +1420,10 @@ program
   .description("ukiyoe channel: YouTube 投稿 + topic-pool 自動更新")
   .argument("<jobId>", "ukiyoe-plan/build で確保した jobId")
   .option("--privacy <status>", "公開状態 (public | unlisted | private)")
+  .option(
+    "--publish-at <iso>",
+    "予約投稿の公開時刻 (ISO 8601, 未来時刻。例: 2026-04-30T18:00:00+09:00)",
+  )
   .action(async (jobId: string, opts) => {
     setChannel("ukiyoe");
 
@@ -1435,6 +1439,7 @@ program
       "ukiyoe",
     ];
     if (opts.privacy) args.push("--privacy", opts.privacy);
+    if (opts.publishAt) args.push("--publish-at", opts.publishAt);
     await spawnPnpm(args);
 
     // 投稿成功時に upload.json を読んで topic-pool 更新
