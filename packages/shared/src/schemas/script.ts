@@ -88,7 +88,8 @@ export const ScriptSchema = z.object({
   body: z.string().describe("本文"),
   closing: z.string().describe("締めの1文"),
   mnemonic: z.string().optional().describe("年号語呂合わせ"),
-  keyTerms: z.array(z.string()).describe("動画に登場する教科書用語"),
+  // チャンネルにより不要（manabilab など）。default([]) で空配列を許容。
+  keyTerms: z.array(z.string()).default([]).describe("動画に登場する教科書用語（チャンネルによっては未使用）"),
   // 難読な人名・地名・歴史用語の読み仮名マップ。TTS の誤読防止用途で、字幕には反映しない。
   readings: z
     .record(z.string())
