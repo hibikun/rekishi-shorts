@@ -48,10 +48,14 @@ import {
 } from "./auto-rekishi-state.js";
 import { confirmStep, summarizeStep } from "./auto-rekishi-review.js";
 
+export type PublishPrivacy = "public" | "unlisted" | "private";
+
 export interface RunOptions {
   mode: "unattended" | "review";
   dryRun: boolean;
   allowImageGeneration: boolean;
+  /** publish 相のみ参照される。draft 相では無視。既定 public */
+  privacy?: PublishPrivacy;
   fromStep?: AutoStep;
   toStep?: AutoStep;
 }
@@ -481,6 +485,7 @@ async function execPost(
   }
 
   if (!(await fileExists(uploadJsonPath))) {
+    const privacy = opts.privacy ?? "public";
     await spawnPnpm([
       "--filter",
       "@rekishi/publisher",
@@ -492,7 +497,7 @@ async function execPost(
       "--channel",
       "rekishi",
       "--privacy",
-      "public",
+      privacy,
     ]);
   } else {
     console.log(chalk.dim("   既存 upload.json を再利用（投稿スキップ）"));

@@ -1489,6 +1489,15 @@ function parseMode(raw: string | undefined): "unattended" | "review" {
   return raw === "review" ? "review" : "unattended";
 }
 
+function parsePrivacy(raw: string | undefined): "public" | "unlisted" | "private" {
+  if (raw === "private" || raw === "unlisted") return raw;
+  if (raw && raw !== "public") {
+    console.error(chalk.red(`❌ --privacy は public | unlisted | private のいずれか（指定: ${raw}）`));
+    process.exit(2);
+  }
+  return "public";
+}
+
 autoCmd
   .command("draft")
   .description("pool pop → research → draft → queue 出力（人間レビュー前まで）")
@@ -1516,6 +1525,7 @@ autoCmd
   .option("--from <step>", "開始ステップ (pick-script|build|render|meta|post)")
   .option("--to <step>", "終了ステップ")
   .option("--dry-run", "post を skip（mp4 まで生成、queue は in-progress のまま）", false)
+  .option("--privacy <status>", "YouTube 公開状態 (public | unlisted | private)", "public")
   .option("--no-allow-image-generation", "Nano Banana 画像生成を無効化（Wikimedia のみ）")
   .action(async (opts) => {
     ensureRekishiChannel(opts.channel);
@@ -1524,6 +1534,7 @@ autoCmd
       mode: parseMode(opts.mode),
       dryRun: !!opts.dryRun,
       allowImageGeneration: opts.allowImageGeneration !== false,
+      privacy: parsePrivacy(opts.privacy),
       fromStep: opts.from,
       toStep: opts.to,
     });
@@ -1537,6 +1548,7 @@ autoCmd
   .option("--from <step>", "開始ステップ（state.currentStep より優先）")
   .option("--to <step>", "終了ステップ")
   .option("--dry-run", "post を skip", false)
+  .option("--privacy <status>", "YouTube 公開状態 (public | unlisted | private) / publish 相のみ", "public")
   .option("--no-allow-image-generation", "Nano Banana 画像生成を無効化")
   .action(async (jobId, opts) => {
     ensureRekishiChannel(opts.channel);
@@ -1545,6 +1557,7 @@ autoCmd
       mode: parseMode(opts.mode),
       dryRun: !!opts.dryRun,
       allowImageGeneration: opts.allowImageGeneration !== false,
+      privacy: parsePrivacy(opts.privacy),
       fromStep: opts.from,
       toStep: opts.to,
     });
