@@ -29,7 +29,7 @@ LOG="data/rekishi/auto-logs/$(date +%Y%m%d-%H%M%S).log"
   echo "=== auto-rekishi started at $(date -Iseconds 2>/dev/null || date +%Y-%m-%dT%H:%M:%S%z) ==="
   echo "    pwd=$(pwd)"
   echo "    pnpm=$(command -v pnpm || echo 'NOT FOUND')"
-  pnpm --filter @rekishi/pipeline exec tsx src/cli.ts auto run --channel rekishi --mode unattended
+  pnpm --filter @rekishi/pipeline exec tsx src/cli.ts auto publish --channel rekishi --mode unattended
   EXIT=$?
   echo "=== auto-rekishi finished at $(date -Iseconds 2>/dev/null || date +%Y-%m-%dT%H:%M:%S%z) (exit $EXIT) ==="
   exit "$EXIT"

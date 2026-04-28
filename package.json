@@ -15,10 +15,12 @@
     "ukiyoe-plan": "pnpm --filter @rekishi/pipeline exec tsx src/cli.ts ukiyoe-plan",
     "ukiyoe-build": "pnpm --filter @rekishi/pipeline exec tsx src/cli.ts ukiyoe-build",
     "ukiyoe-ship": "pnpm --filter @rekishi/pipeline exec tsx src/cli.ts ukiyoe-ship",
-    "auto": "pnpm --filter @rekishi/pipeline exec tsx src/cli.ts auto run",
+    "auto-draft": "pnpm --filter @rekishi/pipeline exec tsx src/cli.ts auto draft",
+    "auto-publish": "pnpm --filter @rekishi/pipeline exec tsx src/cli.ts auto publish",
     "auto-resume": "pnpm --filter @rekishi/pipeline exec tsx src/cli.ts auto resume",
     "auto-status": "pnpm --filter @rekishi/pipeline exec tsx src/cli.ts auto status",
-    "auto-list": "pnpm --filter @rekishi/pipeline exec tsx src/cli.ts auto list-pool"
+    "queue-list": "pnpm --filter @rekishi/pipeline exec tsx src/cli.ts auto queue list",
+    "pool-list": "pnpm --filter @rekishi/pipeline exec tsx src/cli.ts auto pool list"
   },
   "packageManager": "pnpm@10.30.2",
   "engines": {
