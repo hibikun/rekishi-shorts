@@ -2,7 +2,7 @@
 slug: bro-pump__J7JI_3xdGKY
 video_id: J7JI_3xdGKY
 analyzed_at: 2026-04-28
-status: draft
+status: reviewed
 ---
 
 # 脚本分析: How to Actually Burn Belly Fat FAST

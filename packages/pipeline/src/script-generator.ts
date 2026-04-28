@@ -51,7 +51,8 @@ const singleResponseSchema = {
     },
     estimatedDurationSec: { type: Type.NUMBER },
   },
-  required: ["narration", "hook", "title", "body", "closing", "keyTerms", "estimatedDurationSec"],
+  // keyTerms はチャンネルにより不要なので required から外す（rekishi/ranking の prompt は明示的に要求するため出力される）
+  required: ["narration", "hook", "title", "body", "closing", "estimatedDurationSec"],
 };
 
 const threePickResponseSchema = {
@@ -127,7 +128,6 @@ const threePickResponseSchema = {
     "title",
     "body",
     "closing",
-    "keyTerms",
     "items",
     "estimatedDurationSec",
   ],

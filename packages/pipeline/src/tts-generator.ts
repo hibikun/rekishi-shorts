@@ -6,10 +6,14 @@ import { spawn } from "node:child_process";
 import { getChannel } from "@rekishi/shared/channel";
 import { config } from "./config.js";
 
-// チャンネル別の narrator default。ranking は「大人でリッチ」基調で Zubenelgenubi。
-// rekishi/kosei は明示エントリを置かず、従来通り GEMINI_TTS_VOICE / "Kore" にフォールバックさせる。
+// チャンネル別の narrator default。
+// - ranking: "大人でリッチ" 基調で Zubenelgenubi
+// - manabilab: 低音・権威感のある男性ボイス Charon (informative, deep)。
+//   合わなければ Fenrir (dramatic, deep) / Orus (firm) を試す。
+// - rekishi/kosei: 明示エントリを置かず、従来通り GEMINI_TTS_VOICE / "Kore" にフォールバック。
 const NARRATOR_VOICE_BY_CHANNEL: Record<string, string> = {
   ranking: "Zubenelgenubi",
+  manabilab: "Zubenelgenubi",
 };
 
 /**
@@ -70,6 +74,22 @@ const STYLE_PROMPTS: Record<VoicePersona, string> = {
     "Read the following Japanese text as a casual user review comment for a YouTube Shorts video. Deliver it extremely rapid-fire — machine-gun pace, like an excited friend texting reactions in a group chat. Leave zero pause between words, phrases, and sentences. Sound personal and natural, not announcer-like, but keep the tempo aggressively tight — get through the entire line in a single breath. Do not add reflective pauses or trailing fade-outs:",
 };
 
+// チャンネル別の style prompt 上書き (persona=narrator のみ)。
+// 学習科学チャンネルは「権威ある先生が落ち着いて教える」テンポにしたい。
+const NARRATOR_STYLE_BY_CHANNEL: Record<string, string> = {
+  manabilab:
+    "Say the following in natural Japanese with a deep, authoritative narrator's voice — like a trusted mentor revealing important scientific truths. Speak at a confident, brisk pace fit for fast-cut YouTube Shorts — energetic but clear, never blurred. Use CLEAR INFLECTION and put noticeable EMPHASIS on key words (numbers like 「2倍以上」「100年以上前」, scientific terms like 「想起練習」「分散学習」「Karpicke」, and key conclusions). Move smoothly between sentences without long pauses. Convey intellectual confidence and gravitas — NOT monotone, NOT slow:",
+};
+
+function resolveNarratorStylePrompt(persona: VoicePersona, override?: string): string {
+  if (override) return override;
+  if (persona === "narrator") {
+    const channelOverride = NARRATOR_STYLE_BY_CHANNEL[getChannel()];
+    if (channelOverride) return channelOverride;
+  }
+  return STYLE_PROMPTS[persona];
+}
+
 /**
  * Gemini 3.1 Flash TTS で日本語ナレーションを合成し、WAV として保存する。
  * approxDurationSec は loudnorm 適用後に ffprobe で再計測した真の wav 長。
@@ -97,7 +117,7 @@ export async function synthesizeNarration(
 
   const ai = new GoogleGenAI({ apiKey: config.gemini.apiKey });
 
-  const styledPrompt = `${STYLE_PROMPTS[persona]}\n${processed}`;
+  const styledPrompt = `${resolveNarratorStylePrompt(persona)}\n${processed}`;
 
   // Gemini TTS preview は per-minute レート制限 (現状 10 req/min) があるため、
   // 429 が返ったら retryDelay を尊重しつつ最大 6 回まで指数バックオフでリトライする。
@@ -145,6 +165,219 @@ export async function synthesizeNarration(
       inputTokens: response.usageMetadata?.promptTokenCount ?? 0,
       outputTokens: response.usageMetadata?.candidatesTokenCount ?? 0,
       model,
+    },
+  };
+}
+
+/**
+ * ElevenLabs TTS で日本語ナレーションを合成し、loudnorm 適用後の WAV として保存する。
+ * Gemini TTS の synthesizeNarration と同じ TTSResult を返すので呼び出し側は差し替え可能。
+ *
+ * 声は voiceId 引数で明示指定する（ENV ELEVENLABS_VOICE_ID は default として使う）。
+ * voice_settings は ElevenLabs の standard（stability=0.5, similarity_boost=0.75）。
+ * 必要なら opts.voiceSettings で上書き可。
+ */
+export async function synthesizeNarrationElevenLabs(
+  text: string,
+  destPath: string,
+  opts: {
+    voiceId?: string;
+    modelId?: string;
+    readings?: Record<string, string>;
+    furigana?: Record<string, string>;
+    voiceSettings?: {
+      stability?: number;
+      similarityBoost?: number;
+      style?: number;
+      useSpeakerBoost?: boolean;
+    };
+  } = {},
+): Promise<TTSResult> {
+  const withReadings = applyFurigana(text, opts.readings);
+  const processed = applyFurigana(withReadings, opts.furigana);
+  const voiceId = opts.voiceId ?? config.elevenlabs.voiceId;
+  const modelId = opts.modelId ?? config.elevenlabs.model;
+
+  const url = `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_44100_128`;
+  const body = {
+    text: processed,
+    model_id: modelId,
+    voice_settings: {
+      stability: opts.voiceSettings?.stability ?? 0.5,
+      similarity_boost: opts.voiceSettings?.similarityBoost ?? 0.75,
+      style: opts.voiceSettings?.style ?? 0,
+      use_speaker_boost: opts.voiceSettings?.useSpeakerBoost ?? true,
+    },
+  };
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "xi-api-key": config.elevenlabs.apiKey,
+      "Content-Type": "application/json",
+      Accept: "audio/mpeg",
+    },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`ElevenLabs TTS ${response.status}: ${errText.slice(0, 500)}`);
+  }
+  const mp3Buffer = Buffer.from(await response.arrayBuffer());
+
+  // mp3 → loudnorm 適用済み wav に変換 (ffmpeg 1pass で完結)
+  await fs.mkdir(path.dirname(destPath), { recursive: true });
+  const tmpMp3 = `${destPath}.tmp.mp3`;
+  await fs.writeFile(tmpMp3, mp3Buffer);
+  try {
+    await runFfmpeg([
+      "-y",
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-i",
+      tmpMp3,
+      "-af",
+      LOUDNESS_FILTER,
+      "-ar",
+      String(SAMPLE_RATE),
+      "-ac",
+      "1",
+      "-c:a",
+      "pcm_s16le",
+      destPath,
+    ]);
+  } finally {
+    try {
+      await fs.unlink(tmpMp3);
+    } catch {
+      /* noop */
+    }
+  }
+
+  const durationSec = (await probeDurationSec(destPath)) ?? 0;
+
+  return {
+    path: destPath,
+    approxDurationSec: durationSec,
+    characters: processed.length,
+    usage: {
+      inputTokens: 0,
+      outputTokens: 0,
+      model: `elevenlabs:${modelId}:${voiceId}`,
+    },
+  };
+}
+
+/**
+ * VOICEVOX engine (ローカル HTTP API, 既定 http://127.0.0.1:50021) で日本語ナレーションを合成。
+ * Gemini TTS / ElevenLabs と同じ TTSResult を返すので呼び出し側は差し替え可能。
+ *
+ * 事前準備: VOICEVOX app (https://voicevox.hiroshiba.jp/) を起動するか、
+ *   docker run --rm -p 50021:50021 voicevox/voicevox_engine:cpu-latest
+ *
+ * speaker ID 例（青山龍星 系）:
+ *   13: ノーマル / 81: 熱血 / 82: 不機嫌 / 83: 喜び / 84: しっとり / 85: かなしみ / 86: 囁き
+ */
+export async function synthesizeNarrationVoicevox(
+  text: string,
+  destPath: string,
+  opts: {
+    speakerId?: number;
+    baseUrl?: string;
+    readings?: Record<string, string>;
+    furigana?: Record<string, string>;
+    /** デフォルト 1.0。0.9 でゆっくり、1.1 で速く */
+    speedScale?: number;
+    /** デフォルト 0。-0.05 で少し低音化 */
+    pitchScale?: number;
+    /** デフォルト 1.0。1.2 で抑揚 +20% (Bro Pump 風の "強調" を出すなら 1.2-1.4 推奨) */
+    intonationScale?: number;
+    /** デフォルト 1.0 */
+    volumeScale?: number;
+  } = {},
+): Promise<TTSResult> {
+  const withReadings = applyFurigana(text, opts.readings);
+  const processed = applyFurigana(withReadings, opts.furigana);
+  const speakerId = opts.speakerId ?? 13; // 青山龍星 ノーマル
+  const baseUrl = opts.baseUrl ?? "http://127.0.0.1:50021";
+
+  // 1) audio_query で query JSON を作る
+  const queryUrl = `${baseUrl}/audio_query?speaker=${speakerId}&text=${encodeURIComponent(processed)}`;
+  let queryResp: Response;
+  try {
+    queryResp = await fetch(queryUrl, { method: "POST" });
+  } catch (err) {
+    throw new Error(
+      `VOICEVOX engine に接続できません (${baseUrl})。VOICEVOX app を起動してください、または docker で voicevox/voicevox_engine を立ち上げてください。詳細: ${err instanceof Error ? err.message : err}`,
+    );
+  }
+  if (!queryResp.ok) {
+    throw new Error(
+      `VOICEVOX audio_query ${queryResp.status}: ${(await queryResp.text()).slice(0, 200)}`,
+    );
+  }
+  const query = (await queryResp.json()) as Record<string, unknown>;
+
+  // パラメータ上書き
+  if (opts.speedScale !== undefined) query.speedScale = opts.speedScale;
+  if (opts.pitchScale !== undefined) query.pitchScale = opts.pitchScale;
+  if (opts.intonationScale !== undefined) query.intonationScale = opts.intonationScale;
+  if (opts.volumeScale !== undefined) query.volumeScale = opts.volumeScale;
+
+  // 2) synthesis で wav を生成
+  const synthResp = await fetch(`${baseUrl}/synthesis?speaker=${speakerId}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(query),
+  });
+  if (!synthResp.ok) {
+    throw new Error(
+      `VOICEVOX synthesis ${synthResp.status}: ${(await synthResp.text()).slice(0, 200)}`,
+    );
+  }
+  const wavBuffer = Buffer.from(await synthResp.arrayBuffer());
+
+  // VOICEVOX 出力 wav → ffmpeg loudnorm 適用 → 24kHz mono wav
+  await fs.mkdir(path.dirname(destPath), { recursive: true });
+  const tmpWav = `${destPath}.tmp.wav`;
+  await fs.writeFile(tmpWav, wavBuffer);
+  try {
+    await runFfmpeg([
+      "-y",
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-i",
+      tmpWav,
+      "-af",
+      LOUDNESS_FILTER,
+      "-ar",
+      String(SAMPLE_RATE),
+      "-ac",
+      "1",
+      "-c:a",
+      "pcm_s16le",
+      destPath,
+    ]);
+  } finally {
+    try {
+      await fs.unlink(tmpWav);
+    } catch {
+      /* noop */
+    }
+  }
+
+  const durationSec = (await probeDurationSec(destPath)) ?? 0;
+
+  return {
+    path: destPath,
+    approxDurationSec: durationSec,
+    characters: processed.length,
+    usage: {
+      inputTokens: 0,
+      outputTokens: 0,
+      model: `voicevox:speaker-${speakerId}`,
     },
   };
 }

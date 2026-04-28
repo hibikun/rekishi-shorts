@@ -246,7 +246,9 @@ export async function corpusAdd(url: string, opts: { language?: string } = {}): 
   const channel = ytdlp.channel ?? ytdlp.uploader;
   const channelSlug = toSlug(channel);
   const slug = `${channelSlug}__${ytdlp.id}`;
-  const language = opts.language ?? ytdlp.language ?? "en";
+  // Whisper は ISO-639-1 (2文字) のみ。yt-dlp が "en-US" などのロケール付きを返すことがあるので先頭2文字に正規化
+  const rawLang = opts.language ?? ytdlp.language ?? "en";
+  const language = rawLang.toLowerCase().split(/[-_]/)[0] ?? "en";
 
   const paths = corpusPaths(slug);
   fs.mkdirSync(paths.dir, { recursive: true });

@@ -14,6 +14,7 @@ import { generateYouTubeMetadata } from "./metadata-generator.js";
 import { metadataToDraftMd, draftMdToMetadata } from "./meta-draft-io.js";
 import { uploadToYouTube, formatUploadError } from "./youtube/uploader.js";
 import { runOAuthFlow } from "./youtube/oauth-flow.js";
+import { loadChannelBrandingFromMd, updateChannelBranding } from "./youtube/channel-update.js";
 import { appendUploadLog, hasBeenUploaded, readAllUploads } from "./upload-log.js";
 import { YouTubeMetadataSchema, type YouTubeMetadata } from "./index.js";
 import { fetchStatsForVideos } from "./analytics/fetch-stats.js";
@@ -22,6 +23,7 @@ import { buildSummary, renderSummaryTable, type SortKey } from "./analytics/summ
 import { runResearch } from "./research/youtube-research.js";
 import { renderMarkdownReport } from "./research/report.js";
 import { loadUkiyoePlanAsRenderPlan } from "./ukiyoe-adapter.js";
+import { loadManabilabPlanAsRenderPlan, manabilabPlanJsonPath } from "./manabilab-adapter.js";
 
 function log(msg: string): void {
   console.log(msg);
@@ -39,14 +41,26 @@ async function loadRenderPlan(jobId: string): Promise<RenderPlan> {
     return RenderPlanSchema.parse(JSON.parse(raw));
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+
     // ukiyoe チャンネルは独自スキーマ（ukiyoe-plan.json）。最小変換で読む。
     const ukiyoePath = dataPath("scripts", jobId, "ukiyoe-plan.json");
     try {
       await fs.access(ukiyoePath);
+      return loadUkiyoePlanAsRenderPlan(jobId);
     } catch {
-      throw err;
+      // not ukiyoe, fall through
     }
-    return loadUkiyoePlanAsRenderPlan(jobId);
+
+    // manabilab チャンネルは plans/<planId>.json。jobId = planId として扱う。
+    const manabilabPath = manabilabPlanJsonPath(jobId);
+    try {
+      await fs.access(manabilabPath);
+      return loadManabilabPlanAsRenderPlan(jobId);
+    } catch {
+      // not manabilab either
+    }
+
+    throw err;
   }
 }
 
@@ -116,6 +130,7 @@ program
     const clientSecret = process.env.YOUTUBE_CLIENT_SECRET;
     const redirectUri = process.env.YOUTUBE_REDIRECT_URI ?? "http://localhost:53682/oauth2callback";
     const scopes = [
+      "https://www.googleapis.com/auth/youtube",
       "https://www.googleapis.com/auth/youtube.upload",
       "https://www.googleapis.com/auth/youtube.readonly",
       "https://www.googleapis.com/auth/yt-analytics.readonly",
@@ -387,6 +402,39 @@ program
     log(chalk.green(`✅ Markdown: ${outMd}`));
     log(chalk.green(`✅ JSON    : ${outJson}`));
     log(chalk.dim(`   分析 ${result.channelsAnalyzed.length}ch / ${result.shorts.length}本 / quota ${result.quotaEstimate}units`));
+  });
+
+program
+  .command("channel-update")
+  .description(
+    "channels/<channel>/docs/youtube-channel.md の description / keywords を YouTube チャンネルに反映 (要 youtube スコープの refresh_token)",
+  )
+  .addOption(channelOption())
+  .option("--dry-run", "実際に送信せず、現在の branding と新しい branding を比較表示", false)
+  .action(async (opts) => {
+    const channel = (opts.channel as string | undefined) ?? DEFAULT_CHANNEL;
+    log(chalk.bold(`\n📺 channel-update: ${channel}\n`));
+
+    const branding = await loadChannelBrandingFromMd(channel);
+    log(chalk.dim(`  description: ${branding.description.length} 文字`));
+    log(chalk.dim(`  keywords:    ${branding.keywords}`));
+
+    const result = await updateChannelBranding(branding, { dryRun: !!opts.dryRun });
+
+    log("");
+    log(chalk.green(`✓ チャンネル: ${result.channelTitle} (${result.channelId})`));
+    log(chalk.bold(`\nBEFORE`));
+    log(chalk.dim(`  description: ${result.before.description.length} 文字`));
+    log(chalk.dim(`  keywords:    ${result.before.keywords || "(未設定)"}`));
+    log(chalk.bold(`\nAFTER`));
+    log(chalk.dim(`  description: ${result.after.description.length} 文字`));
+    log(chalk.dim(`  keywords:    ${result.after.keywords}`));
+
+    if (opts.dryRun) {
+      log(chalk.yellow("\n--dry-run のため送信していません。OK なら --dry-run なしで再実行。"));
+    } else {
+      log(chalk.green("\n✅ YouTube チャンネル branding を更新しました。"));
+    }
   });
 
 program.parseAsync().catch((err) => {

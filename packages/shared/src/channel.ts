@@ -12,6 +12,7 @@ const CHANNEL_SUBJECT_DEFAULTS: Record<string, string> = {
   kosei: "生物",
   ranking: "ガジェット",
   ukiyoe: "歴史",
+  manabilab: "学習科学",
 };
 
 const FALLBACK_SUBJECT = "日本史";
