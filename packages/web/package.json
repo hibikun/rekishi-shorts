@@ -12,6 +12,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@google/genai": "^1.50.1",
     "@rekishi/pipeline": "workspace:*",
     "@rekishi/shared": "workspace:*",
     "next": "^15.0.0",

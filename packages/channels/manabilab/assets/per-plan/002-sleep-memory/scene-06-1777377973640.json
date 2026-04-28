@@ -1,0 +1,17 @@
+{
+  "sceneIndex": 6,
+  "planId": "002-sleep-memory",
+  "beat": "Method 1 動作",
+  "narration": "でも寝る直前なら邪魔されない。",
+  "assetKind": "character",
+  "visionDescription": "ベッドで眠る擬人化された脳が描かれている。キャラクターは筋肉質な体をしており、目を閉じて安らかな表情で枕に頭を乗せている。枕元には目覚まし時計とランプが置かれたサイドテーブルがあり、時刻は11時30分を指している。全体的にパステル調の落ち着いた色使いで、静かでリラックスした夜の雰囲気が漂う。カメラは被写体を正面から捉えた、安定感のある構図となっている。",
+  "seedancePrompt": "The muscular humanoid character with the pink brain head rests peacefully on the bed, accompanied by a subtle rhythmic pulse radiating from the brain as if breathing in sleep. Tiny glowing particles drift slowly through the quiet room while the camera executes a gentle, slow push-in toward the calm, sleeping figure. Maintain the original flat 2D vector cartoon style.",
+  "seedancePromptDerived": true,
+  "overlay": {
+    "text": "邪魔されない",
+    "position": "top",
+    "color": "pink",
+    "fontSize": 240
+  },
+  "refreshedAt": "2026-04-28T12:31:31.006Z"
+}

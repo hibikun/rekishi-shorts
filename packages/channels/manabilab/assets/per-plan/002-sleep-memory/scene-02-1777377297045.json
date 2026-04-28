@@ -1,0 +1,17 @@
+{
+  "sceneIndex": 2,
+  "planId": "002-sleep-memory",
+  "beat": "HOOK 2",
+  "narration": "それは記憶のメカニズムを知らないからです。本当に。",
+  "assetKind": "broll",
+  "visionDescription": "この画像は、一人の人物の横顔と、その脳内のメカニズムを表現したイラストである。穏やかな表情を浮かべ、正面を向く人物の頭部には、脳の断面図が大きく描かれている。脳の周囲には回路のような線が張り巡らされ、電球、鍵、歯車のアイコンが配されている。色調はピンクとグレーを基調としており、テクノロジーと生物学を融合させたような、近未来的で知的な雰囲気がある。キャラクターの顔を大きく捉えた、バストアップの構図である。",
+  "seedancePrompt": "A gentle, slow camera push-in zooms toward the profile, while soft, rhythmic pulses of light ripple through the intricate circuit lines surrounding the brain. Subtle, floating animations animate the glowing lightbulb and spinning gear icons, creating a sense of intelligent, silent activity within the mind. Maintain the clean-lined, minimalist pink and grey aesthetic with a high-fidelity, educational illustrative style throughout the motion.",
+  "seedancePromptDerived": true,
+  "overlay": {
+    "text": "メカニズム",
+    "position": "top",
+    "color": "pink",
+    "fontSize": 240
+  },
+  "refreshedAt": "2026-04-28T12:31:11.898Z"
+}

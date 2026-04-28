@@ -1,0 +1,213 @@
+{
+  "id": "002-sleep-memory",
+  "title": "暗記は寝る前にしろ。理由は脳科学",
+  "totalDurationSec": 38.176,
+  "audio": {
+    "path": "packages/renderer/public/manabilab/audio/narration-002.wav",
+    "voiceProvider": "voicevox",
+    "voiceId": 13,
+    "voiceName": "青山龍星(ノーマル)",
+    "speedScale": 1,
+    "intonationScale": 1.2
+  },
+  "readings": [
+    {
+      "term": "Walker",
+      "reading": "ウォーカー"
+    }
+  ],
+  "scenes": [
+    {
+      "index": 1,
+      "kind": "image",
+      "beat": "HOOK 1",
+      "startSec": 0,
+      "endSec": 2.635,
+      "narration": "日中頑張って勉強しても記憶できない。",
+      "imagePath": "packages/channels/manabilab/assets/per-plan/002-sleep-memory/scene-01-1777377248406.png",
+      "assetKind": "character",
+      "seedancePrompt": "A gentle, rhythmic pulsing glow emanates from the pink brain-shaped head of the character as it sits calmly in the grassy meadow. Small, soft floating particles drift slowly through the air around the scene, accompanied by a subtle, slow camera push-in towards the character. Maintain the original flat 2D vector cartoon style.",
+      "approved": false
+    },
+    {
+      "index": 2,
+      "kind": "image",
+      "beat": "HOOK 2",
+      "startSec": 2.635,
+      "endSec": 6.453,
+      "narration": "それは記憶のメカニズムを知らないからです。本当に。",
+      "imagePath": "packages/channels/manabilab/assets/per-plan/002-sleep-memory/scene-02-1777377297045.png",
+      "assetKind": "broll",
+      "overlay": {
+        "text": "メカニズム",
+        "position": "top",
+        "color": "pink",
+        "fontSize": 240
+      },
+      "seedancePrompt": "A gentle, slow camera push-in zooms toward the profile, while soft, rhythmic pulses of light ripple through the intricate circuit lines surrounding the brain. Subtle, floating animations animate the glowing lightbulb and spinning gear icons, creating a sense of intelligent, silent activity within the mind. Maintain the clean-lined, minimalist pink and grey aesthetic with a high-fidelity, educational illustrative style throughout the motion.",
+      "approved": false
+    },
+    {
+      "index": 3,
+      "kind": "image",
+      "beat": "REFRAME",
+      "startSec": 6.453,
+      "endSec": 10.069,
+      "narration": "大事なことは2つだけ。脳の仕組みを理解しましょう。",
+      "imagePath": "packages/channels/manabilab/assets/character/v1/06-pointing-two-fingers.png",
+      "assetKind": "character",
+      "overlay": {
+        "text": "２つだけ",
+        "position": "top",
+        "color": "red",
+        "fontSize": 320
+      },
+      "seedancePrompt": "The character holds the peace sign confidently. The hand with the V/peace sign moves slightly forward as if emphasizing the number 2. Brain glows mildly with a soft pink aura, slow pulsation. Confident, slightly bouncy energy. Maintain the original flat 2D vector cartoon style.",
+      "approved": false
+    },
+    {
+      "index": 4,
+      "kind": "image",
+      "beat": "Method 1 開幕",
+      "startSec": 10.069,
+      "endSec": 12.331,
+      "narration": "1つ目、寝る前に暗記。",
+      "imagePath": "packages/channels/manabilab/assets/character/v1/04-recall-practice-glow.png",
+      "assetKind": "character",
+      "overlay": {
+        "text": "寝る前に暗記",
+        "position": "top",
+        "color": "pink",
+        "fontSize": 240
+      },
+      "seedancePrompt": "The character meditates calmly in lotus position, the closed book gently resting in lap. The pink brain head pulses softly with a gentle glow aura, like slow breathing. The whole figure subtly floats up and down a few pixels, very meditative. Maintain the original flat 2D vector cartoon style.",
+      "approved": false
+    },
+    {
+      "index": 5,
+      "kind": "image",
+      "beat": "Method 1 メカニズム",
+      "startSec": 12.331,
+      "endSec": 17.045,
+      "narration": "日中に覚えた情報は、新しい情報に邪魔されて消えていきます。",
+      "imagePath": "packages/channels/manabilab/assets/per-plan/002-sleep-memory/scene-05-1777377343174.png",
+      "assetKind": "broll",
+      "seedancePrompt": "A slow, rhythmic camera push-in focuses on the profile silhouette as the interior icons—the glowing lightbulbs, gears, and flowing documents—gently drift and pulsate in a soft, fluid motion. Subtle light ripples cascade upward from the brain area, mimicking a graceful fountain effect that visualizes the scattering of memories, while the pink and grey graphical elements shift with a gentle, floating kinetic energy. Maintain the clean, flat vector aesthetic and the precise duotone color palette throughout the entire animation.",
+      "approved": false
+    },
+    {
+      "index": 6,
+      "kind": "image",
+      "beat": "Method 1 動作",
+      "startSec": 17.045,
+      "endSec": 19.061,
+      "narration": "でも寝る直前なら邪魔されない。",
+      "imagePath": "packages/channels/manabilab/assets/per-plan/002-sleep-memory/scene-06-1777377973640.png",
+      "assetKind": "character",
+      "overlay": {
+        "text": "邪魔されない",
+        "position": "top",
+        "color": "pink",
+        "fontSize": 240
+      },
+      "seedancePrompt": "The muscular humanoid character with the pink brain head rests peacefully on the bed, accompanied by a subtle rhythmic pulse radiating from the brain as if breathing in sleep. Tiny glowing particles drift slowly through the quiet room while the camera executes a gentle, slow push-in toward the calm, sleeping figure. Maintain the original flat 2D vector cartoon style.",
+      "approved": false
+    },
+    {
+      "index": 7,
+      "kind": "image",
+      "beat": "Method 1 法則",
+      "startSec": 19.061,
+      "endSec": 20.693,
+      "narration": "これが干渉理論です。",
+      "imagePath": "packages/channels/manabilab/assets/per-plan/002-sleep-memory/scene-07-1777378016561.png",
+      "assetKind": "broll",
+      "overlay": {
+        "text": "干渉理論",
+        "position": "top",
+        "color": "yellow",
+        "fontSize": 240
+      },
+      "seedancePrompt": "A slow, gentle camera push-in focuses on the man sitting at his desk, accompanied by subtle ambient motion as the pages of the open book flutter almost imperceptibly. Soft, rhythmic light pulses breathe life into the desk lamp area while the background bookshelves remain static to preserve the calm, scholarly atmosphere. Maintain the original clean-lined, minimalist aesthetic with its distinctive pink and grey color palette throughout the animation.",
+      "approved": false
+    },
+    {
+      "index": 8,
+      "kind": "image",
+      "beat": "Method 2 開幕",
+      "startSec": 20.693,
+      "endSec": 23.115,
+      "narration": "2つ目、7時間以上寝る。",
+      "imagePath": "packages/channels/manabilab/assets/character/v1/10-calendar-overview.png",
+      "assetKind": "character",
+      "overlay": {
+        "text": "7時間以上",
+        "position": "top",
+        "color": "pink",
+        "fontSize": 240
+      },
+      "seedancePrompt": "The character holds a wide presenting pose steady. The empty calendar in the background slightly rotates or scales-in slightly to feel like time is being revealed. Brain head pulses softly. Confident, energetic 'ta-da' presentation feel. Maintain the original flat 2D vector cartoon style.",
+      "approved": false
+    },
+    {
+      "index": 9,
+      "kind": "image",
+      "beat": "Method 2 メカニズム",
+      "startSec": 23.115,
+      "endSec": 27.616,
+      "narration": "脳は睡眠中に、覚えた情報を長期記憶に焼き付けています。",
+      "imagePath": "packages/channels/manabilab/assets/character/v1/08-thinking-brain-aura.png",
+      "assetKind": "character",
+      "seedancePrompt": "The character keeps eyes closed calmly with fingertips resting on the side of the brain head. The brain aura pulses in slow rhythmic waves, like slow breathing during sleep. Tiny memory particles flow from the surface deep into the brain core, being absorbed and locked in. Maintain the original flat 2D vector cartoon style.",
+      "approved": false
+    },
+    {
+      "index": 10,
+      "kind": "image",
+      "beat": "Method 2 エビデンス",
+      "startSec": 27.616,
+      "endSec": 33.173,
+      "narration": "Walkerの研究では、徹夜したグループの記憶力が40%も低下しました。",
+      "imagePath": "packages/channels/manabilab/assets/per-plan/002-sleep-memory/scene-10-1777378240231.png",
+      "assetKind": "broll",
+      "overlay": {
+        "text": "40%も低下",
+        "position": "top",
+        "color": "red",
+        "fontSize": 320
+      },
+      "seedancePrompt": "A slow, cinematic camera push-in zooms toward the tired girl at her desk, emphasizing the weary expression on her face. Gentle ambient motion ripples through the air, causing the broken lightbulb icon to flicker with faint, soft pulses of dim light while the downward-sloping graph line subtly shifts. Maintain the original clean-line aesthetic with a consistent pastel pink and grey color palette throughout the animation.",
+      "approved": false
+    },
+    {
+      "index": 11,
+      "kind": "image",
+      "beat": "CLOSING 序",
+      "startSec": 33.173,
+      "endSec": 34.453,
+      "narration": "3日続けてみて。",
+      "imagePath": "packages/channels/manabilab/assets/per-plan/002-sleep-memory/scene-11-1777378366354.png",
+      "assetKind": "broll",
+      "overlay": {
+        "text": "3日",
+        "position": "top",
+        "color": "pink",
+        "fontSize": 320
+      },
+      "seedancePrompt": "A clean, professional hand gesture forming the number three slowly extends toward the viewer with a gentle, smooth camera push-in. Subtle, rhythmic pulses of soft light radiate from the background geometric shapes and calendar icons, creating a calm and orderly atmosphere. Maintain the original flat illustration aesthetic, soft pink and grey color palette, and clean lines throughout the animation.",
+      "approved": false
+    },
+    {
+      "index": 12,
+      "kind": "image",
+      "beat": "CLOSING 結",
+      "startSec": 34.453,
+      "endSec": 38.176,
+      "narration": "どんどん記憶が定着して、脳みそが溢れちゃうから。",
+      "imagePath": "packages/channels/manabilab/assets/character/v1/05-triumph-flex.png",
+      "assetKind": "character",
+      "seedancePrompt": "The character flexes both biceps in the triumph pose. Brain head glows BRIGHTLY with pulsing pink/white aura, getting more and more intense. Memory particles (kanji, formulas, vocabulary) overflow from the brain in all directions like fireworks, spilling out abundantly. Sparkles and confetti everywhere. Final triumphant moment of overflowing knowledge. Maintain the original flat 2D vector cartoon style.",
+      "approved": false
+    }
+  ]
+}

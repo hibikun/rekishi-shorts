@@ -1,0 +1,17 @@
+{
+  "sceneIndex": 11,
+  "planId": "002-sleep-memory",
+  "beat": "CLOSING 序",
+  "narration": "3日続けてみて。",
+  "assetKind": "broll",
+  "visionDescription": "背景にカレンダーや時計、幾何学的な図形が重なる抽象的なグラフィックを背に、指で「3」を表す手元が中央に描かれている。手は手首から先が写り、袖口から伸びる描写。全体的にくすんだピンクやグレーなどの落ち着いた色調で統一されており、フラットなイラストデザインが特徴である。中央の手元を強調した構図により、計画や工程といったビジネスやタスク管理を連想させる、整然としたモダンな雰囲気に仕上がっている。",
+  "seedancePrompt": "A clean, professional hand gesture forming the number three slowly extends toward the viewer with a gentle, smooth camera push-in. Subtle, rhythmic pulses of soft light radiate from the background geometric shapes and calendar icons, creating a calm and orderly atmosphere. Maintain the original flat illustration aesthetic, soft pink and grey color palette, and clean lines throughout the animation.",
+  "seedancePromptDerived": true,
+  "overlay": {
+    "text": "3日",
+    "position": "top",
+    "color": "pink",
+    "fontSize": 320
+  },
+  "refreshedAt": "2026-04-28T12:31:58.648Z"
+}

@@ -9,6 +9,9 @@
   "exports": {
     ".": "./src/index.ts",
     "./manabilab-video-generator": "./src/manabilab-video-generator.ts",
+    "./manabilab-tts": "./src/manabilab-tts.ts",
+    "./manabilab-render": "./src/manabilab-render.ts",
+    "./image-generator": "./src/image-generator.ts",
     "./package.json": "./package.json"
   },
   "scripts": {
