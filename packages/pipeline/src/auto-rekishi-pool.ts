@@ -105,22 +105,50 @@ export async function readPool(): Promise<PoolEntry[]> {
   return entries;
 }
 
-export async function pickNextAvailable(): Promise<PoolEntry | null> {
+export type PickRegion = "japan" | "world" | "any";
+
+export interface PickOptions {
+  /** "japan"(既定) / "world" / "any"。pool の region フィルタ */
+  region?: PickRegion;
+  /** タイトル部分一致でピンポイント指定（前方/部分一致、case-insensitive） */
+  titleMatch?: string;
+}
+
+function regionMatches(entry: PoolEntry, region: PickRegion): boolean {
+  if (region === "any") return entry.region === "japan" || entry.region === "world";
+  return entry.region === region;
+}
+
+function titleMatches(entry: PoolEntry, query?: string): boolean {
+  if (!query) return true;
+  return entry.title.toLowerCase().includes(query.toLowerCase());
+}
+
+export async function pickNextAvailable(opts: PickOptions = {}): Promise<PoolEntry | null> {
+  const region = opts.region ?? "japan";
   const entries = await readPool();
   for (const e of entries) {
-    if (e.region !== "japan") continue;
+    if (!regionMatches(e, region)) continue;
     if (e.status !== "available") continue;
     if (e.needsFactCheck) continue;
     if (!e.title) continue;
+    if (!titleMatches(e, opts.titleMatch)) continue;
     return e;
   }
   return null;
 }
 
-export async function listAvailable(limit = 10): Promise<PoolEntry[]> {
+export async function listAvailable(limit = 10, opts: PickOptions = {}): Promise<PoolEntry[]> {
+  const region = opts.region ?? "japan";
   const entries = await readPool();
   return entries
-    .filter((e) => e.region === "japan" && e.status === "available" && !e.needsFactCheck)
+    .filter(
+      (e) =>
+        regionMatches(e, region) &&
+        e.status === "available" &&
+        !e.needsFactCheck &&
+        titleMatches(e, opts.titleMatch),
+    )
     .slice(0, limit);
 }
 

@@ -19,6 +19,7 @@ import {
   markDone as markPoolDone,
   readPool,
   type PoolEntry,
+  type PickRegion,
 } from "./auto-rekishi-pool.js";
 import { poolEntryToTopic } from "./auto-rekishi-topic.js";
 import {
@@ -58,6 +59,10 @@ export interface RunOptions {
   privacy?: PublishPrivacy;
   fromStep?: AutoStep;
   toStep?: AutoStep;
+  /** draft 相の pool pick 用。"japan"(既定) / "world" / "any" */
+  region?: PickRegion;
+  /** draft 相の pool pick 用。タイトル部分一致でピンポイント指定 */
+  titleMatch?: string;
 }
 
 const POOL_EXHAUSTED_EXIT = 3;
@@ -84,10 +89,20 @@ export async function runAutoDraft(opts: RunOptions): Promise<{ jobId: string; f
 async function draftStepPickTopic(
   opts: RunOptions,
 ): Promise<{ state: AutoState; entry: PoolEntry }> {
-  console.log(chalk.bold("\n[pick-topic] topic-ideas-pool.md から 1 件 pop"));
-  const entry = await pickNextAvailable();
+  const region = opts.region ?? "japan";
+  const titleMatch = opts.titleMatch;
+  const filterDesc = [
+    `region=${region}`,
+    titleMatch ? `title~"${titleMatch}"` : null,
+  ]
+    .filter(Boolean)
+    .join(" / ");
+  console.log(chalk.bold(`\n[pick-topic] topic-ideas-pool.md から 1 件 pop (${filterDesc})`));
+  const entry = await pickNextAvailable({ region, titleMatch });
   if (!entry) {
-    console.error(chalk.red("❌ 日本史セクションに利用可能なトピックがありません（pool 枯渇）"));
+    console.error(
+      chalk.red(`❌ pool に利用可能なトピックがありません (${filterDesc})`),
+    );
     process.exit(POOL_EXHAUSTED_EXIT);
   }
 
