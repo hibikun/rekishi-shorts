@@ -1,0 +1,17 @@
+{
+  "sceneIndex": 7,
+  "planId": "002-sleep-memory",
+  "beat": "Method 1 法則",
+  "narration": "これが干渉理論です。",
+  "assetKind": "broll",
+  "visionDescription": "淡いピンクを基調とした、シンプルで柔らかな雰囲気のイラスト。中央には、椅子に腰掛けてデスクに向かう男性が描かれている。彼は顎に手を当て、穏やかな表情で考え事をしている様子。デスクの上には開いたノートや本、ペンが置かれ、背後には本棚が配置されている。全体的に落ち着いた色使いで、余白を活かしたミニマルな構図である。被写体を中心に据え、人物の日常の一場面を切り取ったような視点で構成されている。",
+  "seedancePrompt": "A slow, gentle camera push-in focuses on the man sitting at his desk, accompanied by subtle ambient motion as the pages of the open book flutter almost imperceptibly. Soft, rhythmic light pulses breathe life into the desk lamp area while the background bookshelves remain static to preserve the calm, scholarly atmosphere. Maintain the original clean-lined, minimalist aesthetic with its distinctive pink and grey color palette throughout the animation.",
+  "seedancePromptDerived": true,
+  "overlay": {
+    "text": "干渉理論",
+    "position": "top",
+    "color": "yellow",
+    "fontSize": 240
+  },
+  "refreshedAt": "2026-04-28T12:31:39.576Z"
+}

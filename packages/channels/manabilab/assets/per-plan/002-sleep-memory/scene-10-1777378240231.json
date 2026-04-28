@@ -1,0 +1,17 @@
+{
+  "sceneIndex": 10,
+  "planId": "002-sleep-memory",
+  "beat": "Method 2 エビデンス",
+  "narration": "Walkerの研究では、徹夜したグループの記憶力が40%も低下しました。",
+  "assetKind": "broll",
+  "visionDescription": "勉強机に向かい、頬杖をつきながら疲れ切った表情で教科書を開く少女が描かれている。目の下には濃いクマがあり、気力が尽きた様子がうかがえる。背後の壁には、右肩下がりのグラフと、消えかかったり割れたりした電球のアイコンが浮かび、アイデアや意欲の低下を象徴している。全体的にパステル調のピンクとグレーで統一されており、学業の行き詰まりやバーンアウトを感じさせる、少し憂鬱で静かな雰囲気のイラストである。",
+  "seedancePrompt": "A slow, cinematic camera push-in zooms toward the tired girl at her desk, emphasizing the weary expression on her face. Gentle ambient motion ripples through the air, causing the broken lightbulb icon to flicker with faint, soft pulses of dim light while the downward-sloping graph line subtly shifts. Maintain the original clean-line aesthetic with a consistent pastel pink and grey color palette throughout the animation.",
+  "seedancePromptDerived": true,
+  "overlay": {
+    "text": "40%も低下",
+    "position": "top",
+    "color": "red",
+    "fontSize": 320
+  },
+  "refreshedAt": "2026-04-28T12:31:51.551Z"
+}

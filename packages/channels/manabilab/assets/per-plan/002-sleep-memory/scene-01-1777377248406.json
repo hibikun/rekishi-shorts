@@ -1,0 +1,12 @@
+{
+  "sceneIndex": 1,
+  "planId": "002-sleep-memory",
+  "beat": "HOOK 1",
+  "narration": "日中頑張って勉強しても記憶できない。",
+  "assetKind": "character",
+  "visionDescription": "筋肉隆々な体に脳の頭部を持つキャラクターが、自然豊かな草原で読書をしている様子が描かれています。キャラクターは穏やかな表情で座り、片手を頭に添えています。傍らにはノート、ペン、バックパックが置かれています。全体的にピンクや淡い緑、茶色を基調とした、優しく落ち着いた雰囲気のイラストです。視点は正面からの引きの構図で、穏やかな午後のひとときを思わせる、平穏で知的な世界観が表現されています。",
+  "seedancePrompt": "A gentle, rhythmic pulsing glow emanates from the pink brain-shaped head of the character as it sits calmly in the grassy meadow. Small, soft floating particles drift slowly through the air around the scene, accompanied by a subtle, slow camera push-in towards the character. Maintain the original flat 2D vector cartoon style.",
+  "seedancePromptDerived": true,
+  "overlay": null,
+  "refreshedAt": "2026-04-28T12:31:03.517Z"
+}

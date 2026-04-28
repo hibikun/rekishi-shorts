@@ -1,0 +1,12 @@
+{
+  "sceneIndex": 5,
+  "planId": "002-sleep-memory",
+  "beat": "Method 1 メカニズム",
+  "narration": "日中に覚えた情報は、新しい情報に邪魔されて消えていきます。",
+  "assetKind": "broll",
+  "visionDescription": "横顔のシルエットをした人物の頭部から、知識や思考を象徴するアイコンが噴水のように溢れ出している様子が描かれている。内部には脳や電球、書籍のアイコンが配置され、上部には歯車や矢印、文書などのモチーフが拡散するようにデザインされている。全体的に淡いグレーとピンクの2色で構成されており、情報の流れや思考の活性化を表現した、現代的でグラフィカルな雰囲気である。被写体は無表情で、横からの視点で捉えられた構図である。",
+  "seedancePrompt": "A slow, rhythmic camera push-in focuses on the profile silhouette as the interior icons—the glowing lightbulbs, gears, and flowing documents—gently drift and pulsate in a soft, fluid motion. Subtle light ripples cascade upward from the brain area, mimicking a graceful fountain effect that visualizes the scattering of memories, while the pink and grey graphical elements shift with a gentle, floating kinetic energy. Maintain the clean, flat vector aesthetic and the precise duotone color palette throughout the entire animation.",
+  "seedancePromptDerived": true,
+  "overlay": null,
+  "refreshedAt": "2026-04-28T12:31:24.247Z"
+}
