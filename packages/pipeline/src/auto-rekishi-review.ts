@@ -22,6 +22,17 @@ export async function summarizeStep(step: AutoStep, state: AutoState): Promise<R
         nextStep: "research",
       };
 
+    case "pick-script":
+      return {
+        artifactsToReview: state.queue ? [state.queue.path] : [],
+        metrics: {
+          jobId: state.jobId,
+          slug: state.queue?.slug ?? "—",
+          title: state.topic.title,
+        },
+        nextStep: "build",
+      };
+
     case "research": {
       const researchPath = state.artifacts.research ?? jobPath(state.jobId, "scripts", "research.md");
       const metrics = await readResearchMetrics(researchPath);

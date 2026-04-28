@@ -1465,15 +1465,16 @@ program
   });
 
 // ============================================================
-// rekishi auto: 完全自動投稿パイプライン
-// pool pop → research → draft → build → render → meta → post
-// /schedule から朝・夕に呼ばれる前提（A 案 = 薄いトリガー、a 案 = 先頭 pop）
+// rekishi auto: 二相分割の自動投稿パイプライン
+//   draft 相:   pool pop → research → draft → queue 出力 (review-needed)
+//   人間レビュー: queue ファイルを編集して status: ready に
+//   publish 相: queue pop (ready) → build → render → meta → post
 // 詳細: docs/phases/auto-rekishi.md
 // ============================================================
 
 const autoCmd = program
   .command("auto")
-  .description("rekishi 完全自動投稿パイプライン (run | resume | pick-topic | status | list-pool | unlock-pool)");
+  .description("rekishi 自動投稿（draft | publish | resume | status | queue | pool）");
 
 function ensureRekishiChannel(channel: string | undefined): void {
   const ch = channel ?? "rekishi";
@@ -1488,22 +1489,52 @@ function parseMode(raw: string | undefined): "unattended" | "review" {
   return raw === "review" ? "review" : "unattended";
 }
 
+function parsePrivacy(raw: string | undefined): "public" | "unlisted" | "private" {
+  if (raw === "private" || raw === "unlisted") return raw;
+  if (raw && raw !== "public") {
+    console.error(chalk.red(`❌ --privacy は public | unlisted | private のいずれか（指定: ${raw}）`));
+    process.exit(2);
+  }
+  return "public";
+}
+
 autoCmd
-  .command("run")
-  .description("pool から 1 件 pop して投稿まで一気通貫実行")
+  .command("draft")
+  .description("pool pop → research → draft → queue 出力（人間レビュー前まで）")
   .option("--channel <id>", "(現状 rekishi 専用)", "rekishi")
   .option("--mode <mode>", "unattended | review", "unattended")
-  .option("--from <step>", "開始ステップ (pick-topic|research|draft|build|render|meta|post)")
+  .option("--from <step>", "開始ステップ (pick-topic|research|draft)")
   .option("--to <step>", "終了ステップ")
-  .option("--dry-run", "post を skip（mp4 まで生成、pool は [~] のまま）", false)
+  .action(async (opts) => {
+    ensureRekishiChannel(opts.channel);
+    const { runAutoDraft } = await import("./auto-rekishi-runner.js");
+    await runAutoDraft({
+      mode: parseMode(opts.mode),
+      dryRun: false,
+      allowImageGeneration: true,
+      fromStep: opts.from,
+      toStep: opts.to,
+    });
+  });
+
+autoCmd
+  .command("publish")
+  .description("queue から status: ready の 1 件を取り出し build→render→meta→post")
+  .option("--channel <id>", "(現状 rekishi 専用)", "rekishi")
+  .option("--mode <mode>", "unattended | review", "unattended")
+  .option("--from <step>", "開始ステップ (pick-script|build|render|meta|post)")
+  .option("--to <step>", "終了ステップ")
+  .option("--dry-run", "post を skip（mp4 まで生成、queue は in-progress のまま）", false)
+  .option("--privacy <status>", "YouTube 公開状態 (public | unlisted | private)", "public")
   .option("--no-allow-image-generation", "Nano Banana 画像生成を無効化（Wikimedia のみ）")
   .action(async (opts) => {
     ensureRekishiChannel(opts.channel);
-    const { runAutoOnce } = await import("./auto-rekishi-runner.js");
-    await runAutoOnce({
+    const { runAutoPublish } = await import("./auto-rekishi-runner.js");
+    await runAutoPublish({
       mode: parseMode(opts.mode),
       dryRun: !!opts.dryRun,
       allowImageGeneration: opts.allowImageGeneration !== false,
+      privacy: parsePrivacy(opts.privacy),
       fromStep: opts.from,
       toStep: opts.to,
     });
@@ -1511,12 +1542,13 @@ autoCmd
 
 autoCmd
   .command("resume <jobId>")
-  .description("失敗 / 保留ジョブの続きから再開")
+  .description("失敗 / 保留ジョブの続きから再開（phase 自動判定）")
   .option("--channel <id>", "(現状 rekishi 専用)", "rekishi")
   .option("--mode <mode>", "unattended | review", "unattended")
   .option("--from <step>", "開始ステップ（state.currentStep より優先）")
   .option("--to <step>", "終了ステップ")
   .option("--dry-run", "post を skip", false)
+  .option("--privacy <status>", "YouTube 公開状態 (public | unlisted | private) / publish 相のみ", "public")
   .option("--no-allow-image-generation", "Nano Banana 画像生成を無効化")
   .action(async (jobId, opts) => {
     ensureRekishiChannel(opts.channel);
@@ -1525,49 +1557,26 @@ autoCmd
       mode: parseMode(opts.mode),
       dryRun: !!opts.dryRun,
       allowImageGeneration: opts.allowImageGeneration !== false,
+      privacy: parsePrivacy(opts.privacy),
       fromStep: opts.from,
       toStep: opts.to,
     });
   });
 
 autoCmd
-  .command("pick-topic")
-  .description("pool から 1 件 pop して jobId を確保するだけ（debug 用）")
-  .option("--channel <id>", "(現状 rekishi 専用)", "rekishi")
-  .option("--dry-run", "pool を書き戻さない", false)
-  .action(async (opts) => {
-    ensureRekishiChannel(opts.channel);
-    const { pickNextAvailable, markInProgress } = await import("./auto-rekishi-pool.js");
-    const { randomUUID } = await import("node:crypto");
-    const entry = await pickNextAvailable();
-    if (!entry) {
-      console.error(chalk.red("❌ 日本史セクションに利用可能なトピックがありません"));
-      process.exit(3);
-    }
-    const jobId = randomUUID().slice(0, 8);
-    console.log(chalk.bold(`✅ pick: ${entry.title}`));
-    console.log(chalk.dim(`   era=${entry.era} / lineNumber=${entry.lineNumber}`));
-    console.log(chalk.dim(`   jobId=${jobId}`));
-    if (opts.dryRun) {
-      console.log(chalk.yellow("--dry-run: pool 書き戻しなし"));
-    } else {
-      await markInProgress(entry, { jobId });
-      console.log(chalk.green("   pool: [~] にマーク済み"));
-    }
-  });
-
-autoCmd
   .command("status")
-  .description("進行中・失敗ジョブと pool 残数を表示")
+  .description("進行中・失敗ジョブと pool / queue 在庫を表示")
   .option("--channel <id>", "(現状 rekishi 専用)", "rekishi")
   .option("--all", "完了済みも含む", false)
   .action(async (opts) => {
     ensureRekishiChannel(opts.channel);
     const { listStates } = await import("./auto-rekishi-state.js");
     const { listAvailable } = await import("./auto-rekishi-pool.js");
+    const { listQueueFiles } = await import("./auto-rekishi-queue.js");
     const states = await listStates({
       includeFailed: true,
       includeDone: !!opts.all,
+      includeAwaitingReview: true,
     });
     console.log(chalk.bold("\n📋 ジョブ一覧"));
     if (states.length === 0) {
@@ -1581,39 +1590,93 @@ autoCmd
               ? chalk.yellow("RUN ")
               : s.status === "awaiting-confirmation"
                 ? chalk.cyan("WAIT")
-                : chalk.green("DONE");
-        console.log(`   ${tag} ${s.jobId} [${s.currentStep.padEnd(11)}] ${s.topic.title}`);
+                : s.status === "awaiting-review"
+                  ? chalk.magenta("REVW")
+                  : chalk.green("DONE");
+        const phase = s.phase === "draft" ? "D" : "P";
+        console.log(`   ${tag} ${phase} ${s.jobId} [${s.currentStep.padEnd(11)}] ${s.topic.title}`);
         if (s.error) {
           console.log(chalk.dim(`        └─ error@${s.error.step}: ${s.error.message}`));
         }
       }
     }
+    const queue = await listQueueFiles();
+    const counts = {
+      reviewNeeded: queue.filter((q) => q.meta.status === "review-needed").length,
+      ready: queue.filter((q) => q.meta.status === "ready").length,
+      inProgress: queue.filter((q) => q.meta.status === "in-progress").length,
+      done: queue.filter((q) => q.meta.status === "done").length,
+      skipped: queue.filter((q) => q.meta.status === "skipped").length,
+    };
+    console.log(chalk.bold(`\n📦 queue 在庫: ready=${counts.ready} review-needed=${counts.reviewNeeded} in-progress=${counts.inProgress} skipped=${counts.skipped} done=${counts.done}`));
     const available = await listAvailable(100);
-    console.log(chalk.bold(`\n📚 pool 在庫（日本史 / 利用可能）: ${available.length} 本`));
+    console.log(chalk.bold(`📚 pool 在庫（日本史 / 利用可能）: ${available.length} 本`));
   });
 
-autoCmd
-  .command("list-pool")
+const queueCmd = autoCmd
+  .command("queue")
+  .description("queue ファイル操作 (list | unlock)");
+
+queueCmd
+  .command("list")
+  .description("queue ファイル一覧")
+  .option("--status <s>", "フィルタ (review-needed|ready|in-progress|done|skipped)")
+  .action(async (opts) => {
+    setChannel("rekishi");
+    const { listQueueFiles } = await import("./auto-rekishi-queue.js");
+    const files = await listQueueFiles();
+    const filtered = opts.status ? files.filter((f) => f.meta.status === opts.status) : files;
+    console.log(chalk.bold(`\n📦 queue ${filtered.length} 件`));
+    for (const f of filtered) {
+      const status = f.meta.status.padEnd(13);
+      const tag =
+        f.meta.status === "ready"
+          ? chalk.green
+          : f.meta.status === "review-needed"
+            ? chalk.magenta
+            : f.meta.status === "in-progress"
+              ? chalk.yellow
+              : f.meta.status === "skipped"
+                ? chalk.dim
+                : chalk.cyan;
+      console.log(`   ${tag(status)} ${f.meta.slug.padEnd(35)} ${f.meta.poolTitle ?? f.meta.videoTitleBottom}`);
+    }
+  });
+
+queueCmd
+  .command("unlock <slug>")
+  .description("queue ファイルの in-progress を ready に戻す（失敗時の救済）")
+  .action(async (slug) => {
+    setChannel("rekishi");
+    const { unlockQueue } = await import("./auto-rekishi-queue.js");
+    const file = await unlockQueue(slug);
+    console.log(chalk.green(`✅ queue: ${slug} を ${file.meta.status} に戻しました`));
+  });
+
+const poolCmd = autoCmd
+  .command("pool")
+  .description("topic-ideas-pool.md 操作 (list | unlock)");
+
+poolCmd
+  .command("list")
   .description("利用可能トピックを上から N 件表示")
-  .option("--channel <id>", "(現状 rekishi 専用)", "rekishi")
   .option("--limit <n>", "件数", "10")
   .action(async (opts) => {
-    ensureRekishiChannel(opts.channel);
+    setChannel("rekishi");
     const { listAvailable } = await import("./auto-rekishi-pool.js");
     const limit = Number.parseInt(opts.limit, 10);
     const entries = await listAvailable(limit);
-    console.log(chalk.bold(`\n📚 利用可能 ${entries.length} 件`));
+    console.log(chalk.bold(`\n📚 pool 利用可能 ${entries.length} 件`));
     for (const e of entries) {
       console.log(`   - [${e.era}] ${e.title}`);
     }
   });
 
-autoCmd
-  .command("unlock-pool <jobId>")
+poolCmd
+  .command("unlock <jobId>")
   .description("失敗ジョブの pool [~] を [ ] に戻す（手動救済）")
-  .option("--channel <id>", "(現状 rekishi 専用)", "rekishi")
-  .action(async (jobId, opts) => {
-    ensureRekishiChannel(opts.channel);
+  .action(async (jobId) => {
+    setChannel("rekishi");
     const { tryReadState } = await import("./auto-rekishi-state.js");
     const { readPool, unlock } = await import("./auto-rekishi-pool.js");
     const state = await tryReadState(jobId);
@@ -1621,9 +1684,13 @@ autoCmd
       console.error(chalk.red(`❌ state.json が見つかりません: ${jobId}`));
       process.exit(1);
     }
+    if (!state.pool) {
+      console.error(chalk.red(`❌ state.pool が null です（手書き queue 由来のジョブ）`));
+      process.exit(1);
+    }
     const entries = await readPool();
     const entry = entries.find(
-      (e) => e.lineNumber === state.pool.lineNumber || e.title === state.topic.title,
+      (e) => e.lineNumber === state.pool!.lineNumber || e.title === state.topic.title,
     );
     if (!entry) {
       console.error(chalk.red(`❌ pool に該当エントリが見つかりません`));
