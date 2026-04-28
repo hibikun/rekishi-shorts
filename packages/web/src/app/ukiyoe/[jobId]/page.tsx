@@ -24,6 +24,10 @@ export default async function UkiyoePlanPage({ params }: PageProps) {
       jobId={jobId}
       topic={plan.topic}
       hook={plan.hook}
+      narration={plan.narration}
+      era={plan.era ?? null}
+      keyTerms={plan.keyTerms}
+      readings={plan.readings}
       totalDurationSec={plan.totalDurationSec}
       sceneCount={plan.scenes.length}
       scenes={scenes}

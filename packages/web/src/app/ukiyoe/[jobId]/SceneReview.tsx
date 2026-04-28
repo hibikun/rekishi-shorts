@@ -7,6 +7,10 @@ interface Props {
   jobId: string;
   topic: string;
   hook: string;
+  narration: string;
+  era: string | null;
+  keyTerms: string[];
+  readings: Record<string, string>;
   totalDurationSec: number;
   sceneCount: number;
   scenes: UkiyoeSceneWithUrls[];
@@ -52,10 +56,22 @@ const ACTION_TAG_LABEL: Record<string, string> = {
   still_subtle: "🌬️ 微動",
 };
 
+interface RegenerateApiResult {
+  ok: boolean;
+  jobId?: string;
+  elapsedSec?: number;
+  stdoutTail?: string;
+  error?: string;
+}
+
 export function SceneReview({
   jobId,
   topic,
   hook,
+  narration: initialNarration,
+  era,
+  keyTerms,
+  readings,
   totalDurationSec,
   sceneCount,
   scenes: initialScenes,
@@ -74,6 +90,34 @@ export function SceneReview({
   const [generating, setGenerating] = useState(false);
   const [genResult, setGenResult] = useState<GenerateApiResult | null>(null);
   const [videoCacheBust, setVideoCacheBust] = useState<number>(0);
+
+  // 台本編集 state
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [editNarration, setEditNarration] = useState(initialNarration);
+  const [editTopic, setEditTopic] = useState(topic);
+  const [editHook, setEditHook] = useState(hook);
+  const [editEra, setEditEra] = useState(era ?? "");
+  const [editSceneCount, setEditSceneCount] = useState<number>(sceneCount);
+  const [editKeyTerms, setEditKeyTerms] = useState(keyTerms.join("\n"));
+  const [editReadings, setEditReadings] = useState(
+    Object.entries(readings)
+      .map(([k, v]) => `${k}=${v}`)
+      .join("\n"),
+  );
+  const [regenerating, setRegenerating] = useState(false);
+  const [regenResult, setRegenResult] = useState<RegenerateApiResult | null>(null);
+
+  const narrationDirty =
+    editNarration !== initialNarration ||
+    editTopic !== topic ||
+    editHook !== hook ||
+    (editEra || null) !== era ||
+    editSceneCount !== sceneCount ||
+    editKeyTerms !== keyTerms.join("\n") ||
+    editReadings !==
+      Object.entries(readings)
+        .map(([k, v]) => `${k}=${v}`)
+        .join("\n");
 
   const totalScenes = initialScenes.length;
   const approvedCount = useMemo(
@@ -103,6 +147,56 @@ export function SceneReview({
       }
       return next;
     });
+  };
+
+  const handleSaveAndRegenerate = async () => {
+    if (
+      !window.confirm(
+        `台本を保存して scene-plan / 画像 / TTS を一から再生成します。既存の動画 (.mp4) も無効になり再生成が必要になります。続行しますか？`,
+      )
+    ) {
+      return;
+    }
+    const keyTermsArr = editKeyTerms
+      .split("\n")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const readingsObj: Record<string, string> = {};
+    for (const line of editReadings.split("\n")) {
+      const [k, v] = line.split("=").map((s) => s.trim());
+      if (k && v) readingsObj[k] = v;
+    }
+
+    setRegenerating(true);
+    setRegenResult(null);
+    try {
+      const res = await fetch(`/api/ukiyoe/${jobId}/regenerate-from-script`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          narration: editNarration,
+          hook: editHook,
+          topic: editTopic,
+          era: editEra || undefined,
+          keyTerms: keyTermsArr,
+          readings: readingsObj,
+          targetSceneCount: editSceneCount,
+        }),
+      });
+      const data = (await res.json()) as RegenerateApiResult;
+      setRegenResult(data);
+      if (data.ok) {
+        // 新しい scene-plan / 画像で表示し直し
+        window.location.reload();
+      }
+    } catch (err) {
+      setRegenResult({
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setRegenerating(false);
+    }
   };
 
   const handleGenerate = async (mode: "dry-run" | "exec") => {
@@ -161,6 +255,125 @@ export function SceneReview({
           Hook: {hook}
         </div>
       </div>
+
+      <details
+        open={editorOpen}
+        onToggle={(e) => setEditorOpen((e.target as HTMLDetailsElement).open)}
+        style={{
+          marginBottom: 24,
+          background: "var(--card)",
+          border: "1px solid var(--border)",
+          borderRadius: 8,
+          padding: "12px 16px",
+        }}
+      >
+        <summary style={{ cursor: "pointer", fontWeight: 700, fontSize: 14 }}>
+          📝 台本を編集して再生成
+          {narrationDirty && (
+            <span style={{ marginLeft: 8, color: "#dc2626", fontSize: 12 }}>
+              (未保存の変更あり)
+            </span>
+          )}
+        </summary>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "120px 1fr",
+            gap: 8,
+            marginTop: 12,
+            fontSize: 13,
+          }}
+        >
+          <label style={editLabel}>topic</label>
+          <input
+            value={editTopic}
+            onChange={(e) => setEditTopic(e.target.value)}
+            style={editInput}
+          />
+          <label style={editLabel}>era</label>
+          <input
+            value={editEra}
+            onChange={(e) => setEditEra(e.target.value)}
+            style={editInput}
+            placeholder="幕末 / 江戸 / 戦国 など"
+          />
+          <label style={editLabel}>hook</label>
+          <input
+            value={editHook}
+            onChange={(e) => setEditHook(e.target.value)}
+            style={editInput}
+          />
+          <label style={editLabel}>narration</label>
+          <textarea
+            value={editNarration}
+            onChange={(e) => setEditNarration(e.target.value)}
+            style={{ ...editInput, minHeight: 160, fontFamily: "inherit", resize: "vertical" }}
+          />
+          <label style={editLabel}>scene 数</label>
+          <input
+            type="number"
+            min={2}
+            max={12}
+            value={editSceneCount}
+            onChange={(e) => setEditSceneCount(Number(e.target.value))}
+            style={{ ...editInput, width: 80 }}
+          />
+          <label style={editLabel}>keyTerms<br/><span style={editLabelSub}>1行1語</span></label>
+          <textarea
+            value={editKeyTerms}
+            onChange={(e) => setEditKeyTerms(e.target.value)}
+            style={{ ...editInput, minHeight: 80, fontFamily: "inherit", resize: "vertical" }}
+          />
+          <label style={editLabel}>readings<br/><span style={editLabelSub}>用語=読み (1行)</span></label>
+          <textarea
+            value={editReadings}
+            onChange={(e) => setEditReadings(e.target.value)}
+            style={{ ...editInput, minHeight: 80, fontFamily: "inherit", resize: "vertical" }}
+            placeholder={"大政奉還=たいせいほうかん\n徳川慶喜=とくがわよしのぶ"}
+          />
+        </div>
+        <div style={{ marginTop: 16, display: "flex", justifyContent: "flex-end", gap: 12 }}>
+          <button
+            onClick={handleSaveAndRegenerate}
+            disabled={!narrationDirty || regenerating}
+            style={{
+              background: narrationDirty && !regenerating ? "#dc2626" : "var(--border)",
+              color: "#fff",
+              border: 0,
+              padding: "10px 20px",
+              borderRadius: 6,
+              cursor: narrationDirty && !regenerating ? "pointer" : "not-allowed",
+              fontSize: 13,
+              fontWeight: 700,
+            }}
+          >
+            {regenerating ? "再生成中... (数分かかります)" : "💾 保存して scene-plan / 画像 / TTS を再生成"}
+          </button>
+        </div>
+        {regenResult && !regenResult.ok && (
+          <div
+            style={{
+              marginTop: 12,
+              background: "#fef2f2",
+              border: "1px solid #fecaca",
+              padding: 10,
+              borderRadius: 6,
+              fontSize: 12,
+              color: "#991b1b",
+            }}
+          >
+            ✗ {regenResult.error}
+            {regenResult.stdoutTail && (
+              <details style={{ marginTop: 6 }}>
+                <summary style={{ cursor: "pointer" }}>stdout tail</summary>
+                <pre style={{ whiteSpace: "pre-wrap", fontSize: 11, maxHeight: 240, overflow: "auto" }}>
+                  {regenResult.stdoutTail}
+                </pre>
+              </details>
+            )}
+          </div>
+        )}
+      </details>
 
       <div
         style={{
@@ -492,4 +705,25 @@ const th: React.CSSProperties = {
 const td: React.CSSProperties = {
   padding: "16px",
   verticalAlign: "top",
+};
+
+const editLabel: React.CSSProperties = {
+  fontSize: 12,
+  color: "var(--muted)",
+  fontWeight: 600,
+  paddingTop: 6,
+};
+
+const editLabelSub: React.CSSProperties = {
+  fontWeight: 400,
+  fontSize: 10,
+};
+
+const editInput: React.CSSProperties = {
+  padding: 8,
+  fontSize: 13,
+  border: "1px solid var(--border)",
+  borderRadius: 4,
+  width: "100%",
+  fontFamily: "inherit",
 };
