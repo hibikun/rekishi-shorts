@@ -3,11 +3,17 @@ import fs from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
 
-const SEEDANCE_MODEL = "fal-ai/bytedance/seedance/v1.5/pro/image-to-video";
+// Seedance V1 Lite (Bytedance) — Pro より低コスト、ukiyoe タッチ保持○
+// 切替前は v1.5/pro（$1.2/M tokens）。Lite は $0.18/M tokens で約 1/7 の課金。
+export const SEEDANCE_MODEL = "fal-ai/bytedance/seedance/v1/lite/image-to-video";
 
 const STYLE_SUFFIX =
   "Maintain the original Japanese ukiyo-e woodblock print style throughout. " +
   "Avoid photorealism.";
+
+// Lite は camera_fixed パラメータを受け付けないので、prompt 側で意図を伝える。
+const CAMERA_FIXED_HINT = "Camera locked, no panning or zoom.";
+const CAMERA_DYNAMIC_HINT = "Camera follows the motion subtly.";
 
 export type UkiyoeActionTag =
   | "running_forward"
@@ -75,17 +81,23 @@ export interface UkiyoeSceneVideoInput {
   /** 明示指定。未指定時は actionTag のデフォルトを使う */
   cameraFixed?: boolean;
   /** Seedance の duration（秒）。既定 5。 */
-  duration?: 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
+  duration?: 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
 }
 
 export interface UkiyoeVideoResult {
   index: number;
-  videoPath: string;
-  /** USD 試算（生成時のみ。skip 時は 0） */
-  costUsd: number;
+  /** 生成 mp4 のローカル絶対パス（dry-run / error 時は undefined） */
+  videoPath?: string;
+  /** Seedance に送る最終 prompt（dry-run / 実行 ともに入る） */
+  prompt: string;
+  duration: number;
+  resolution: "480p" | "720p";
+  /** USD 試算（dry-run でも事前見積もり、skip では 0） */
+  estimatedCostUsd: number;
   elapsedSec: number;
   retried: boolean;
-  skipped: boolean;
+  status: "skipped" | "dry-run" | "done" | "error";
+  error?: string;
 }
 
 export interface GenerateUkiyoeVideosOptions {
@@ -95,8 +107,8 @@ export interface GenerateUkiyoeVideosOptions {
   skipExisting?: boolean;
   resolution?: "480p" | "720p";
   aspectRatio?: "9:16" | "16:9";
-  /** Seedance の音声生成。チャンネルでは別途 TTS を使うので既定 false */
-  generateAudio?: boolean;
+  /** dry-run なら fal.ai を呼ばずに prompt / params を返すだけ。既定 false */
+  dryRun?: boolean;
   /** 進捗ログ。指定なければ stdout */
   onProgress?: (msg: string) => void;
 }
@@ -104,7 +116,10 @@ export interface GenerateUkiyoeVideosOptions {
 export function buildUkiyoeVideoPrompt(input: UkiyoeSceneVideoInput): string {
   const tag = input.actionTag ?? "still_subtle";
   const tagPrompt = ACTION_TAG_PROMPTS[tag].prompt;
-  return [input.scenePrompt, tagPrompt, STYLE_SUFFIX]
+  const cameraHint = resolveCameraFixed(input)
+    ? CAMERA_FIXED_HINT
+    : CAMERA_DYNAMIC_HINT;
+  return [input.scenePrompt, tagPrompt, cameraHint, STYLE_SUFFIX]
     .map((s) => s.trim())
     .filter((s) => s.length > 0)
     .join(" ");
@@ -132,8 +147,6 @@ interface SeedanceCallArgs {
   resolution: "480p" | "720p";
   aspectRatio: "9:16" | "16:9";
   duration: number;
-  generateAudio: boolean;
-  cameraFixed: boolean;
   log: (msg: string) => void;
 }
 
@@ -148,15 +161,24 @@ async function callSeedance(args: SeedanceCallArgs): Promise<{ videoUrl: string 
   const file = new File([buffer], path.basename(args.imagePath), { type: mime });
   const imageUrl = await fal.storage.upload(file);
 
+  // Lite の duration union は "5" | ... | "12"。pickDuration で整数保証済み。
+  const durationStr = String(args.duration) as
+    | "5"
+    | "6"
+    | "7"
+    | "8"
+    | "9"
+    | "10"
+    | "11"
+    | "12";
+
   const result = (await fal.subscribe(SEEDANCE_MODEL, {
     input: {
       image_url: imageUrl,
       prompt: args.prompt,
       aspect_ratio: args.aspectRatio,
       resolution: args.resolution,
-      duration: String(args.duration) as "5",
-      generate_audio: args.generateAudio,
-      camera_fixed: args.cameraFixed,
+      duration: durationStr,
     },
     logs: true,
     onQueueUpdate: (update) => {
@@ -183,20 +205,19 @@ async function downloadVideo(url: string, outPath: string): Promise<number> {
 }
 
 /**
- * Seedance 1.5 Pro のコスト試算（USD）。
+ * Seedance V1 Lite のコスト試算（USD）。
  * tokens = (h * w * fps * duration) / 1024
- * rate   = $1.2/M (no audio) or $2.4/M (with audio)
+ * rate   = $0.18/M (Lite, audio なし)
  */
 function estimateUsdCost(args: {
   resolution: "480p" | "720p";
   duration: number;
-  generateAudio: boolean;
 }): number {
   const dims = args.resolution === "480p" ? { h: 480, w: 854 } : { h: 720, w: 1280 };
   const fps = 24;
   const tokens = (dims.h * dims.w * fps * args.duration) / 1024;
-  const rate = args.generateAudio ? 2.4 : 1.2;
-  return (tokens / 1_000_000) * rate;
+  const ratePerMillion = 0.18;
+  return (tokens / 1_000_000) * ratePerMillion;
 }
 
 /**
@@ -207,29 +228,47 @@ export async function generateOneUkiyoeVideo(
   outputPath: string,
   options: GenerateUkiyoeVideosOptions = {},
 ): Promise<UkiyoeVideoResult> {
-  ensureFalConfigured();
-
   const log = options.onProgress ?? ((m: string) => console.log(`[ukiyoe-video] ${m}`));
   const skipExisting = options.skipExisting ?? true;
   const resolution = options.resolution ?? "720p";
   const aspectRatio = options.aspectRatio ?? "9:16";
-  const generateAudio = options.generateAudio ?? false;
+  const dryRun = options.dryRun ?? false;
   const duration = input.duration ?? 5;
+  const prompt = buildUkiyoeVideoPrompt(input);
+  const estimatedCostUsd = estimateUsdCost({ resolution, duration });
 
   if (skipExisting && existsSync(outputPath)) {
     log(`scene[${input.index}] skip (exists): ${outputPath}`);
     return {
       index: input.index,
       videoPath: outputPath,
-      costUsd: 0,
+      prompt,
+      duration,
+      resolution,
+      estimatedCostUsd: 0,
       elapsedSec: 0,
       retried: false,
-      skipped: true,
+      status: "skipped",
     };
   }
 
-  const prompt = buildUkiyoeVideoPrompt(input);
-  const cameraFixed = resolveCameraFixed(input);
+  if (dryRun) {
+    log(
+      `scene[${input.index}] DRY RUN (would call Seedance Lite, ~$${estimatedCostUsd.toFixed(3)})`,
+    );
+    return {
+      index: input.index,
+      prompt,
+      duration,
+      resolution,
+      estimatedCostUsd,
+      elapsedSec: 0,
+      retried: false,
+      status: "dry-run",
+    };
+  }
+
+  ensureFalConfigured();
   const startedAt = Date.now();
 
   let retried = false;
@@ -245,23 +284,23 @@ export async function generateOneUkiyoeVideo(
         resolution,
         aspectRatio,
         duration,
-        generateAudio,
-        cameraFixed,
         log: (m) => log(`scene[${input.index}] ${m}`),
       });
       const bytes = await downloadVideo(videoUrl, outputPath);
       const elapsedSec = (Date.now() - startedAt) / 1000;
-      const costUsd = estimateUsdCost({ resolution, duration, generateAudio });
       log(
-        `scene[${input.index}] done in ${elapsedSec.toFixed(1)}s (${(bytes / 1024).toFixed(0)}KB, $${costUsd.toFixed(3)})`,
+        `scene[${input.index}] done in ${elapsedSec.toFixed(1)}s (${(bytes / 1024).toFixed(0)}KB, $${estimatedCostUsd.toFixed(3)})`,
       );
       return {
         index: input.index,
         videoPath: outputPath,
-        costUsd,
+        prompt,
+        duration,
+        resolution,
+        estimatedCostUsd,
         elapsedSec,
         retried,
-        skipped: false,
+        status: "done",
       };
     } catch (err) {
       lastErr = err;
@@ -271,31 +310,36 @@ export async function generateOneUkiyoeVideo(
       retried = true;
     }
   }
-  throw new Error(
-    `scene[${input.index}] failed after retry: ${
-      lastErr instanceof Error ? lastErr.message : String(lastErr)
-    }`,
-  );
+  const elapsedSec = (Date.now() - startedAt) / 1000;
+  const errMsg = lastErr instanceof Error ? lastErr.message : String(lastErr);
+  return {
+    index: input.index,
+    prompt,
+    duration,
+    resolution,
+    estimatedCostUsd: 0,
+    elapsedSec,
+    retried,
+    status: "error",
+    error: errMsg,
+  };
 }
 
 /**
- * 複数シーンを並列で生成。失敗したシーンは個別に throw されるので
- * 呼び出し側で個別リトライ（CLI 側で `--scene N` のみ再走させる等）を想定。
+ * 複数シーンを並列で生成。
  */
 export async function generateUkiyoeVideos(
   scenes: UkiyoeSceneVideoInput[],
   videosDir: string,
   options: GenerateUkiyoeVideosOptions = {},
 ): Promise<UkiyoeVideoResult[]> {
-  ensureFalConfigured();
-
   const concurrency = Math.max(1, options.concurrency ?? 3);
   const log = options.onProgress ?? ((m: string) => console.log(`[ukiyoe-video] ${m}`));
 
   await fs.mkdir(videosDir, { recursive: true });
 
   log(
-    `start: ${scenes.length} scenes, concurrency=${concurrency}, dir=${videosDir}`,
+    `start: ${scenes.length} scenes, concurrency=${concurrency}, dir=${videosDir}${options.dryRun ? " [DRY RUN]" : ""}`,
   );
 
   const results: UkiyoeVideoResult[] = new Array(scenes.length);
@@ -320,11 +364,23 @@ export async function generateUkiyoeVideos(
     Array.from({ length: Math.min(concurrency, scenes.length) }, () => worker()),
   );
 
-  const totalCost = results.reduce((s, r) => s + r.costUsd, 0);
-  const generated = results.filter((r) => !r.skipped).length;
+  const totalCost = results.reduce((s, r) => s + r.estimatedCostUsd, 0);
+  const generated = results.filter((r) => r.status === "done").length;
+  const dryRunCount = results.filter((r) => r.status === "dry-run").length;
+  const skipped = results.filter((r) => r.status === "skipped").length;
+  const errors = results.filter((r) => r.status === "error");
   log(
-    `complete: ${generated}/${results.length} generated, ${results.length - generated} skipped, total $${totalCost.toFixed(3)}`,
+    `complete: ${generated} generated, ${dryRunCount} dry-run, ${skipped} skipped, ${errors.length} error, total $${totalCost.toFixed(3)}`,
   );
+
+  // 本実行で 1 シーンでも失敗していたら CLI 側で render に進ませない。
+  // dry-run / skipped は許容。
+  if (!options.dryRun && errors.length > 0) {
+    const summary = errors
+      .map((r) => `scene[${r.index}]: ${r.error ?? "unknown"}`)
+      .join("; ");
+    throw new Error(`ukiyoe video generation failed: ${summary}`);
+  }
 
   return results;
 }

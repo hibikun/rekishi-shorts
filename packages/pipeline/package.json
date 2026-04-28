@@ -12,6 +12,7 @@
     "./manabilab-tts": "./src/manabilab-tts.ts",
     "./manabilab-render": "./src/manabilab-render.ts",
     "./image-generator": "./src/image-generator.ts",
+    "./ukiyoe-video-generator": "./src/ukiyoe-video-generator.ts",
     "./package.json": "./package.json"
   },
   "scripts": {
