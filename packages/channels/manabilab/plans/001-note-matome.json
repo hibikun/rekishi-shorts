@@ -1,0 +1,149 @@
+{
+  "id": "001-note-matome",
+  "title": "ノートまとめは時間の無駄",
+  "totalDurationSec": 35.06,
+  "audio": {
+    "path": "packages/renderer/public/manabilab/audio/narration-001.wav",
+    "voiceProvider": "voicevox",
+    "voiceId": 13,
+    "voiceName": "青山龍星(ノーマル)",
+    "speedScale": 1.0,
+    "intonationScale": 1.2
+  },
+  "scenes": [
+    {
+      "index": 1,
+      "kind": "image",
+      "beat": "HOOK",
+      "startSec": 0.0,
+      "endSec": 5.13,
+      "narration": "ノートをまとめることに時間を割くのが記憶が定着しない原因です。",
+      "imagePath": "packages/channels/manabilab/assets/character/v1/03-wrong-way-highlighting.png",
+      "overlay": {
+        "text": "STOP",
+        "position": "top",
+        "color": "red",
+        "fontSize": 320
+      },
+      "seedancePrompt": "The character continues frantically highlighting the entire textbook page yellow with the marker, getting more frustrated and exhausted, sweat drops bouncing slightly. Subtle camera shake to match the frantic energy. Maintain the original flat 2D vector cartoon style.",
+      "approved": false
+    },
+    {
+      "index": 2,
+      "kind": "image",
+      "beat": "REFRAME (法則アンカー)",
+      "startSec": 5.13,
+      "endSec": 8.10,
+      "narration": "認知科学の法則に従って勉強するだけ。",
+      "imagePath": "packages/channels/manabilab/assets/character/v1/08-thinking-brain-aura.png",
+      "seedancePrompt": "The character closes their eyes calmly while resting fingertips on the side of the brain. The brain aura pulses softly (gentle slow pulsation, very subtle expansion/contraction). The small floating synapse dots gently bob in place. A confident knowing nod. Maintain the original flat 2D vector cartoon style.",
+      "approved": false
+    },
+    {
+      "index": 3,
+      "kind": "image",
+      "beat": "Method 1 開幕",
+      "startSec": 8.10,
+      "endSec": 9.59,
+      "narration": "1つ目、想起練習。",
+      "imagePath": "packages/channels/manabilab/assets/character/v1/09-recalling-with-effort.png",
+      "seedancePrompt": "The character strains to remember — head tilts back slightly, the hand on the forehead presses harder. Then the brain flashes brightly on the right side as the memory pops out. The presenting hand opens upward as if 'aha, here it is!'. Maintain the original flat 2D vector cartoon style.",
+      "approved": false
+    },
+    {
+      "index": 4,
+      "kind": "image",
+      "beat": "Method 1 動作",
+      "startSec": 9.59,
+      "endSec": 11.91,
+      "narration": "ノートを閉じて思い出すだけ。",
+      "imagePath": "packages/channels/manabilab/assets/character/v1/04-recall-practice-glow.png",
+      "seedancePrompt": "The character meditates calmly in lotus position, the closed book gently resting in lap. The pink brain head pulses softly with a gentle glow aura, like slow breathing. The whole figure subtly floats up and down a few pixels, very meditative. Maintain the original flat 2D vector cartoon style.",
+      "approved": false
+    },
+    {
+      "index": 5,
+      "kind": "image",
+      "beat": "Method 1 エビデンス",
+      "startSec": 11.91,
+      "endSec": 19.84,
+      "narration": "Karpickeの研究で、思い出したグループは、読み返したグループより記憶定着が2倍以上でした。",
+      "imagePath": "packages/channels/manabilab/assets/character/v1/06-pointing-two-fingers.png",
+      "overlay": {
+        "text": "2倍以上",
+        "position": "top",
+        "color": "red",
+        "fontSize": 280
+      },
+      "seedancePrompt": "The character holds the peace sign confidently. The hand with the V/peace sign moves slightly forward as if emphasizing the number. Brain glows mildly. The character has a confident, slight bouncy energy. Maintain the original flat 2D vector cartoon style.",
+      "approved": false
+    },
+    {
+      "index": 6,
+      "kind": "image",
+      "beat": "Method 2 開幕",
+      "startSec": 19.84,
+      "endSec": 21.33,
+      "narration": "2つ目、分散学習。",
+      "imagePath": "packages/channels/manabilab/assets/character/v1/10-calendar-overview.png",
+      "seedancePrompt": "The character holds the wide presenting pose steady, brain glow pulsing softly. The empty calendar in the background slightly rotates or scales-in slightly to feel like it's being revealed. Confident, energetic 'ta-da' presentation feel. Maintain the original flat 2D vector cartoon style.",
+      "approved": false
+    },
+    {
+      "index": 7,
+      "kind": "image",
+      "beat": "Method 2 動作",
+      "startSec": 21.33,
+      "endSec": 24.64,
+      "narration": "1日3時間より、3日に分けて1時間ずつ。",
+      "imagePath": "packages/channels/manabilab/assets/character/v1/07-spread-study-calendar.png",
+      "seedancePrompt": "The character marks check marks on the wall calendar with the pink marker, moving the hand from one day square to another (Monday, Wednesday, Friday) in a deliberate scheduling motion. Pink marker stays in hand the whole time. Maintain the original flat 2D vector cartoon style.",
+      "approved": false
+    },
+    {
+      "index": 8,
+      "kind": "image",
+      "beat": "Method 2 エビデンス",
+      "startSec": 24.64,
+      "endSec": 29.27,
+      "narration": "これは100年以上前から証明されている分散学習効果です。",
+      "imagePath": "packages/channels/manabilab/assets/brolls/v1/broll-02-ebbinghaus-vintage.png",
+      "overlay": {
+        "text": "100年以上",
+        "position": "bottom",
+        "color": "yellow",
+        "fontSize": 200
+      },
+      "seedancePrompt": "Slow camera push-in on the vintage 19th-century scholar portrait. The sepia paper with the forgetting curve gently shifts as if a slow-burning archive document being studied. Maintain the engraving / sepia vintage aesthetic — do NOT make it cartoon.",
+      "approved": false
+    },
+    {
+      "index": 9,
+      "kind": "image",
+      "beat": "CLOSING 序",
+      "startSec": 29.27,
+      "endSec": 31.42,
+      "narration": "2週間続けてみてください。",
+      "imagePath": "packages/channels/manabilab/assets/character/v1/01-hero-front-standing.png",
+      "overlay": {
+        "text": "2週間",
+        "position": "top",
+        "color": "pink",
+        "fontSize": 320
+      },
+      "seedancePrompt": "The character stands confidently looking forward. Brain head glows a soft pink. Slow gentle camera push-in. The whole figure has a determined, encouraging energy. Maintain the original flat 2D vector cartoon style.",
+      "approved": false
+    },
+    {
+      "index": 10,
+      "kind": "image",
+      "beat": "CLOSING 結",
+      "startSec": 31.42,
+      "endSec": 35.06,
+      "narration": "次のテストで、驚くほどスラスラ思い出せます。",
+      "imagePath": "packages/channels/manabilab/assets/character/v1/05-triumph-flex.png",
+      "seedancePrompt": "The character flexes both biceps in the triumph pose. Brain head glows BRIGHTLY with pulsing pink/white aura, getting more intense. Subtle confetti or sparkles around. Final triumphant moment. Maintain the original flat 2D vector cartoon style.",
+      "approved": false
+    }
+  ]
+}

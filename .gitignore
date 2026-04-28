@@ -54,3 +54,5 @@ packages/channels/*/assets/bgm/
 packages/channels/*/assets/sfx/
 # 同じくライセンス管理する背景画像も各自ローカルに配置（コミット禁止）
 packages/channels/*/assets/backgrounds/
+# TTS 生成済みナレーション (再生成可能、サイズも MB オーダーなのでローカル保管)
+packages/channels/*/assets/audio/
