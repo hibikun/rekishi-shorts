@@ -219,14 +219,31 @@ function parseQueueFile(filePath: string, raw: string): QueueFile {
   return {
     filePath,
     meta,
-    narration: (sections.get("narration") ?? "").trim(),
-    hook: (sections.get("hook") ?? "").trim(),
-    body: (sections.get("body") ?? "").trim(),
-    closing: (sections.get("closing") ?? "").trim(),
+    narration: stripLeadingComments(sections.get("narration") ?? ""),
+    hook: stripLeadingComments(sections.get("hook") ?? ""),
+    body: stripLeadingComments(sections.get("body") ?? ""),
+    closing: stripLeadingComments(sections.get("closing") ?? ""),
     keyTerms: parseBulletList(sections.get("keyTerms") ?? ""),
     readings: parseReadingsMap(sections.get("readings") ?? ""),
-    research: (sections.get("research") ?? "").trim(),
+    research: stripLeadingComments(sections.get("research") ?? ""),
   };
+}
+
+/** セクション本文の先頭に並んだ `<!-- ... -->` 行や空行を剥がす。
+ * round-trip で hint コメントが累積するのを防ぐ。
+ */
+function stripLeadingComments(body: string): string {
+  const lines = body.split(/\r?\n/);
+  let i = 0;
+  while (i < lines.length) {
+    const trimmed = (lines[i] ?? "").trim();
+    if (trimmed === "" || /^<!--.*-->$/.test(trimmed)) {
+      i++;
+      continue;
+    }
+    break;
+  }
+  return lines.slice(i).join("\n").trim();
 }
 
 function parseFrontmatter(fmLines: string[], filePath: string): QueueFrontmatter {
