@@ -1498,6 +1498,15 @@ function parsePrivacy(raw: string | undefined): "public" | "unlisted" | "private
   return "public";
 }
 
+function parseRegion(raw: string | undefined): "japan" | "world" | "any" {
+  if (raw === "world" || raw === "any") return raw;
+  if (raw && raw !== "japan") {
+    console.error(chalk.red(`❌ --region は japan | world | any のいずれか（指定: ${raw}）`));
+    process.exit(2);
+  }
+  return "japan";
+}
+
 autoCmd
   .command("draft")
   .description("pool pop → research → draft → queue 出力（人間レビュー前まで）")
@@ -1505,15 +1514,20 @@ autoCmd
   .option("--mode <mode>", "unattended | review", "unattended")
   .option("--from <step>", "開始ステップ (pick-topic|research|draft)")
   .option("--to <step>", "終了ステップ")
+  .option("--region <region>", "pool pick の対象リージョン (japan | world | any)", "japan")
+  .option("--title <substring>", "pool pick のタイトル部分一致でピンポイント指定")
   .action(async (opts) => {
     ensureRekishiChannel(opts.channel);
     const { runAutoDraft } = await import("./auto-rekishi-runner.js");
+    const region = parseRegion(opts.region);
     await runAutoDraft({
       mode: parseMode(opts.mode),
       dryRun: false,
       allowImageGeneration: true,
       fromStep: opts.from,
       toStep: opts.to,
+      region,
+      titleMatch: opts.title,
     });
   });
 
@@ -1698,6 +1712,37 @@ poolCmd
     }
     await unlock(entry);
     console.log(chalk.green(`✅ pool: ${entry.title} を [ ] に戻しました`));
+  });
+
+// ── script-corpus: バズショート動画の脚本分析コーパス ─────────────────────────
+const corpus = program.command("corpus").description("ショート動画の脚本コーパスを構築・分析する");
+
+corpus
+  .command("add")
+  .description("YouTube URL から音声を抽出 → Whisper で文字起こし → meta.json/script.md/analysis.md を生成")
+  .argument("<url>", "YouTube 動画 URL（ショート可）")
+  .option("--lang <code>", "Whisper の言語ヒント（en | ja など。省略時は yt-dlp の検出値）")
+  .action(async (url: string, opts: { lang?: string }) => {
+    const { corpusAdd } = await import("./script-corpus.js");
+    await corpusAdd(url, { language: opts.lang });
+  });
+
+corpus
+  .command("analyze")
+  .description("Gemini で analysis.md を下書き（status: draft）")
+  .argument("<slug>", "対象動画の slug（例: bro-pump__J7JI_3xdGKY）")
+  .action(async (slug: string) => {
+    const { corpusAnalyze } = await import("./script-corpus-analyzer.js");
+    await corpusAnalyze(slug);
+  });
+
+corpus
+  .command("distill")
+  .description("status: reviewed の analysis を全て読んで patterns.md を再生成")
+  .option("--include-drafts", "draft 状態の analysis も含めて蒸留する")
+  .action(async (opts: { includeDrafts?: boolean }) => {
+    const { corpusDistill } = await import("./script-corpus-analyzer.js");
+    await corpusDistill({ includeDrafts: opts.includeDrafts });
   });
 
 program.parseAsync().catch((err) => {

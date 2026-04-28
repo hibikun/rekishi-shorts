@@ -18,6 +18,7 @@
     "generate": "tsx src/cli.ts generate",
     "script-only": "tsx src/cli.ts script-only",
     "tts-only": "tsx src/cli.ts tts-only",
+    "corpus": "tsx src/cli.ts corpus",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

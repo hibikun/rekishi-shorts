@@ -42,6 +42,9 @@ data/**/*.mov
 # obsidian workspace
 .obsidian/
 
+# Claude Code ローカル設定 / scheduled task ロック
+.claude/
+
 # remotion
 packages/renderer/out/
 packages/renderer/public/
