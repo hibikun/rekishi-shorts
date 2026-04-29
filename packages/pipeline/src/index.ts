@@ -9,6 +9,13 @@ export { generateImagePromptForScene } from "./manabilab-canva-image-prompt-gene
 export type { ImagePromptResult } from "./manabilab-canva-image-prompt-generator.js";
 export { regenerateCharacterBase } from "./manabilab-canva-character-base-generator.js";
 export type { RegenerateCharacterBaseResult } from "./manabilab-canva-character-base-generator.js";
+export { generateAnimationPromptForScene } from "./manabilab-canva-animation-prompt-generator.js";
+export type { AnimationPromptResult } from "./manabilab-canva-animation-prompt-generator.js";
+export { generateAnimationForScene } from "./manabilab-canva-video-generator.js";
+export type {
+  GenerateAnimationOptions,
+  GenerateAnimationResult,
+} from "./manabilab-canva-video-generator.js";
 export { planScenes } from "./scene-planner.js";
 export { resolveSceneAssets } from "./asset-resolver.js";
 export { synthesizeNarration } from "./tts-generator.js";

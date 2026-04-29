@@ -35,6 +35,8 @@ export function expandScriptToScenes(
     caption: shortCaption(script.hook, script.title.bottom),
     imagePromptJa: "",
     imagePromptEn: "",
+    seedancePromptJa: "",
+    seedancePromptEn: "",
   });
 
   // 2. statements
@@ -47,6 +49,8 @@ export function expandScriptToScenes(
       caption: s.label.trim() || shortCaption(s.claim, `セグメント ${i + 1}`),
       imagePromptJa: "",
       imagePromptEn: "",
+      seedancePromptJa: "",
+      seedancePromptEn: "",
     });
   });
 
@@ -58,6 +62,8 @@ export function expandScriptToScenes(
     caption: shortCaption(script.cta, "やってみよう"),
     imagePromptJa: "",
     imagePromptEn: "",
+    seedancePromptJa: "",
+    seedancePromptEn: "",
   });
 
   // 4. punchline
@@ -68,6 +74,8 @@ export function expandScriptToScenes(
     caption: shortCaption(script.punchline, script.punchline),
     imagePromptJa: "",
     imagePromptEn: "",
+    seedancePromptJa: "",
+    seedancePromptEn: "",
   });
 
   return out;

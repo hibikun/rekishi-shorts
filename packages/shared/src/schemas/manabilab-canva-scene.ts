@@ -46,6 +46,28 @@ export const ManabilabCanvaSceneSchema = z.object({
     .string()
     .optional()
     .describe("画像生成日時 (ISO 8601)"),
+  seedancePromptJa: z
+    .string()
+    .default("")
+    .describe(
+      "Seedance アニメーションのユーザー指示（日本語・任意）。例: 「血流が巡る」「マナビくんがチョコをかじる」",
+    ),
+  seedancePromptEn: z
+    .string()
+    .default("")
+    .describe(
+      "Seedance img2video に渡す英語プロンプト。Gemini で生成 or 手動編集",
+    ),
+  videoPath: z
+    .string()
+    .optional()
+    .describe(
+      "生成済み mp4 の相対パス。例: 'jobs/{jobId}/videos/scene-NN.mp4' (channels/manabilab-canva 起点)",
+    ),
+  videoGeneratedAt: z
+    .string()
+    .optional()
+    .describe("動画生成日時 (ISO 8601)"),
 });
 export type ManabilabCanvaScene = z.infer<typeof ManabilabCanvaSceneSchema>;
 

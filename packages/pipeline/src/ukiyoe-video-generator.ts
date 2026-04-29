@@ -134,7 +134,7 @@ export function resolveCameraFixed(input: UkiyoeSceneVideoInput): boolean {
   return ACTION_TAG_PROMPTS[tag].cameraFixed;
 }
 
-function ensureFalConfigured(): void {
+export function ensureFalConfigured(): void {
   const key = process.env.FAL_KEY;
   if (!key) {
     throw new Error(
@@ -144,7 +144,7 @@ function ensureFalConfigured(): void {
   fal.config({ credentials: key });
 }
 
-interface SeedanceCallArgs {
+export interface SeedanceCallArgs {
   imagePath: string;
   prompt: string;
   resolution: "480p" | "720p";
@@ -157,7 +157,7 @@ interface RawSeedanceResult {
   data?: { video?: { url?: string } };
 }
 
-async function callSeedance(args: SeedanceCallArgs): Promise<{ videoUrl: string }> {
+export async function callSeedance(args: SeedanceCallArgs): Promise<{ videoUrl: string }> {
   const buffer = await fs.readFile(args.imagePath);
   const ext = path.extname(args.imagePath).slice(1).toLowerCase() || "png";
   const mime = ext === "jpg" || ext === "jpeg" ? "image/jpeg" : `image/${ext}`;
@@ -198,7 +198,7 @@ async function callSeedance(args: SeedanceCallArgs): Promise<{ videoUrl: string 
   return { videoUrl };
 }
 
-async function downloadVideo(url: string, outPath: string): Promise<number> {
+export async function downloadVideo(url: string, outPath: string): Promise<number> {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`video download failed: HTTP ${res.status}`);
   const buf = Buffer.from(await res.arrayBuffer());

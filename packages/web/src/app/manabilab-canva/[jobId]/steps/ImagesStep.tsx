@@ -56,6 +56,17 @@ interface GenerateAllResult {
   error?: string;
 }
 
+interface GenAnimationResult {
+  ok: boolean;
+  sceneIndex?: number;
+  videoPath?: string;
+  videoUrl?: string;
+  generatedAt?: string;
+  seedancePromptEn?: string;
+  seedancePromptJa?: string;
+  error?: string;
+}
+
 const CHARACTER_REF_URL = "/manabilab-canva/assets/character/manabikun-base.png";
 const CANVA_PUBLIC_PREFIX = "/manabilab-canva";
 
@@ -97,6 +108,8 @@ export function ImagesStep({
   const [imageVersion, setImageVersion] = useState<Record<number, number>>({});
   const [regenPromptIdx, setRegenPromptIdx] = useState<number | null>(null);
   const [genImageIdx, setGenImageIdx] = useState<number | null>(null);
+  const [genAnimationIdx, setGenAnimationIdx] = useState<number | null>(null);
+  const [videoVersion, setVideoVersion] = useState<Record<number, number>>({});
   const [generatingAll, setGeneratingAll] = useState(false);
   const [batchSummary, setBatchSummary] = useState<string | null>(null);
   const [regeneratingBase, setRegeneratingBase] = useState(false);
@@ -320,6 +333,82 @@ export function ImagesStep({
     );
     setScenes(next);
     onScenesChange(next);
+  };
+
+  const updateSeedancePromptJa = (sceneIndex: number, value: string) => {
+    if (!scenes) return;
+    const next = scenes.map((s) =>
+      s.index === sceneIndex ? { ...s, seedancePromptJa: value } : s,
+    );
+    setScenes(next);
+    onScenesChange(next);
+  };
+
+  const updateSeedancePromptEn = (sceneIndex: number, value: string) => {
+    if (!scenes) return;
+    const next = scenes.map((s) =>
+      s.index === sceneIndex ? { ...s, seedancePromptEn: value } : s,
+    );
+    setScenes(next);
+    onScenesChange(next);
+  };
+
+  const handleGenerateAnimation = async (sceneIndex: number) => {
+    if (!scenes) return;
+    const target = scenes.find((s) => s.index === sceneIndex);
+    if (!target) return;
+    if (!target.imagePath) {
+      setError({
+        index: sceneIndex,
+        message: "先に静止画を生成してからアニメ化してください",
+      });
+      return;
+    }
+
+    setGenAnimationIdx(sceneIndex);
+    setError(null);
+    try {
+      const res = await fetch(
+        `/api/manabilab-canva/${job.id}/scenes/${sceneIndex}/generate-animation`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            userDirectionJa: (target.seedancePromptJa ?? "").trim() || "",
+            regeneratePrompt: true,
+          }),
+        },
+      );
+      const data = (await res.json()) as GenAnimationResult;
+      if (!data.ok || !data.videoPath) {
+        setError({
+          index: sceneIndex,
+          message: data.error ?? "アニメ生成に失敗しました",
+        });
+        return;
+      }
+      const next = scenes.map((s) =>
+        s.index === sceneIndex
+          ? {
+              ...s,
+              videoPath: data.videoPath!,
+              videoGeneratedAt: data.generatedAt,
+              seedancePromptEn: data.seedancePromptEn ?? s.seedancePromptEn,
+              seedancePromptJa: data.seedancePromptJa ?? s.seedancePromptJa,
+            }
+          : s,
+      );
+      setScenes(next);
+      onScenesChange(next);
+      setVideoVersion((prev) => ({ ...prev, [sceneIndex]: Date.now() }));
+    } catch (err) {
+      setError({
+        index: sceneIndex,
+        message: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setGenAnimationIdx(null);
+    }
   };
 
   return (
@@ -609,6 +698,181 @@ export function ImagesStep({
                         : "画像を生成"}
                     </button>
                   </div>
+
+                  <details
+                    open={!!s.imagePath && !s.videoPath ? false : !!s.videoPath}
+                    style={{
+                      borderTop: "1px dashed var(--border)",
+                      paddingTop: 8,
+                      marginTop: 4,
+                    }}
+                  >
+                    <summary
+                      style={{
+                        fontSize: 13,
+                        fontWeight: 600,
+                        cursor: "pointer",
+                        color: s.videoPath ? "#2e7d32" : "var(--accent)",
+                      }}
+                    >
+                      🎬 アニメーション {s.videoPath ? "（生成済み）" : "（任意）"}
+                    </summary>
+                    <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
+                      {/* 動画プレビュー / placeholder */}
+                      {s.videoPath ? (
+                        <div style={{ display: "grid", gap: 4 }}>
+                          <video
+                            key={`${s.index}-${videoVersion[s.index] ?? 0}`}
+                            src={`${CANVA_PUBLIC_PREFIX}/${s.videoPath}${
+                              videoVersion[s.index]
+                                ? `?t=${videoVersion[s.index]}`
+                                : ""
+                            }`}
+                            controls
+                            loop
+                            muted
+                            playsInline
+                            style={{
+                              width: "100%",
+                              maxWidth: 320,
+                              aspectRatio: "9 / 16",
+                              background: "#000",
+                              borderRadius: 4,
+                            }}
+                          />
+                          <div
+                            style={{
+                              display: "flex",
+                              gap: 8,
+                              fontSize: 11,
+                              color: "var(--muted)",
+                            }}
+                          >
+                            {s.videoGeneratedAt ? (
+                              <span>
+                                生成{" "}
+                                {new Date(s.videoGeneratedAt).toLocaleString(
+                                  "ja-JP",
+                                )}
+                              </span>
+                            ) : null}
+                            <a
+                              href={`${CANVA_PUBLIC_PREFIX}/${s.videoPath}`}
+                              download={`scene-${String(s.index).padStart(
+                                2,
+                                "0",
+                              )}.mp4`}
+                              style={{
+                                color: "var(--accent)",
+                                textDecoration: "none",
+                              }}
+                            >
+                              ⬇ MP4 をダウンロード
+                            </a>
+                          </div>
+                        </div>
+                      ) : (
+                        <div
+                          style={{
+                            fontSize: 11,
+                            color: "var(--muted)",
+                            padding: "8px 0",
+                          }}
+                        >
+                          {s.imagePath
+                            ? "未生成（指示を書いて「アニメを生成」を押してください）"
+                            : "先に静止画を生成してください"}
+                        </div>
+                      )}
+
+                      <label style={{ display: "grid", gap: 4, fontSize: 13 }}>
+                        <span style={{ fontWeight: 600 }}>
+                          アニメ指示{" "}
+                          <span
+                            style={{
+                              fontWeight: 400,
+                              color: "var(--muted)",
+                              fontSize: 11,
+                              marginLeft: 4,
+                            }}
+                          >
+                            日本語・任意 / 例: 「血流が巡る」「マナビくんがチョコをかじる」
+                          </span>
+                        </span>
+                        <textarea
+                          value={s.seedancePromptJa ?? ""}
+                          onChange={(e) =>
+                            updateSeedancePromptJa(s.index, e.target.value)
+                          }
+                          rows={2}
+                          placeholder="空でも OK。空なら caption / narration から AI が控えめなアニメを推測します。"
+                          disabled={genAnimationIdx === s.index || !s.imagePath}
+                          style={{
+                            padding: "8px 10px",
+                            border: "1px solid var(--border)",
+                            borderRadius: 6,
+                            fontSize: 13,
+                            background: "var(--card)",
+                            color: "inherit",
+                            lineHeight: 1.5,
+                            resize: "vertical",
+                          }}
+                        />
+                      </label>
+
+                      <button
+                        type="button"
+                        onClick={() => handleGenerateAnimation(s.index)}
+                        disabled={
+                          !s.imagePath || genAnimationIdx === s.index || isGen
+                        }
+                        style={smallPrimary(genAnimationIdx === s.index)}
+                      >
+                        {genAnimationIdx === s.index
+                          ? "アニメ生成中... (30〜90秒)"
+                          : s.videoPath
+                          ? "アニメを再生成"
+                          : "アニメを生成"}
+                      </button>
+
+                      <details>
+                        <summary
+                          style={{
+                            fontSize: 11,
+                            color: "var(--muted)",
+                            cursor: "pointer",
+                          }}
+                        >
+                          ▼ アニメ詳細（Seedance に渡る英語プロンプト）
+                        </summary>
+                        <div style={{ marginTop: 6 }}>
+                          <textarea
+                            value={s.seedancePromptEn ?? ""}
+                            onChange={(e) =>
+                              updateSeedancePromptEn(s.index, e.target.value)
+                            }
+                            rows={4}
+                            placeholder="まだ生成されていません。"
+                            disabled={genAnimationIdx === s.index}
+                            style={{
+                              width: "100%",
+                              padding: "6px 8px",
+                              border: "1px solid var(--border)",
+                              borderRadius: 4,
+                              fontSize: 11,
+                              background: "var(--card)",
+                              color: "inherit",
+                              fontFamily:
+                                "ui-monospace, SFMono-Regular, monospace",
+                              lineHeight: 1.5,
+                              resize: "vertical",
+                              boxSizing: "border-box",
+                            }}
+                          />
+                        </div>
+                      </details>
+                    </div>
+                  </details>
 
                   <details>
                     <summary
