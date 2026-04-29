@@ -15,6 +15,8 @@ import { config } from "./config.js";
 const NARRATOR_VOICE_BY_CHANNEL: Record<string, string> = {
   ranking: "Zubenelgenubi",
   manabilab: "Zubenelgenubi",
+  // manabilab-canva: Charon = ニュースアンカー風で明瞭・説得力あり、学習科学テーマと相性良い
+  "manabilab-canva": "Charon",
   ukiyoe: "Fenrir",
 };
 
@@ -81,6 +83,10 @@ const STYLE_PROMPTS: Record<VoicePersona, string> = {
 const NARRATOR_STYLE_BY_CHANNEL: Record<string, string> = {
   manabilab:
     "Say the following in natural Japanese with a deep, authoritative narrator's voice — like a trusted mentor revealing important scientific truths. Speak at a confident, brisk pace fit for fast-cut YouTube Shorts — energetic but clear, never blurred. Use CLEAR INFLECTION and put noticeable EMPHASIS on key words (numbers like 「2倍以上」「100年以上前」, scientific terms like 「想起練習」「分散学習」「Karpicke」, and key conclusions). Move smoothly between sentences without long pauses. Convey intellectual confidence and gravitas — NOT monotone, NOT slow:",
+  // manabilab-canva: 学習科学 × ツッコミ系トーン。Charon の明瞭さを活かしつつ、
+  // フランクで親しみあるテンポを引き出す。
+  "manabilab-canva":
+    "Say the following in natural Japanese with a confident, sharp narrator's voice — like a smart, slightly cheeky friend sharing science tips. Speak at a quick, snappy pace fit for fast-cut YouTube Shorts — energetic and crisp, never blurred. Use clear INFLECTION and noticeable EMPHASIS on key words (numbers, research names, conclusions, and tsukkomi-style punchlines like 「マジで」「論外」「コスパ最強」). Mix authority with approachable warmth — sound knowledgeable but approachable, NOT monotone, NOT over-soft, NOT robotic:",
 };
 
 function resolveNarratorStylePrompt(persona: VoicePersona, override?: string): string {
@@ -109,17 +115,24 @@ export async function synthesizeNarration(
     hook?: string;
     /** スタイル指示の切り替え。レビュー読み上げは "reviewer" を渡す */
     persona?: VoicePersona;
+    /** 既定 style prompt の上書き。空文字 / undefined ならチャンネル既定を使用 */
+    stylePromptOverride?: string;
+    /** Gemini TTS モデル ID の上書き。default は env GEMINI_TTS_MODEL or "gemini-3.1-flash-tts-preview" */
+    modelOverride?: string;
   } = {},
 ): Promise<TTSResult> {
   const withReadings = applyFurigana(text, opts.readings);
   const processed = applyFurigana(withReadings, opts.furigana);
   const voiceName = resolveNarratorVoice(opts.voiceName);
-  const model = process.env.GEMINI_TTS_MODEL ?? "gemini-3.1-flash-tts-preview";
+  const model =
+    opts.modelOverride ??
+    process.env.GEMINI_TTS_MODEL ??
+    "gemini-3.1-flash-tts-preview";
   const persona: VoicePersona = opts.persona ?? "narrator";
 
   const ai = new GoogleGenAI({ apiKey: config.gemini.apiKey });
 
-  const styledPrompt = `${resolveNarratorStylePrompt(persona)}\n${processed}`;
+  const styledPrompt = `${resolveNarratorStylePrompt(persona, opts.stylePromptOverride)}\n${processed}`;
 
   // Gemini TTS preview は per-minute レート制限 (現状 10 req/min) があるため、
   // 429 が返ったら retryDelay を尊重しつつ最大 6 回まで指数バックオフでリトライする。

@@ -4,12 +4,24 @@ import {
   ManabilabCanvaJobSchema,
   ManabilabCanvaScriptSchema,
   ManabilabCanvaScenesSchema,
+  type CanvaReading,
   type ManabilabCanvaJob,
   type ManabilabCanvaScene,
   type ManabilabCanvaScript,
   type StepKey,
   type Topic,
 } from "@rekishi/shared";
+
+/** ManabilabCanvaScript.readings (配列) を VOICEVOX/Gemini TTS の Record 形式に変換 */
+export function readingsArrayToRecord(
+  arr: CanvaReading[] | undefined | null,
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const r of arr ?? []) {
+    if (r.term && r.reading && !out[r.term]) out[r.term] = r.reading;
+  }
+  return out;
+}
 
 export const CANVA_CHANNEL_SLUG = "manabilab-canva";
 
@@ -99,7 +111,11 @@ export function emptyJob(jobId: string, topic: Topic): ManabilabCanvaJob {
       script: { status: "pending" },
       scenes: { status: "pending" },
       images: { status: "pending" },
-      tts: { status: "pending" },
+      tts: {
+        status: "pending",
+        voiceProvider: "gemini",
+        voiceName: "Charon",
+      },
       export: { status: "pending" },
     },
   };

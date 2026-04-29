@@ -35,6 +35,29 @@ export const ScriptStepSchema = StepBaseSchema.extend({
 });
 export type ScriptStepState = z.infer<typeof ScriptStepSchema>;
 
+export const TtsStepSchema = StepBaseSchema.extend({
+  voiceProvider: z.literal("gemini").default("gemini"),
+  voiceName: z
+    .string()
+    .default("Charon")
+    .describe(
+      "Gemini TTS の prebuilt voice 名。例: Charon / Fenrir / Orus / Zubenelgenubi / Puck / Kore / Aoede / Leda",
+    ),
+  stylePromptOverride: z
+    .string()
+    .optional()
+    .describe(
+      "既定の style prompt を上書きするためのテキスト。空欄ならチャンネル既定を使用",
+    ),
+  ttsModel: z
+    .string()
+    .optional()
+    .describe(
+      "Gemini TTS モデル名。default は env GEMINI_TTS_MODEL or gemini-3.1-flash-tts-preview",
+    ),
+});
+export type TtsStepState = z.infer<typeof TtsStepSchema>;
+
 export const ManabilabCanvaJobSchema = z.object({
   id: z.string(),
   createdAt: z.string(),
@@ -46,7 +69,7 @@ export const ManabilabCanvaJobSchema = z.object({
     script: ScriptStepSchema,
     scenes: StepBaseSchema,
     images: StepBaseSchema,
-    tts: StepBaseSchema,
+    tts: TtsStepSchema,
     export: StepBaseSchema,
   }),
 });

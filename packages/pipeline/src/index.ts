@@ -16,6 +16,11 @@ export type {
   GenerateAnimationOptions,
   GenerateAnimationResult,
 } from "./manabilab-canva-video-generator.js";
+export { generateSceneTts } from "./manabilab-canva-tts.js";
+export type {
+  GenerateSceneTtsOptions,
+  GenerateSceneTtsResult,
+} from "./manabilab-canva-tts.js";
 export { planScenes } from "./scene-planner.js";
 export { resolveSceneAssets } from "./asset-resolver.js";
 export { synthesizeNarration } from "./tts-generator.js";

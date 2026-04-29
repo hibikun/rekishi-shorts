@@ -68,6 +68,20 @@ export const ManabilabCanvaSceneSchema = z.object({
     .string()
     .optional()
     .describe("動画生成日時 (ISO 8601)"),
+  audioPath: z
+    .string()
+    .optional()
+    .describe(
+      "生成済み wav の相対パス。例: 'jobs/{jobId}/audio/scene-NN.wav' (channels/manabilab-canva 起点)",
+    ),
+  audioDurationSec: z
+    .number()
+    .optional()
+    .describe("音声の実測秒数（ffprobe で取得）"),
+  audioGeneratedAt: z
+    .string()
+    .optional()
+    .describe("音声生成日時 (ISO 8601)"),
 });
 export type ManabilabCanvaScene = z.infer<typeof ManabilabCanvaSceneSchema>;
 

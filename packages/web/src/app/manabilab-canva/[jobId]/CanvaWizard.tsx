@@ -14,6 +14,7 @@ import { ResearchStep } from "./steps/ResearchStep";
 import { ScriptStep } from "./steps/ScriptStep";
 import { ScenesStep } from "./steps/ScenesStep";
 import { ImagesStep } from "./steps/ImagesStep";
+import { TTSStep } from "./steps/TTSStep";
 
 interface Props {
   initialJob: ManabilabCanvaJob;
@@ -101,7 +102,17 @@ export function CanvaWizard({
             onAdvance={() => advance("tts")}
           />
         )}
-        {currentStep === "tts" && <UpcomingPlaceholder label="TTS" />}
+        {currentStep === "tts" && (
+          <TTSStep
+            job={job}
+            script={script}
+            scenes={scenes}
+            onJobChange={setJob}
+            onScriptChange={setScript}
+            onScenesChange={setScenes}
+            onAdvance={() => advance("export")}
+          />
+        )}
         {currentStep === "export" && <UpcomingPlaceholder label="Export" />}
       </section>
     </div>
