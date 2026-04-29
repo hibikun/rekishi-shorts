@@ -555,10 +555,10 @@ export function SceneReview({
                     />
                     <div
                       style={{
-                        marginTop: 6,
+                        marginTop: 8,
                         display: "flex",
                         alignItems: "center",
-                        gap: 8,
+                        gap: 10,
                       }}
                     >
                       <button
@@ -567,41 +567,30 @@ export function SceneReview({
                           translatingScene !== null ||
                           !state.videoPromptJa.trim()
                         }
-                        style={{
-                          background:
-                            translatingScene === spec.index
-                              ? "#e5e7eb"
-                              : state.videoPromptDirty
-                                ? "var(--accent)"
-                                : "#fff",
-                          color:
-                            state.videoPromptDirty &&
-                            translatingScene !== spec.index
-                              ? "#fff"
-                              : "var(--accent)",
-                          border: "1px solid var(--accent)",
-                          padding: "6px 10px",
-                          borderRadius: 4,
-                          fontSize: 11,
-                          fontWeight: 700,
-                          cursor:
+                        style={translateButton({
+                          isDirty: state.videoPromptDirty,
+                          isTranslating: translatingScene === spec.index,
+                          isDisabled:
                             translatingScene !== null ||
-                            !state.videoPromptJa.trim()
-                              ? "not-allowed"
-                              : "pointer",
-                          opacity:
+                            !state.videoPromptJa.trim(),
+                          othersBusy:
                             translatingScene !== null &&
-                            translatingScene !== spec.index
-                              ? 0.5
-                              : 1,
-                        }}
+                            translatingScene !== spec.index,
+                        })}
                       >
                         {translatingScene === spec.index
                           ? "🌐 英訳中..."
                           : "🌐 英訳して反映"}
                       </button>
                       {state.videoPromptDirty && (
-                        <span style={{ fontSize: 10, color: "#dc2626" }}>
+                        <span
+                          style={{
+                            fontSize: 11,
+                            fontWeight: 700,
+                            color: "#dc2626",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
                           ⚠ 未翻訳
                         </span>
                       )}
@@ -905,3 +894,46 @@ const editInput: React.CSSProperties = {
   width: "100%",
   fontFamily: "inherit",
 };
+
+function translateButton(args: {
+  isDirty: boolean;
+  isTranslating: boolean;
+  isDisabled: boolean;
+  othersBusy: boolean;
+}): React.CSSProperties {
+  // Dirty（未翻訳の編集あり）→ アクセントカラーで強い CTA
+  // Clean（最新の英訳あり）→ ややくすんだ「再翻訳」風
+  // Translating → グレーで進行中表示
+  const base: React.CSSProperties = {
+    padding: "9px 16px",
+    borderRadius: 6,
+    fontSize: 12,
+    fontWeight: 700,
+    border: 0,
+    cursor: args.isDisabled ? "not-allowed" : "pointer",
+    boxShadow: args.isDisabled ? "none" : "0 1px 2px rgba(0,0,0,0.08)",
+    transition: "background 0.15s, box-shadow 0.15s",
+    whiteSpace: "nowrap",
+    opacity: args.othersBusy ? 0.5 : 1,
+  };
+  if (args.isTranslating) {
+    return { ...base, background: "#e5e7eb", color: "#6b7280" };
+  }
+  if (args.isDisabled) {
+    return { ...base, background: "#e5e7eb", color: "#9ca3af" };
+  }
+  if (args.isDirty) {
+    return {
+      ...base,
+      background: "var(--accent)",
+      color: "#fff",
+      boxShadow: "0 2px 6px rgba(99,102,241,0.35)",
+    };
+  }
+  // Clean: 既に翻訳済み、再翻訳もできる軽いボタン
+  return {
+    ...base,
+    background: "#eef2ff",
+    color: "var(--accent)",
+  };
+}
