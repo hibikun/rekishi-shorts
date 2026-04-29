@@ -54,6 +54,16 @@ interface GenerateAllResult {
   error?: string;
 }
 
+interface ConcatResult {
+  ok: boolean;
+  job?: ManabilabCanvaJob;
+  audioPath?: string;
+  audioUrl?: string;
+  durationSec?: number;
+  generatedAt?: string;
+  error?: string;
+}
+
 const CANVA_PUBLIC_PREFIX = "/manabilab-canva";
 
 // Gemini TTS の主要 prebuilt voice
@@ -138,6 +148,10 @@ export function TTSStep({
   const [error, setError] = useState<{ index: number; message: string } | null>(
     null,
   );
+
+  const [concatting, setConcatting] = useState(false);
+  const [concatError, setConcatError] = useState<string | null>(null);
+  const [concatVersion, setConcatVersion] = useState(0);
 
   const scriptDone = job.steps.script.status === "done";
 
@@ -294,6 +308,43 @@ export function TTSStep({
   const totalDurationSec = (scenes ?? [])
     .map((s) => s.audioDurationSec ?? 0)
     .reduce((a, b) => a + b, 0);
+
+  const handleConcat = async () => {
+    setConcatting(true);
+    setConcatError(null);
+    try {
+      const res = await fetch(`/api/manabilab-canva/${job.id}/tts/concat`, {
+        method: "POST",
+      });
+      const data = (await res.json()) as ConcatResult;
+      if (!data.ok || !data.audioPath) {
+        setConcatError(data.error ?? "結合に失敗しました");
+        return;
+      }
+      if (data.job) onJobChange(data.job);
+      setConcatVersion(Date.now());
+    } catch (err) {
+      setConcatError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setConcatting(false);
+    }
+  };
+
+  const allScenesHaveAudio =
+    !!scenes && scenes.length > 0 && scenes.every((s) => !!s.audioPath);
+  const concatAudioPath = job.steps.tts.concatAudioPath;
+  const concatGeneratedAt = job.steps.tts.concatGeneratedAt;
+  const concatDurationSec = job.steps.tts.concatDurationSec ?? 0;
+  // 個別 TTS の最新生成時刻が concat 生成時刻より新しければ「再結合推奨」
+  const latestSceneAudioAt = (scenes ?? [])
+    .map((s) => s.audioGeneratedAt)
+    .filter((s): s is string => !!s)
+    .sort()
+    .at(-1);
+  const concatStale =
+    !!concatGeneratedAt &&
+    !!latestSceneAudioAt &&
+    latestSceneAudioAt > concatGeneratedAt;
 
   return (
     <div style={{ display: "grid", gap: 20 }}>
@@ -659,6 +710,119 @@ export function TTSStep({
           シーンがありません。Scenes ステップで展開してください。
         </p>
       )}
+
+      {/* 結合音声 (Canva 用) */}
+      <section
+        style={{
+          border: "1px solid var(--border)",
+          borderRadius: 8,
+          padding: 16,
+          background: "rgba(0,0,0,0.02)",
+          display: "grid",
+          gap: 10,
+        }}
+      >
+        <header>
+          <h3 style={{ fontSize: 15, fontWeight: 700, margin: 0 }}>
+            🎵 Canva 用結合音声
+          </h3>
+          <p
+            style={{
+              fontSize: 12,
+              color: "var(--muted)",
+              margin: "4px 0 0",
+            }}
+          >
+            全シーンの wav を 1 ファイルに連結する。Canva へまとめてアップロードする用。
+            個別 TTS を再生成した場合は手動で再結合してください。
+          </p>
+        </header>
+
+        <div
+          style={{
+            display: "flex",
+            gap: 8,
+            alignItems: "center",
+            flexWrap: "wrap",
+          }}
+        >
+          <button
+            type="button"
+            onClick={handleConcat}
+            disabled={
+              concatting || !allScenesHaveAudio || generatingAll || genTtsIdx !== null
+            }
+            style={primaryButtonStyle(concatting)}
+          >
+            {concatting
+              ? "結合中..."
+              : concatAudioPath
+              ? "再結合"
+              : "全シーンを結合"}
+          </button>
+          {!allScenesHaveAudio ? (
+            <span style={{ fontSize: 12, color: "var(--muted)" }}>
+              ※ 全シーンの音声生成が完了していません
+            </span>
+          ) : null}
+          {concatStale ? (
+            <span style={{ fontSize: 12, color: "#f57c00" }}>
+              ⚠ 個別 TTS が更新されています。再結合してください
+            </span>
+          ) : null}
+        </div>
+
+        {concatError ? (
+          <p style={{ color: "#d32f2f", fontSize: 12, margin: 0 }}>
+            {concatError}
+          </p>
+        ) : null}
+
+        {concatAudioPath ? (
+          <div style={{ display: "grid", gap: 4 }}>
+            <audio
+              key={`concat-${concatVersion}`}
+              src={`${CANVA_PUBLIC_PREFIX}/${concatAudioPath}${
+                concatVersion ? `?t=${concatVersion}` : ""
+              }`}
+              controls
+              preload="metadata"
+              style={{ width: "100%" }}
+            />
+            <div
+              style={{
+                display: "flex",
+                gap: 12,
+                alignItems: "center",
+                flexWrap: "wrap",
+              }}
+            >
+              <a
+                href={`${CANVA_PUBLIC_PREFIX}/${concatAudioPath}${
+                  concatVersion ? `?t=${concatVersion}` : ""
+                }`}
+                download={`${job.id}-full.wav`}
+                style={{
+                  fontSize: 13,
+                  color: "var(--accent)",
+                  textDecoration: "none",
+                  fontWeight: 600,
+                }}
+              >
+                ⬇ full.wav をダウンロード
+              </a>
+              <span style={{ fontSize: 11, color: "var(--muted)" }}>
+                合計 {concatDurationSec.toFixed(1)} 秒 / {scenes?.length ?? 0} シーン
+              </span>
+              {concatGeneratedAt ? (
+                <span style={{ fontSize: 11, color: "var(--muted)" }}>
+                  生成 {new Date(concatGeneratedAt).toLocaleString("ja-JP")}
+                </span>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+      </section>
 
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
         <button

@@ -46,7 +46,9 @@ export const ManabilabCanvaSceneSchema = z.object({
   caption: z
     .string()
     .min(1)
-    .describe("画面に大きく出す字幕（短文）。Canva 上のテキスト要素に流す前提"),
+    .describe(
+      "そのシーンの要点を 1 フレーズで（短文）。画像/動画 AI プロンプトの構図ヒント、および Images ステップの一覧でシーンを判別する目印に使う",
+    ),
   imagePromptJa: z
     .string()
     .default("")

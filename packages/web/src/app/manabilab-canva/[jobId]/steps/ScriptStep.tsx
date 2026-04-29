@@ -33,9 +33,6 @@ interface DraftFields {
   statements: CanvaStatement[];
   cta: string;
   punchline: string;
-  titleTop: string;
-  titleBottom: string;
-  estimatedDurationSec: number;
 }
 
 function scriptToDraft(s: ManabilabCanvaScript): DraftFields {
@@ -44,9 +41,6 @@ function scriptToDraft(s: ManabilabCanvaScript): DraftFields {
     statements: s.statements.map((st) => ({ ...st })),
     cta: s.cta,
     punchline: s.punchline,
-    titleTop: s.title.top,
-    titleBottom: s.title.bottom,
-    estimatedDurationSec: s.estimatedDurationSec,
   };
 }
 
@@ -60,8 +54,6 @@ function draftToScript(
     statements: draft.statements,
     cta: draft.cta,
     punchline: draft.punchline,
-    title: { top: draft.titleTop, bottom: draft.titleBottom },
-    estimatedDurationSec: draft.estimatedDurationSec,
   };
 }
 
@@ -221,9 +213,9 @@ export function ScriptStep({
         {status === "done" && !running ? (
           <span style={{ fontSize: 12, color: "#2e7d32" }}>✓ 保存済み</span>
         ) : null}
-        {draft ? (
+        {draft && script ? (
           <span style={{ fontSize: 12, color: "var(--muted)" }}>
-            推定 {draft.estimatedDurationSec.toFixed(1)} 秒 / 全体{" "}
+            推定 {script.estimatedDurationSec.toFixed(1)} 秒 / 全体{" "}
             {totalChars(draft)} 字 / segments {draft.statements.length}
           </span>
         ) : null}
@@ -235,31 +227,6 @@ export function ScriptStep({
 
       {draft ? (
         <>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <label style={fieldLabelStyle}>
-              <span style={fieldHeaderStyle}>タイトル上段（top）</span>
-              <input
-                type="text"
-                value={draft.titleTop}
-                maxLength={20}
-                onChange={(e) => setDraft({ ...draft, titleTop: e.target.value })}
-                style={inputStyle}
-                disabled={saving || running}
-              />
-            </label>
-            <label style={fieldLabelStyle}>
-              <span style={fieldHeaderStyle}>タイトル下段（bottom）</span>
-              <input
-                type="text"
-                value={draft.titleBottom}
-                maxLength={20}
-                onChange={(e) => setDraft({ ...draft, titleBottom: e.target.value })}
-                style={inputStyle}
-                disabled={saving || running}
-              />
-            </label>
-          </div>
-
           <label style={fieldLabelStyle}>
             <span style={fieldHeaderStyle}>
               hook <span style={hintStyle}>1〜2文 / 20-50字 / ツッコミ余地のある軽さ</span>
@@ -419,24 +386,6 @@ export function ScriptStep({
               onChange={(e) => setDraft({ ...draft, punchline: e.target.value })}
               rows={2}
               style={textareaStyle}
-              disabled={saving || running}
-            />
-          </label>
-
-          <label style={fieldLabelStyle}>
-            <span style={fieldHeaderStyle}>推定秒数</span>
-            <input
-              type="number"
-              value={draft.estimatedDurationSec}
-              step={0.1}
-              min={0}
-              onChange={(e) =>
-                setDraft({
-                  ...draft,
-                  estimatedDurationSec: Number(e.target.value) || 0,
-                })
-              }
-              style={{ ...inputStyle, width: 120 }}
               disabled={saving || running}
             />
           </label>

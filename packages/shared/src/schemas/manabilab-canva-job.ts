@@ -55,6 +55,20 @@ export const TtsStepSchema = StepBaseSchema.extend({
     .describe(
       "Gemini TTS モデル名。default は env GEMINI_TTS_MODEL or gemini-3.1-flash-tts-preview",
     ),
+  concatAudioPath: z
+    .string()
+    .optional()
+    .describe(
+      "全シーン結合済み wav の相対パス。例: 'jobs/{jobId}/audio/full.wav' (channels/manabilab-canva 起点)。Canva へ 1 ファイルでアップロードする用",
+    ),
+  concatDurationSec: z
+    .number()
+    .optional()
+    .describe("結合 wav の合計秒数"),
+  concatGeneratedAt: z
+    .string()
+    .optional()
+    .describe("結合 wav の生成日時 (ISO 8601)。個別 audioGeneratedAt より古ければ再結合推奨"),
 });
 export type TtsStepState = z.infer<typeof TtsStepSchema>;
 

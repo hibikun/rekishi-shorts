@@ -151,7 +151,7 @@ export function ScenesStep({
         <h2 style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>④ Scenes</h2>
         <p style={{ fontSize: 13, color: "var(--muted)", marginTop: 4 }}>
           台本の <code>hook / statements[] / cta / punchline</code> を 1 シーンずつに展開する。
-          各シーンは TTS 用ナレと、Canva に流す画面字幕（caption）と、画像生成用プロンプトを持つ。
+          各シーンは TTS 用ナレと、シーンの要点フレーズ（caption。画像/動画 AI プロンプトの構図ヒントに使う）と、画像生成用プロンプトを持つ。
         </p>
         <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>
           「保存して次へ →」で確定すると、Images ステップでシーンごとに <strong>3 つの構図候補</strong>{" "}
@@ -235,7 +235,7 @@ export function ScenesStep({
                 <label style={fieldLabelStyle}>
                   <span style={fieldHeaderStyle}>
                     caption{" "}
-                    <span style={hintStyle}>画面に大きく出す字幕。Canva 上のテキスト要素に流す</span>
+                    <span style={hintStyle}>シーンの要点フレーズ（短文）。画像/動画 AI プロンプトの構図ヒントに使う</span>
                   </span>
                   <input
                     type="text"

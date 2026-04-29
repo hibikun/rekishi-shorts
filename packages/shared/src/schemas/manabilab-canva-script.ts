@@ -14,9 +14,9 @@ export const CanvaStatementSchema = z.object({
     .describe("そのセグメントの主張本体。1〜2文で歯切れ良く言い切る"),
   backupLogic: z
     .string()
-    .min(1)
+    .default("")
     .describe(
-      "裏付け。1〜3文でメカニズム + 数字 + 出典を1セットで提示。リサーチ資料の数字・研究者名を引く",
+      "裏付け。1〜3文でメカニズム + 数字 + 出典を1セットで提示。リサーチ資料の数字・研究者名を引く。空欄可",
     ),
 });
 export type CanvaStatement = z.infer<typeof CanvaStatementSchema>;
