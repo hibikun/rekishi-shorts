@@ -14,6 +14,40 @@ export default async function HomePage() {
       </p>
 
       <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 12 }}>
+        学びラボ × Canva (manabilab-canva)
+      </h2>
+      <ul style={{ listStyle: "none", padding: 0, marginBottom: 32 }}>
+        <li
+          style={{
+            border: "1px solid var(--border)",
+            borderRadius: 8,
+            padding: "12px 16px",
+            background: "var(--card)",
+          }}
+        >
+          <Link
+            href="/manabilab-canva"
+            style={{
+              fontWeight: 600,
+              textDecoration: "none",
+              color: "var(--accent)",
+            }}
+          >
+            ジョブ一覧 / 新規作成 →
+          </Link>
+          <div
+            style={{
+              fontSize: 12,
+              color: "var(--muted)",
+              marginTop: 4,
+            }}
+          >
+            ステップウィザード: Topic → Research → Script → Scenes → Images → TTS → Export
+          </div>
+        </li>
+      </ul>
+
+      <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 12 }}>
         学びラボ (manabilab)
       </h2>
       <ul style={{ listStyle: "none", padding: 0, marginBottom: 40 }}>

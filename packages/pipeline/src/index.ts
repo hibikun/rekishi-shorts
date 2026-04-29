@@ -1,5 +1,7 @@
 export { generatePlan, getJobOutputDir } from "./orchestrator.js";
 export { generateScript } from "./script-generator.js";
+export { generateResearch } from "./research-generator.js";
+export type { ResearchResult, ResearchSource } from "./research-generator.js";
 export { planScenes } from "./scene-planner.js";
 export { resolveSceneAssets } from "./asset-resolver.js";
 export { synthesizeNarration } from "./tts-generator.js";
