@@ -12,6 +12,31 @@ interface Props {
   onScenesChange: (scenes: SelfMotivationScene[]) => Promise<void>;
 }
 
+const NEW_SCENE_PLACEHOLDER = "（新規シーン：ここを編集してください）";
+
+const generateLocalSceneId = () =>
+  Math.random().toString(36).slice(2, 10).padStart(8, "0");
+
+function autoSplitNarration(text: string): [string, string] {
+  const trimmed = text.trim();
+  if (trimmed.length < 4) return [trimmed, ""];
+  const mid = Math.floor(trimmed.length / 2);
+  const punct = /[。、！？!?]/;
+  for (let dist = 0; dist < trimmed.length; dist++) {
+    for (const dir of [1, -1] as const) {
+      const i = mid + dir * dist;
+      if (i > 0 && i < trimmed.length - 1 && punct.test(trimmed[i] ?? "")) {
+        return [trimmed.slice(0, i + 1), trimmed.slice(i + 1).trim()];
+      }
+    }
+  }
+  return [trimmed.slice(0, mid), trimmed.slice(mid)];
+}
+
+function reindex(scenes: SelfMotivationScene[]): SelfMotivationScene[] {
+  return scenes.map((s, i) => ({ ...s, index: i }));
+}
+
 export function SceneList({
   jobId,
   scenes,
@@ -45,13 +70,101 @@ export function SceneList({
   };
 
   const removeScene = async (sceneId: string) => {
-    const next = scenes
-      .filter((s) => s.sceneId !== sceneId)
-      .map((s, i) => ({ ...s, index: i }));
+    const next = reindex(scenes.filter((s) => s.sceneId !== sceneId));
     setSavingSceneId(sceneId);
     setError(null);
     try {
       await onScenesChange(next);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSavingSceneId(null);
+    }
+  };
+
+  /**
+   * シーンを 2 つに分割する。
+   * - 元シーンは sceneId/画像を維持し、narration を前半に。音声は narration が変わるためクリア
+   * - 後半は新 sceneId で画像/音声なし（chapterIndex/paragraphIndex は元と同じ）
+   */
+  const splitScene = async (
+    sceneId: string,
+    firstHalf: string,
+    secondHalf: string,
+  ) => {
+    const idx = scenes.findIndex((s) => s.sceneId === sceneId);
+    if (idx < 0) return;
+    const original = scenes[idx];
+    if (!original) return;
+    const trimmedFirst = firstHalf.trim();
+    const trimmedSecond = secondHalf.trim();
+    if (!trimmedFirst || !trimmedSecond) {
+      setError("前半・後半とも空にはできません");
+      return;
+    }
+    const first: SelfMotivationScene = {
+      ...original,
+      narration: trimmedFirst,
+      audioPath: undefined,
+      audioDurationSec: undefined,
+      audioGeneratedAt: undefined,
+    };
+    const second: SelfMotivationScene = {
+      ...original,
+      sceneId: generateLocalSceneId(),
+      narration: trimmedSecond,
+      imagePromptEn: "",
+      imagePath: undefined,
+      imageGeneratedAt: undefined,
+      audioPath: undefined,
+      audioDurationSec: undefined,
+      audioGeneratedAt: undefined,
+    };
+    const next = reindex([
+      ...scenes.slice(0, idx),
+      first,
+      second,
+      ...scenes.slice(idx + 1),
+    ]);
+    setSavingSceneId(sceneId);
+    setError(null);
+    try {
+      await onScenesChange(next);
+      onSelectScene(second.sceneId);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSavingSceneId(null);
+    }
+  };
+
+  /**
+   * insertAt の位置に新規シーンを挿入する。
+   * - insertAt = 0: 先頭、insertAt = scenes.length: 末尾、それ以外は scenes[insertAt-1] と scenes[insertAt] の間
+   * - chapter/paragraphIndex は前隣（無ければ後隣）から継承
+   */
+  const insertScene = async (insertAt: number) => {
+    const anchor = scenes[insertAt - 1] ?? scenes[insertAt] ?? null;
+    const newScene: SelfMotivationScene = {
+      sceneId: generateLocalSceneId(),
+      index: insertAt,
+      chapterIndex: anchor?.chapterIndex ?? 0,
+      paragraphIndex: anchor?.paragraphIndex ?? 0,
+      narration: NEW_SCENE_PLACEHOLDER,
+      imagePromptJa: "",
+      imagePromptEn: "",
+      motionPresetId: "auto",
+    };
+    const next = reindex([
+      ...scenes.slice(0, insertAt),
+      newScene,
+      ...scenes.slice(insertAt),
+    ]);
+    setSavingSceneId(newScene.sceneId);
+    setError(null);
+    try {
+      await onScenesChange(next);
+      onSelectScene(newScene.sceneId);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -99,7 +212,7 @@ export function SceneList({
         background: "var(--card)",
         padding: 12,
         display: "grid",
-        gap: 8,
+        gap: 4,
         maxHeight: "calc(100vh - 280px)",
         overflowY: "auto",
       }}
@@ -109,7 +222,7 @@ export function SceneList({
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          padding: "0 4px",
+          padding: "0 4px 4px",
         }}
       >
         <strong style={{ fontSize: 14 }}>シーン ({scenes.length})</strong>
@@ -122,26 +235,86 @@ export function SceneList({
           シーンがまだ展開されていません。Pipeline の「Scenes」ボタンを押してください。
         </p>
       ) : (
-        scenes.map((scene) => (
-          <SceneCard
-            key={scene.sceneId}
-            jobId={jobId}
-            scene={scene}
-            selected={scene.sceneId === selectedSceneId}
-            saving={savingSceneId === scene.sceneId}
-            regenerating={regeneratingSceneId === scene.sceneId}
-            onSelect={() => onSelectScene(scene.sceneId)}
-            onChangeNarration={(v) => updateField(scene.sceneId, "narration", v)}
-            onChangeMotion={(v) =>
-              updateField(scene.sceneId, "motionPresetId", v)
-            }
-            onChangePromptJa={(v) =>
-              updateField(scene.sceneId, "imagePromptJa", v)
-            }
-            onRegenerateImage={(d) => regenerateImage(scene.sceneId, d)}
-            onRemove={() => removeScene(scene.sceneId)}
-          />
-        ))
+        <>
+          <Inserter onInsert={() => insertScene(0)} />
+          {scenes.map((scene, i) => (
+            <div key={scene.sceneId}>
+              <SceneCard
+                jobId={jobId}
+                scene={scene}
+                selected={scene.sceneId === selectedSceneId}
+                saving={savingSceneId === scene.sceneId}
+                regenerating={regeneratingSceneId === scene.sceneId}
+                onSelect={() => onSelectScene(scene.sceneId)}
+                onChangeNarration={(v) =>
+                  updateField(scene.sceneId, "narration", v)
+                }
+                onChangeMotion={(v) =>
+                  updateField(scene.sceneId, "motionPresetId", v)
+                }
+                onChangePromptJa={(v) =>
+                  updateField(scene.sceneId, "imagePromptJa", v)
+                }
+                onRegenerateImage={(d) => regenerateImage(scene.sceneId, d)}
+                onRemove={() => removeScene(scene.sceneId)}
+                onSplit={(a, b) => splitScene(scene.sceneId, a, b)}
+              />
+              <Inserter onInsert={() => insertScene(i + 1)} />
+            </div>
+          ))}
+        </>
+      )}
+    </div>
+  );
+}
+
+interface InserterProps {
+  onInsert: () => void;
+}
+
+function Inserter({ onInsert }: InserterProps) {
+  const [hover, setHover] = useState(false);
+  return (
+    <div
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        height: hover ? 28 : 8,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        transition: "height 120ms",
+        cursor: "pointer",
+      }}
+      onClick={onInsert}
+    >
+      {hover ? (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onInsert();
+          }}
+          style={{
+            fontSize: 11,
+            padding: "2px 10px",
+            border: "1px dashed var(--accent)",
+            borderRadius: 12,
+            background: "var(--card)",
+            color: "var(--accent)",
+            cursor: "pointer",
+          }}
+        >
+          + ここに挿入
+        </button>
+      ) : (
+        <div
+          style={{
+            width: "100%",
+            height: 1,
+            background: "transparent",
+          }}
+        />
       )}
     </div>
   );
@@ -159,10 +332,11 @@ interface SceneCardProps {
   onChangePromptJa: (v: string) => void;
   onRegenerateImage: (userDirection: string) => void;
   onRemove: () => void;
+  onSplit: (firstHalf: string, secondHalf: string) => void;
 }
 
 function SceneCard({
-  jobId,
+  jobId: _jobId,
   scene,
   selected,
   saving,
@@ -173,10 +347,22 @@ function SceneCard({
   onChangePromptJa,
   onRegenerateImage,
   onRemove,
+  onSplit,
 }: SceneCardProps) {
   const imageUrl = scene.imagePath
     ? `/self-motivation/${scene.imagePath}?t=${scene.imageGeneratedAt ?? ""}`
     : null;
+
+  const [splitOpen, setSplitOpen] = useState(false);
+  const [splitFirst, setSplitFirst] = useState("");
+  const [splitSecond, setSplitSecond] = useState("");
+
+  const openSplit = () => {
+    const [a, b] = autoSplitNarration(scene.narration);
+    setSplitFirst(a);
+    setSplitSecond(b);
+    setSplitOpen(true);
+  };
 
   return (
     <div
@@ -331,6 +517,22 @@ function SceneCard({
           type="button"
           onClick={(e) => {
             e.stopPropagation();
+            if (splitOpen) {
+              setSplitOpen(false);
+            } else {
+              openSplit();
+            }
+          }}
+          style={smallBtn}
+          title="このシーンを 2 つに分割"
+        >
+          {splitOpen ? "✕ 分割キャンセル" : "✂ 分割"}
+        </button>
+
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
             if (confirm(`シーン#${scene.index + 1} を削除しますか？`)) {
               onRemove();
             }
@@ -340,6 +542,66 @@ function SceneCard({
           🗑
         </button>
       </div>
+
+      {splitOpen ? (
+        <div
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            border: "1px dashed var(--accent)",
+            borderRadius: 6,
+            padding: 10,
+            display: "grid",
+            gap: 8,
+            background: "rgba(33, 150, 243, 0.04)",
+          }}
+        >
+          <div style={{ fontSize: 12, color: "var(--muted)" }}>
+            前半は元シーンの画像を維持し音声をクリア / 後半は新シーンとして画像も音声もリセットされます。
+          </div>
+          <label style={{ display: "grid", gap: 4, fontSize: 12 }}>
+            <span style={{ color: "var(--muted)" }}>前半</span>
+            <textarea
+              value={splitFirst}
+              onChange={(e) => setSplitFirst(e.target.value)}
+              rows={2}
+              style={splitTextareaStyle}
+            />
+          </label>
+          <label style={{ display: "grid", gap: 4, fontSize: 12 }}>
+            <span style={{ color: "var(--muted)" }}>後半</span>
+            <textarea
+              value={splitSecond}
+              onChange={(e) => setSplitSecond(e.target.value)}
+              rows={2}
+              style={splitTextareaStyle}
+            />
+          </label>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              type="button"
+              onClick={() => {
+                onSplit(splitFirst, splitSecond);
+                setSplitOpen(false);
+              }}
+              disabled={!splitFirst.trim() || !splitSecond.trim()}
+              style={{
+                ...smallBtn,
+                borderColor: "var(--accent)",
+                color: "var(--accent)",
+              }}
+            >
+              分割を確定
+            </button>
+            <button
+              type="button"
+              onClick={() => setSplitOpen(false)}
+              style={smallBtn}
+            >
+              キャンセル
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -352,4 +614,15 @@ const smallBtn: React.CSSProperties = {
   background: "transparent",
   color: "inherit",
   cursor: "pointer",
+};
+
+const splitTextareaStyle: React.CSSProperties = {
+  width: "100%",
+  fontSize: 13,
+  padding: 6,
+  border: "1px solid var(--border)",
+  borderRadius: 4,
+  background: "var(--card)",
+  color: "inherit",
+  resize: "vertical",
 };
