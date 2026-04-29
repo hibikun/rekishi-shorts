@@ -1,6 +1,7 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import fs from "node:fs";
 import { promptPath } from "@rekishi/shared/channel";
+import type { MotionGrammar } from "@rekishi/shared";
 import { config } from "./config.js";
 import type { UkiyoeActionTag } from "./ukiyoe-video-generator.js";
 import type { UkiyoeScript } from "./ukiyoe-script-generator.js";
@@ -11,10 +12,13 @@ export interface UkiyoeSceneSpec {
   durationSec: number;
   /** 静止画生成プロンプト（英語） */
   imagePrompt: string;
-  /** 動画生成プロンプト（英語、動作描写） */
+  /** 動画生成プロンプト（英語、動作描写）。Seedance 送信用 */
   videoPrompt: string;
+  /** 動画生成プロンプト（日本語、動作描写）。Web UI 編集用の素案 */
+  videoPromptJa: string;
   actionTag: UkiyoeActionTag;
   cameraFixed?: boolean;
+  motion?: MotionGrammar;
 }
 
 export interface UkiyoeScenePlan {
@@ -54,8 +58,32 @@ const responseSchema = {
           durationSec: { type: Type.NUMBER },
           imagePrompt: { type: Type.STRING },
           videoPrompt: { type: Type.STRING },
+          videoPromptJa: { type: Type.STRING },
           actionTag: { type: Type.STRING, enum: ACTION_TAGS as unknown as string[] },
           cameraFixed: { type: Type.BOOLEAN },
+          motion: {
+            type: Type.OBJECT,
+            properties: {
+              transitionIn: {
+                type: Type.STRING,
+                enum: ["hard-cut", "swipe-left", "swipe-right", "snap-zoom", "blur-pop", "focus-in"],
+              },
+              transitionOut: {
+                type: Type.STRING,
+                enum: ["none", "whip", "focus-out", "push-away"],
+              },
+              cameraMove: {
+                type: Type.STRING,
+                enum: ["locked", "slow-push", "impact-zoom", "drift", "pull-in"],
+              },
+              energy: { type: Type.STRING, enum: ["low", "mid", "high"] },
+              sfxCue: { type: Type.STRING, enum: ["none", "hit", "whoosh", "pop"] },
+              emphasisWords: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING },
+              },
+            },
+          },
         },
         required: [
           "index",
@@ -63,6 +91,7 @@ const responseSchema = {
           "durationSec",
           "imagePrompt",
           "videoPrompt",
+          "videoPromptJa",
           "actionTag",
         ],
       },
@@ -121,8 +150,10 @@ export async function planUkiyoeScenes(
       durationSec: number;
       imagePrompt: string;
       videoPrompt: string;
+      videoPromptJa?: string;
       actionTag: string;
       cameraFixed?: boolean;
+      motion?: MotionGrammar;
     }>;
   };
 
@@ -140,8 +171,10 @@ export async function planUkiyoeScenes(
       durationSec: s.durationSec,
       imagePrompt: s.imagePrompt,
       videoPrompt: s.videoPrompt,
+      videoPromptJa: s.videoPromptJa ?? "",
       actionTag: s.actionTag as UkiyoeActionTag,
       cameraFixed: s.cameraFixed,
+      motion: s.motion,
     };
   });
 

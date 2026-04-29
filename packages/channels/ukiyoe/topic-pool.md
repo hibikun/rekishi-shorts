@@ -43,6 +43,7 @@ slug は jobId に使われる（英数字とハイフンのみ。例: `ukiyoe-<
 - [ ] `saigo-takamori` 西郷隆盛 江戸城無血開城の1日
 - [ ] `okita-soji` 沖田総司 池田屋で剣を振るった1日
 - [ ] `hijikata-toshizo` 土方歳三 函館 五稜郭で散った最後の1日
+- [✅] `taisei-hokan` 大政奉還と王政復古は別物 — 倒幕を決めた運命の3ヶ月 — ukiyoe-taisei-hokan-2026-04-29 — https://youtube.com/shorts/vNd_grN8K4o
 
 ## 江戸職人・庶民
 

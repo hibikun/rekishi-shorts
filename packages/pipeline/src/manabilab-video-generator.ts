@@ -30,6 +30,7 @@ export interface ManabilabPlanScene {
   narration: string;
   imagePath?: string;
   seedancePrompt?: string;
+  seedancePromptJa?: string;
   seedanceClipPath?: string | null;
   approved: boolean;
 }

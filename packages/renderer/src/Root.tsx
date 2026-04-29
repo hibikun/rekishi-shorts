@@ -5,6 +5,18 @@ import { HistoryShort, type HistoryShortProps } from "./compositions/HistoryShor
 import { RankingShort, type RankingShortProps } from "./compositions/RankingShort";
 import { UkiyoeShort, type UkiyoeShortProps } from "./compositions/UkiyoeShort";
 import { ManabilabShort, type ManabilabShortProps } from "./compositions/ManabilabShort";
+import {
+  MotionShowcase,
+  MOTION_SHOWCASE_DURATION_SEC,
+} from "./compositions/MotionShowcase";
+import {
+  CanvaMotionShowcase,
+  CANVA_MOTION_SHOWCASE_DURATION_SEC,
+} from "./compositions/CanvaMotionShowcase";
+import {
+  GeneticTestStyleIntro,
+  GENETIC_TEST_STYLE_INTRO_DURATION_SEC,
+} from "./compositions/GeneticTestStyleIntro";
 
 const defaultProps: HistoryShortProps = {
   scenes: [],
@@ -235,6 +247,9 @@ const manabilabDefaultProps: ManabilabShortProps = {
 };
 
 const ManabilabShortComponent = ManabilabShort as unknown as React.FC<Record<string, unknown>>;
+const MotionShowcaseComponent = MotionShowcase as unknown as React.FC<Record<string, unknown>>;
+const CanvaMotionShowcaseComponent = CanvaMotionShowcase as unknown as React.FC<Record<string, unknown>>;
+const GeneticTestStyleIntroComponent = GeneticTestStyleIntro as unknown as React.FC<Record<string, unknown>>;
 
 export const Root: React.FC = () => {
   return (
@@ -274,6 +289,30 @@ export const Root: React.FC = () => {
         width={VIDEO_WIDTH}
         height={VIDEO_HEIGHT}
         defaultProps={manabilabDefaultProps as unknown as Record<string, unknown>}
+      />
+      <Composition
+        id="MotionShowcase"
+        component={MotionShowcaseComponent}
+        durationInFrames={Math.ceil(MOTION_SHOWCASE_DURATION_SEC * VIDEO_FPS)}
+        fps={VIDEO_FPS}
+        width={VIDEO_WIDTH}
+        height={VIDEO_HEIGHT}
+      />
+      <Composition
+        id="CanvaMotionShowcase"
+        component={CanvaMotionShowcaseComponent}
+        durationInFrames={Math.ceil(CANVA_MOTION_SHOWCASE_DURATION_SEC * VIDEO_FPS)}
+        fps={VIDEO_FPS}
+        width={VIDEO_WIDTH}
+        height={VIDEO_HEIGHT}
+      />
+      <Composition
+        id="GeneticTestStyleIntro"
+        component={GeneticTestStyleIntroComponent}
+        durationInFrames={Math.ceil(GENETIC_TEST_STYLE_INTRO_DURATION_SEC * VIDEO_FPS)}
+        fps={VIDEO_FPS}
+        width={VIDEO_WIDTH}
+        height={VIDEO_HEIGHT}
       />
     </>
   );

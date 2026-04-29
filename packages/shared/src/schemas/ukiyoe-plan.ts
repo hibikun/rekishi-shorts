@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { CaptionSegmentSchema, CaptionWordSchema } from "./asset";
+import { MotionGrammarSchema } from "./motion";
 
 export const UkiyoeActionTagSchema = z.enum([
   "running_forward",
@@ -23,8 +24,15 @@ export const UkiyoeSceneSchema = z.object({
   videoPath: z.string(),
   imagePrompt: z.string(),
   videoPrompt: z.string(),
+  /**
+   * 日本語版の videoPrompt（編集用）。Web UI で人間が編集する一次入力。
+   * 翻訳ボタン押下時に Gemini で英訳されて videoPrompt にコピーされる。
+   * 既存 plan で未設定の場合は undefined。
+   */
+  videoPromptJa: z.string().optional(),
   actionTag: UkiyoeActionTagSchema,
   cameraFixed: z.boolean().optional(),
+  motion: MotionGrammarSchema.optional(),
 });
 export type UkiyoeScene = z.infer<typeof UkiyoeSceneSchema>;
 

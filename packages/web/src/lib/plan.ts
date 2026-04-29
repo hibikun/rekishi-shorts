@@ -1,5 +1,6 @@
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import type { MotionGrammar } from "@rekishi/shared";
 
 export interface Overlay {
   text: string;
@@ -26,7 +27,14 @@ export interface ImageScene {
   assetKind?: "character" | "broll";
   overlay?: Overlay;
   seedancePrompt: string;
+  /**
+   * 日本語版の seedancePrompt（編集用）。Web UI で人間が編集する一次入力。
+   * 翻訳ボタン押下時に Gemini で英訳されて seedancePrompt にコピーされる。
+   * 既存 plan で未設定の場合は undefined。
+   */
+  seedancePromptJa?: string;
   seedanceClipPath?: string | null;
+  motion?: MotionGrammar;
   approved: boolean;
 }
 
@@ -39,6 +47,7 @@ export interface TitleCardScene {
   narration: string;
   titleCardKind: "method-1" | "method-2" | "spirit-vs-science";
   methodName?: string;
+  motion?: MotionGrammar;
   approved: boolean;
 }
 

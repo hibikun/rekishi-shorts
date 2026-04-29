@@ -10,6 +10,7 @@ import {
   UKIYOE_VIDEO_FPS,
   VIDEO_FPS,
   type CaptionSegment,
+  type MotionGrammar,
   type RankingPlan,
   type RenderPlan,
   type UkiyoePlan,
@@ -159,6 +160,12 @@ export async function renderUkiyoeShort(
   const cheerSfxSrc = fs.existsSync(cheerSfxLocalPath)
     ? stageAsset(cheerSfxLocalPath, bundleDir, `ukiyoe-cheer-sfx${path.extname(cheerSfxLocalPath)}`)
     : "";
+  const hitSfxLocalPath = path.resolve(__dirname, "../../../data/sfx/wadaiko.mp3");
+  const hitSfxSrc = fs.existsSync(hitSfxLocalPath)
+    ? stageAsset(hitSfxLocalPath, bundleDir, `ukiyoe-hit-sfx${path.extname(hitSfxLocalPath)}`)
+    : "";
+  const popSfxSrc = openingSfxSrc;
+  const whooshSfxSrc = openingSfxSrc;
 
   const durationInFrames = Math.max(
     1,
@@ -174,6 +181,9 @@ export async function renderUkiyoeShort(
     keyTerms: plan.keyTerms,
     openingSfxSrc,
     cheerSfxSrc,
+    hitSfxSrc,
+    popSfxSrc,
+    whooshSfxSrc,
   };
 
   const composition = await selectComposition({
@@ -329,6 +339,7 @@ interface ManabilabPlanScene {
     color?: "red" | "white" | "yellow" | "pink";
     fontSize?: number;
   };
+  motion?: MotionGrammar;
 }
 
 interface ManabilabPlanLite {
@@ -467,6 +478,8 @@ export async function renderManabilabShort(opts: {
       src: stagedImage,
       videoSrc: stagedVideo || undefined,
       durationSec,
+      narration: scene.narration,
+      motion: scene.motion,
     };
   });
 
@@ -483,6 +496,14 @@ export async function renderManabilabShort(opts: {
   const bgmSrc = fs.existsSync(bgmAbs)
     ? stageAsset(bgmAbs, bundleDir, "manabilab-bgm.mp3")
     : "";
+  const hitSfxLocalPath = path.resolve(__dirname, "../../../data/sfx/wadaiko.mp3");
+  const hitSfxSrc = fs.existsSync(hitSfxLocalPath)
+    ? stageAsset(hitSfxLocalPath, bundleDir, `manabilab-hit-sfx${path.extname(hitSfxLocalPath)}`)
+    : "";
+  const popSfxLocalPath = path.resolve(__dirname, "../../../data/sfx/hyoshigi.mp3");
+  const popSfxSrc = fs.existsSync(popSfxLocalPath)
+    ? stageAsset(popSfxLocalPath, bundleDir, `manabilab-pop-sfx${path.extname(popSfxLocalPath)}`)
+    : "";
 
   const captionSegments = buildManabilabCaptionSegments(plan.scenes);
 
@@ -493,6 +514,9 @@ export async function renderManabilabShort(opts: {
     bgmSrc,
     bgmVolume: 0.05,
     captionSegments,
+    hitSfxSrc,
+    popSfxSrc,
+    whooshSfxSrc: popSfxSrc,
   };
 
   const durationInFrames = Math.max(

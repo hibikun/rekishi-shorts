@@ -1,5 +1,34 @@
 export { generatePlan, getJobOutputDir } from "./orchestrator.js";
 export { generateScript } from "./script-generator.js";
+export { generateResearch } from "./research-generator.js";
+export type { ResearchResult, ResearchSource } from "./research-generator.js";
+export { generateManabilabCanvaScript } from "./manabilab-canva-script-generator.js";
+export type { ManabilabCanvaScriptResult } from "./manabilab-canva-script-generator.js";
+export { expandScriptToScenes } from "./manabilab-canva-scene-expander.js";
+export {
+  generateImagePromptForScene,
+  VARIANT_DIRECTIVES,
+  DEFAULT_VARIANT_COUNT,
+} from "./manabilab-canva-image-prompt-generator.js";
+export type {
+  ImagePromptResult,
+  GenerateImagePromptOptions,
+} from "./manabilab-canva-image-prompt-generator.js";
+export { regenerateCharacterBase } from "./manabilab-canva-character-base-generator.js";
+export type { RegenerateCharacterBaseResult } from "./manabilab-canva-character-base-generator.js";
+export { generateAnimationPromptForScene } from "./manabilab-canva-animation-prompt-generator.js";
+export type { AnimationPromptResult } from "./manabilab-canva-animation-prompt-generator.js";
+export { generateAnimationForScene } from "./manabilab-canva-video-generator.js";
+export type {
+  GenerateAnimationOptions,
+  GenerateAnimationResult,
+} from "./manabilab-canva-video-generator.js";
+export { generateSceneTts } from "./manabilab-canva-tts.js";
+export type {
+  GenerateSceneTtsOptions,
+  GenerateSceneTtsResult,
+} from "./manabilab-canva-tts.js";
+export { ffmpegConcatWavs } from "./audio-concat.js";
 export { planScenes } from "./scene-planner.js";
 export { resolveSceneAssets } from "./asset-resolver.js";
 export { synthesizeNarration } from "./tts-generator.js";

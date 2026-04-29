@@ -35,8 +35,10 @@ export function buildUkiyoePlan(input: BuildUkiyoePlanInput): UkiyoePlan {
       videoPath: path.join(input.videosDir, `scene-${token}.mp4`),
       imagePrompt: s.imagePrompt,
       videoPrompt: s.videoPrompt,
+      videoPromptJa: s.videoPromptJa || undefined,
       actionTag: s.actionTag,
       cameraFixed: s.cameraFixed,
+      motion: s.motion,
     };
   });
 

@@ -1,11 +1,14 @@
 import React from "react";
 import { AbsoluteFill, Img, OffthreadVideo, Sequence, interpolate, useCurrentFrame, useVideoConfig } from "remotion";
-import type { CaptionSegment } from "@rekishi/shared";
+import type { CaptionSegment, MotionGrammar } from "@rekishi/shared";
 import { TitleCard, type TitleCardKind } from "../components/TitleCard";
 import { TextOverlay, type TextOverlayColor, type TextOverlayPosition } from "../components/TextOverlay";
 import { Caption } from "../components/Caption";
 import { NarrationAudio } from "../components/NarrationAudio";
 import { BgmAudio } from "../components/BgmAudio";
+import { SfxAudio } from "../components/SfxAudio";
+import { SceneMotion } from "../components/SceneMotion";
+import { resolveMotionGrammar } from "../motion";
 
 /**
  * 学びラボ ショート動画 Composition (D1: 疎通確認用最小構成)。
@@ -23,6 +26,7 @@ export interface ManabilabImageScene {
   kind: "image";
   /** 元画像のパス (Remotion staticFile)。Seedance に渡した入力。videoSrc 未指定時のフォールバック表示にも使う */
   src: string;
+  narration?: string;
   /** Seedance img2video で生成した動画クリップ。あれば優先表示（wiggle/Ken Burns はオフ） */
   videoSrc?: string;
   durationSec: number;
@@ -50,6 +54,7 @@ export interface ManabilabImageScene {
         /** 微小回転。default true。0.4° 程度の傾き揺れを足す */
         rotate?: boolean;
       };
+  motion?: MotionGrammar;
 }
 
 export interface ManabilabTitleCardScene {
@@ -57,6 +62,8 @@ export interface ManabilabTitleCardScene {
   cardKind: TitleCardKind;
   methodName?: string;
   durationSec: number;
+  narration?: string;
+  motion?: MotionGrammar;
 }
 
 export type ManabilabScene = ManabilabImageScene | ManabilabTitleCardScene;
@@ -74,6 +81,9 @@ export interface ManabilabShortProps {
   bgmSrc?: string;
   /** BGM のベース音量 (0-1)。default 0.18 */
   bgmVolume?: number;
+  hitSfxSrc?: string;
+  popSfxSrc?: string;
+  whooshSfxSrc?: string;
 }
 
 const KEN_BURNS_PATTERNS = [
@@ -171,6 +181,9 @@ export const ManabilabShort: React.FC<ManabilabShortProps> = ({
   captionSegments,
   bgmSrc,
   bgmVolume,
+  hitSfxSrc,
+  popSfxSrc,
+  whooshSfxSrc,
 }) => {
   const { fps } = useVideoConfig();
 
@@ -179,53 +192,82 @@ export const ManabilabShort: React.FC<ManabilabShortProps> = ({
     const startFrame = Math.round(cursor * fps);
     const durationFrames = Math.max(1, Math.round(scene.durationSec * fps));
     cursor += scene.durationSec;
-    return { scene, startFrame, durationFrames, index: i };
+    const motion = resolveMotionGrammar(scene.motion, {
+      index: i,
+      totalScenes: scenes.length,
+      narration: "narration" in scene ? scene.narration : undefined,
+    });
+    return { scene, startFrame, durationFrames, index: i, motion };
   });
+  const motionKeyTerms = [
+    ...new Set(layout.flatMap(({ motion }) => motion.emphasisWords)),
+  ];
 
   return (
     <AbsoluteFill style={{ backgroundColor }}>
-      {layout.map(({ scene, startFrame, durationFrames, index }) => (
+      {layout.map(({ scene, startFrame, durationFrames, index, motion }) => (
         <Sequence
           key={index}
           from={startFrame}
           durationInFrames={durationFrames}
           name={`scene-${index}-${scene.kind}`}
         >
-          {scene.kind === "image" ? (
-            <>
-              {scene.videoSrc ? (
-                <VideoSceneView src={scene.videoSrc} />
-              ) : (
-                <ImageSceneView
-                  src={scene.src}
-                  durationFrames={durationFrames}
-                  patternIndex={index}
-                  kenBurns={scene.kenBurns ?? true}
-                  wiggle={scene.wiggle ?? false}
-                />
-              )}
-              {scene.overlay && (
-                <TextOverlay
-                  text={scene.overlay.text}
-                  position={scene.overlay.position}
-                  color={scene.overlay.color}
-                  fontSize={scene.overlay.fontSize}
-                />
-              )}
-            </>
-          ) : (
-            <TitleCard kind={scene.cardKind} methodName={scene.methodName} />
-          )}
+          <SceneMotion durationFrames={durationFrames} motion={motion}>
+            {scene.kind === "image" ? (
+              <>
+                {scene.videoSrc ? (
+                  <VideoSceneView src={scene.videoSrc} />
+                ) : (
+                  <ImageSceneView
+                    src={scene.src}
+                    durationFrames={durationFrames}
+                    patternIndex={index}
+                    kenBurns={scene.kenBurns ?? true}
+                    wiggle={scene.wiggle ?? false}
+                  />
+                )}
+                {scene.overlay && (
+                  <TextOverlay
+                    text={scene.overlay.text}
+                    position={scene.overlay.position}
+                    color={scene.overlay.color}
+                    fontSize={scene.overlay.fontSize}
+                  />
+                )}
+              </>
+            ) : (
+              <TitleCard kind={scene.cardKind} methodName={scene.methodName} />
+            )}
+          </SceneMotion>
         </Sequence>
       ))}
 
       {captionSegments && captionSegments.length > 0 && (
-        <Caption captionSegments={captionSegments} />
+        <Caption captionSegments={captionSegments} keyTerms={motionKeyTerms} />
       )}
       {audioSrc && <NarrationAudio src={audioSrc} />}
       {bgmSrc && (
         <BgmAudio src={bgmSrc} volume={bgmVolume} totalDurationSec={totalDurationSec} />
       )}
+      {layout.map(({ startFrame, motion, index }) => {
+        const src =
+          motion.sfxCue === "hit"
+            ? hitSfxSrc
+            : motion.sfxCue === "pop"
+              ? popSfxSrc
+              : motion.sfxCue === "whoosh"
+                ? whooshSfxSrc
+                : undefined;
+        if (!src) return null;
+        return (
+          <SfxAudio
+            key={`motion-sfx-${index}`}
+            src={src}
+            startFrame={startFrame}
+            volume={motion.energy === "high" ? 0.42 : 0.26}
+          />
+        );
+      })}
     </AbsoluteFill>
   );
 };

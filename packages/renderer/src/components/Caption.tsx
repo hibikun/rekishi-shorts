@@ -42,15 +42,21 @@ export const Caption: React.FC<CaptionProps> = ({
 
   const text = active?.text.trim() ?? "";
   const keyTermsKey = keyTerms.join("|");
+  const activeFrame = active
+    ? Math.max(0, Math.round((currentSec - active.startSec) * fps))
+    : 0;
 
   const elements = React.useMemo(
-    () => (text.length === 0 ? [] : buildElements(text, keyTerms)),
-    [text, keyTermsKey],
+    () => (text.length === 0 ? [] : buildElements(text, keyTerms, activeFrame)),
+    [text, keyTermsKey, activeFrame],
   );
 
   if (!active || elements.length === 0) return null;
 
   const isUkiyoe = variant === "ukiyoe";
+  const popScale = interpolateCaption(activeFrame, [0, 3, 8], [0.9, 1.08, 1]);
+  const popOpacity = interpolateCaption(activeFrame, [0, 3], [0, 1]);
+  const popY = interpolateCaption(activeFrame, [0, 6], [18, 0]);
 
   const innerStyle: React.CSSProperties = isUkiyoe
     ? {
@@ -99,7 +105,16 @@ export const Caption: React.FC<CaptionProps> = ({
         zIndex: 10,
       }}
     >
-      <div style={innerStyle}>{elements}</div>
+      <div
+        style={{
+          ...innerStyle,
+          opacity: popOpacity,
+          transform: `translateY(${popY}px) scale(${popScale})`,
+          transformOrigin: "center center",
+        }}
+      >
+        {elements}
+      </div>
     </div>
   );
 };
@@ -142,7 +157,11 @@ function highlightKeyTerms(text: string, keyTerms: string[]): TextPart[] {
   return parts;
 }
 
-function buildElements(text: string, keyTerms: string[]): React.ReactNode[] {
+function buildElements(
+  text: string,
+  keyTerms: string[],
+  activeFrame: number,
+): React.ReactNode[] {
   const parts = highlightKeyTerms(text, keyTerms);
   const breakOffsets = new Set(parser.parseBoundaries(text));
 
@@ -156,26 +175,60 @@ function buildElements(text: string, keyTerms: string[]): React.ReactNode[] {
       buf += ch;
       offset += ch.length;
       if (breakOffsets.has(offset) && offset < text.length) {
-        nodes.push(renderChunk(buf, part.isKeyTerm, keyIdx++));
+        nodes.push(renderChunk(buf, part.isKeyTerm, keyIdx++, activeFrame));
         nodes.push(<wbr key={`wbr-${keyIdx++}`} />);
         buf = "";
       }
     }
     if (buf.length > 0) {
-      nodes.push(renderChunk(buf, part.isKeyTerm, keyIdx++));
+      nodes.push(renderChunk(buf, part.isKeyTerm, keyIdx++, activeFrame));
     }
   }
 
   return nodes;
 }
 
-function renderChunk(text: string, isKeyTerm: boolean, key: number): React.ReactNode {
+function renderChunk(
+  text: string,
+  isKeyTerm: boolean,
+  key: number,
+  activeFrame: number,
+): React.ReactNode {
   if (isKeyTerm) {
+    const pulse = interpolateCaption(activeFrame, [0, 4, 10], [0.94, 1.15, 1]);
     return (
-      <span key={`kt-${key}`} style={{ color: KEY_TERM_COLOR }}>
+      <span
+        key={`kt-${key}`}
+        style={{
+          color: KEY_TERM_COLOR,
+          display: "inline-block",
+          transform: `scale(${pulse})`,
+          transformOrigin: "center center",
+        }}
+      >
         {text}
       </span>
     );
   }
   return <React.Fragment key={`t-${key}`}>{text}</React.Fragment>;
+}
+
+function interpolateCaption(
+  frame: number,
+  input: number[],
+  output: number[],
+): number {
+  if (input.length !== output.length) return output[output.length - 1] ?? 0;
+  if (frame <= input[0]!) return output[0]!;
+  for (let i = 1; i < input.length; i++) {
+    if (frame <= input[i]!) {
+      const fromFrame = input[i - 1]!;
+      const toFrame = input[i]!;
+      const from = output[i - 1]!;
+      const to = output[i]!;
+      const t = (frame - fromFrame) / Math.max(1, toFrame - fromFrame);
+      return from + (to - from) * t;
+    }
+  }
+  return output[output.length - 1]!;
 }
