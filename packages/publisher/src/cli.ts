@@ -260,6 +260,120 @@ program
   });
 
 program
+  .command("upload-file")
+  .description(
+    "動画ファイルとメタ JSON を直接 YouTube にアップロード（任意のチャンネル / 任意の動画）。" +
+      "RenderPlan ベースの youtube コマンドとは独立した汎用 CLI。",
+  )
+  .requiredOption("--video <path>", "動画ファイルの絶対 or 相対パス")
+  .requiredOption("--meta <path>", "メタ JSON ファイルの絶対 or 相対パス")
+  .option("--privacy <status>", "公開状態を上書き (public | unlisted | private)")
+  .option(
+    "--publish-at <iso>",
+    "予約投稿の公開時刻 (ISO 8601, 未来時刻)。指定すると private + その時刻に YouTube 側で公開",
+  )
+  .option(
+    "--upload-id <id>",
+    "アップロードログに記録する識別子（既定: メタ JSON のファイル名から自動生成）",
+  )
+  .option("--force", "同一 upload-id の投稿履歴があっても続行", false)
+  .option("--dry-run", "送信せずペイロードだけ表示", false)
+  .addOption(channelOption())
+  .action(async (opts) => {
+    const videoPath = path.resolve(String(opts.video));
+    const metaPath = path.resolve(String(opts.meta));
+
+    try {
+      await fs.access(videoPath);
+    } catch {
+      log(chalk.red(`❌ 動画ファイルが見つかりません: ${videoPath}`));
+      process.exit(1);
+    }
+    try {
+      await fs.access(metaPath);
+    } catch {
+      log(chalk.red(`❌ メタ JSON が見つかりません: ${metaPath}`));
+      process.exit(1);
+    }
+
+    const baseMeta = await readMetaJson(metaPath);
+
+    const uploadId =
+      typeof opts.uploadId === "string" && opts.uploadId.length > 0
+        ? opts.uploadId
+        : path.basename(metaPath).replace(/-meta\.json$/, "").replace(/\.json$/, "");
+
+    log(chalk.bold(`\n🚀 YouTube upload (file mode): ${uploadId}\n`));
+
+    const existing = await hasBeenUploaded(uploadId);
+    if (existing && !opts.force) {
+      log(chalk.yellow(`⚠ 既に投稿済みです: ${existing.url} (${existing.uploadedAt})`));
+      log(chalk.yellow(`   再投稿するなら --force を付けてください。`));
+      process.exit(1);
+    }
+
+    let publishAtIso: string | undefined;
+    if (opts.publishAt) {
+      const dt = new Date(String(opts.publishAt));
+      if (Number.isNaN(dt.getTime())) {
+        log(chalk.red(`❌ --publish-at の形式が不正です: "${opts.publishAt}"`));
+        process.exit(1);
+      }
+      if (dt.getTime() <= Date.now()) {
+        log(chalk.red(`❌ --publish-at は未来時刻である必要があります: ${dt.toISOString()}`));
+        process.exit(1);
+      }
+      publishAtIso = dt.toISOString();
+    }
+
+    const overrides: Partial<YouTubeMetadata> = {};
+    if (opts.privacy) overrides.privacyStatus = opts.privacy as YouTubeMetadata["privacyStatus"];
+    if (publishAtIso) overrides.publishAt = publishAtIso;
+    const finalMetadata: YouTubeMetadata =
+      Object.keys(overrides).length > 0
+        ? YouTubeMetadataSchema.parse({ ...baseMeta, ...overrides })
+        : baseMeta;
+
+    log(chalk.dim(`   video: ${videoPath}`));
+    log(chalk.dim(`   meta:  ${metaPath}`));
+    log(chalk.dim(`   title: ${finalMetadata.title}`));
+    if (finalMetadata.publishAt) {
+      log(chalk.dim(`   privacy: private (scheduled)`));
+      log(
+        chalk.dim(
+          `   publishAt: ${finalMetadata.publishAt} (${new Date(finalMetadata.publishAt).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })} JST)`,
+        ),
+      );
+    } else {
+      log(chalk.dim(`   privacy: ${finalMetadata.privacyStatus}`));
+    }
+    log(chalk.dim(`   tags: ${finalMetadata.tags.length} 個 (${finalMetadata.tags.join(", ")})`));
+
+    if (opts.dryRun) {
+      log(chalk.yellow("\n--dry-run 指定。送信しません。"));
+      console.log(JSON.stringify(finalMetadata, null, 2));
+      return;
+    }
+
+    try {
+      const result = await uploadToYouTube({ videoPath, metadata: finalMetadata });
+      await appendUploadLog({
+        jobId: uploadId,
+        videoId: result.videoId,
+        url: result.url,
+        uploadedAt: result.uploadedAt,
+        privacy: finalMetadata.privacyStatus,
+        title: finalMetadata.title,
+      });
+      log(chalk.green(`\n✅ 完了: ${result.url}`));
+    } catch (err) {
+      log(chalk.red("\n❌ アップロード失敗"));
+      log(chalk.red(`   ${formatUploadError(err)}`));
+      process.exit(1);
+    }
+  });
+
+program
   .command("stats")
   .description("アップロード済み動画の実績データ（統計＋分析指標）を取得して JSONL に追記")
   .option("--only <jobId>", "特定の jobId だけ取得")
