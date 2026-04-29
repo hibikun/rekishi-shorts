@@ -15,6 +15,7 @@ export const maxDuration = 600;
 interface SceneOverride {
   index: number;
   videoPrompt?: string;
+  videoPromptJa?: string;
   cameraFixed?: boolean;
 }
 

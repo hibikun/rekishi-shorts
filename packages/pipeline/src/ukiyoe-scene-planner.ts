@@ -11,8 +11,10 @@ export interface UkiyoeSceneSpec {
   durationSec: number;
   /** 静止画生成プロンプト（英語） */
   imagePrompt: string;
-  /** 動画生成プロンプト（英語、動作描写） */
+  /** 動画生成プロンプト（英語、動作描写）。Seedance 送信用 */
   videoPrompt: string;
+  /** 動画生成プロンプト（日本語、動作描写）。Web UI 編集用の素案 */
+  videoPromptJa: string;
   actionTag: UkiyoeActionTag;
   cameraFixed?: boolean;
 }
@@ -54,6 +56,7 @@ const responseSchema = {
           durationSec: { type: Type.NUMBER },
           imagePrompt: { type: Type.STRING },
           videoPrompt: { type: Type.STRING },
+          videoPromptJa: { type: Type.STRING },
           actionTag: { type: Type.STRING, enum: ACTION_TAGS as unknown as string[] },
           cameraFixed: { type: Type.BOOLEAN },
         },
@@ -63,6 +66,7 @@ const responseSchema = {
           "durationSec",
           "imagePrompt",
           "videoPrompt",
+          "videoPromptJa",
           "actionTag",
         ],
       },
@@ -121,6 +125,7 @@ export async function planUkiyoeScenes(
       durationSec: number;
       imagePrompt: string;
       videoPrompt: string;
+      videoPromptJa?: string;
       actionTag: string;
       cameraFixed?: boolean;
     }>;
@@ -140,6 +145,7 @@ export async function planUkiyoeScenes(
       durationSec: s.durationSec,
       imagePrompt: s.imagePrompt,
       videoPrompt: s.videoPrompt,
+      videoPromptJa: s.videoPromptJa ?? "",
       actionTag: s.actionTag as UkiyoeActionTag,
       cameraFixed: s.cameraFixed,
     };

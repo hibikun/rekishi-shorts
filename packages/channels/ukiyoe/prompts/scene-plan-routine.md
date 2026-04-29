@@ -41,6 +41,10 @@
 - 浮世絵で「動かせる」絵を選ぶ。座像／無地背景／硬直した構図は不可
 - `imagePrompt` は英語、被写体・構図・周囲の動かせる要素（雲・煙・波・雷・旗・群衆）を 1〜2 文で
 - `videoPrompt` は英語、**2〜3 文で具体的に書く**。Seedance Lite は短い prompt だと汎用的な動きになるので、シーン固有の細部（誰の何がどう動くか、身体・衣服・髪・小道具の挙動、背景要素の連動、煙・水・布などの微細な動き、表情の変化）を盛り込む。**カメラ運動の語（push-in / pan / zoom / scenery passes）は書かない**（カメラ方針は別途制御するため、prompt 側で指定すると競合する）
+- `videoPromptJa` は `videoPrompt` の**日本語版**。後で人間が Web UI 上で編集してから再翻訳する素案として使う。
+  - 直訳ではなく自然な日本語の動作描写で書く（例: 「黒髪が風になびき、長い袖が後ろへ翻る」）
+  - 2〜3 文、`videoPrompt` と同じ動作・要素を網羅する
+  - カメラ運動の語は書かない（英語版と同じルール）
 - 各シーン `durationSec` は 5 固定
 - `cameraFixed`: 大きく動く動作なら false、繊細な動きなら true（迷ったら省略）
 
@@ -67,6 +71,7 @@
       "durationSec": 5,
       "imagePrompt": "A barefoot Edo-period messenger sprints along a forested mountain road, banners fluttering, mist rising.",
       "videoPrompt": "The messenger sprints forward with rhythmic strides, his bare feet slapping the dirt road. The banner across his back whips and flutters in the wind. Loose hair strands fly and the long sleeves of his jacket snap behind him as he runs.",
+      "videoPromptJa": "飛脚が裸足で力強く駆け抜け、土の街道を踏みしめる。背中の旗指物が風を孕んで激しくはためき、結ばれた髪と長い袖が後ろへ翻る。",
       "actionTag": "running_forward",
       "cameraFixed": false
     }

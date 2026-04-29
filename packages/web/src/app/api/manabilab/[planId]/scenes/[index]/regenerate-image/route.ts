@@ -10,7 +10,7 @@ import {
   repoRoot,
   savePlan,
 } from "@/lib/plan";
-import { deriveSeedancePrompt } from "@/lib/scene-prompts";
+import { deriveBilingualSeedancePrompt } from "@/lib/scene-prompts";
 
 /** キャラ参照画像が見つからない時に使う標準テンプレート（最も中立的なヒーロー立ちポーズ） */
 const CHARACTER_FALLBACK_REL =
@@ -152,9 +152,9 @@ Style: clean illustration, pink/grey palette consistent with a flat 2D education
     );
   }
 
-  // 新しい画像に合わせた Seedance プロンプトを Gemini で自動派生。
+  // 新しい画像に合わせた Seedance プロンプトを Gemini で bilingual 派生。
   // 失敗してもユーザー操作を止めない（既存プロンプト維持 → 後から手動編集可能）。
-  const newSeedancePrompt = await deriveSeedancePrompt({
+  const derived = await deriveBilingualSeedancePrompt({
     instruction,
     beat: scene.beat,
     narration: scene.narration,
@@ -175,8 +175,9 @@ Style: clean illustration, pink/grey palette consistent with a flat 2D education
     instruction,
     prompt,
     referenceSource,
-    seedancePrompt: newSeedancePrompt ?? scene.seedancePrompt,
-    seedancePromptDerived: newSeedancePrompt !== null,
+    seedancePrompt: derived?.en ?? scene.seedancePrompt,
+    seedancePromptJa: derived?.ja ?? scene.seedancePromptJa,
+    seedancePromptDerived: derived !== null,
     overlay: scene.overlay ?? null,
     generatedAt: new Date().toISOString(),
   };
@@ -185,8 +186,9 @@ Style: clean illustration, pink/grey palette consistent with a flat 2D education
   // plan を更新（assetKind を確実に保存しておく — 次回以降の再生成で path 推論に頼らないため）
   scene.imagePath = newRelPath;
   scene.assetKind = assetKind;
-  if (newSeedancePrompt) {
-    scene.seedancePrompt = newSeedancePrompt;
+  if (derived) {
+    scene.seedancePrompt = derived.en;
+    scene.seedancePromptJa = derived.ja;
   }
   await savePlan("manabilab", planId, plan);
 
@@ -199,7 +201,8 @@ Style: clean illustration, pink/grey palette consistent with a flat 2D education
     prompt,
     usedReference: useReference,
     referenceSource,
-    seedancePrompt: newSeedancePrompt ?? scene.seedancePrompt,
-    seedancePromptDerived: newSeedancePrompt !== null,
+    seedancePrompt: derived?.en ?? scene.seedancePrompt,
+    seedancePromptJa: derived?.ja ?? scene.seedancePromptJa,
+    seedancePromptDerived: derived !== null,
   });
 }

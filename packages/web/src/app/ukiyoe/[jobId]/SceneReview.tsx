@@ -40,9 +40,20 @@ interface GenerateApiResult {
 }
 
 interface SceneState {
-  videoPrompt: string;
+  videoPromptJa: string;
+  videoPromptEn: string;
+  /** Ja を編集したが英訳ボタン未押下＝ En が古い可能性あり */
+  videoPromptDirty: boolean;
   cameraFixed: boolean | undefined;
   approved: boolean;
+}
+
+interface TranslateApiResult {
+  ok: boolean;
+  sceneIndex?: number;
+  en?: string;
+  ja?: string;
+  error?: string;
 }
 
 const ACTION_TAG_LABEL: Record<string, string> = {
@@ -80,7 +91,9 @@ export function SceneReview({
     const init: Record<number, SceneState> = {};
     for (const { spec } of initialScenes) {
       init[spec.index] = {
-        videoPrompt: spec.videoPrompt,
+        videoPromptJa: spec.videoPromptJa ?? "",
+        videoPromptEn: spec.videoPrompt,
+        videoPromptDirty: false,
         cameraFixed: spec.cameraFixed,
         approved: false,
       };
@@ -90,6 +103,11 @@ export function SceneReview({
   const [generating, setGenerating] = useState(false);
   const [genResult, setGenResult] = useState<GenerateApiResult | null>(null);
   const [videoCacheBust, setVideoCacheBust] = useState<number>(0);
+  const [translatingScene, setTranslatingScene] = useState<number | null>(null);
+  const [translateError, setTranslateError] = useState<{
+    index: number;
+    message: string;
+  } | null>(null);
 
   // 台本編集 state
   const [editorOpen, setEditorOpen] = useState(false);
@@ -126,6 +144,10 @@ export function SceneReview({
     [sceneState],
   );
   const allApproved = approvedCount === totalScenes;
+  const dirtyCount = useMemo(
+    () => Object.values(sceneState).filter((s) => s.videoPromptDirty).length,
+    [sceneState],
+  );
   const totalEstimatedUsd = useMemo(
     // 720p 5s で約 $0.027/scene。事前見積もり用の概算。
     () => totalScenes * 0.027,
@@ -143,10 +165,51 @@ export function SceneReview({
     setSceneState((prev) => {
       const next = { ...prev };
       for (const i of Object.keys(next)) {
-        next[Number(i)] = { ...next[Number(i)]!, approved: true };
+        const cur = next[Number(i)]!;
+        // dirty な行は承認しない（未翻訳の Ja で Seedance を呼ぶ事故を防ぐ）
+        if (cur.videoPromptDirty) continue;
+        next[Number(i)] = { ...cur, approved: true };
       }
       return next;
     });
+  };
+
+  const handleTranslate = async (sceneIndex: number) => {
+    const cur = sceneState[sceneIndex];
+    if (!cur) return;
+    const ja = cur.videoPromptJa.trim();
+    if (!ja) {
+      setTranslateError({ index: sceneIndex, message: "日本語を入力してください" });
+      return;
+    }
+    setTranslateError(null);
+    setTranslatingScene(sceneIndex);
+    try {
+      const res = await fetch(`/api/ukiyoe/${jobId}/translate-video-prompt`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ index: sceneIndex, ja }),
+      });
+      const data = (await res.json()) as TranslateApiResult;
+      if (!data.ok || !data.en) {
+        setTranslateError({
+          index: sceneIndex,
+          message: data.error ?? "英訳に失敗しました",
+        });
+        return;
+      }
+      updateScene(sceneIndex, {
+        videoPromptEn: data.en,
+        videoPromptDirty: false,
+      });
+    } catch (err) {
+      setTranslateError({
+        index: sceneIndex,
+        message: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setTranslatingScene(null);
+    }
   };
 
   const handleSaveAndRegenerate = async () => {
@@ -200,6 +263,14 @@ export function SceneReview({
   };
 
   const handleGenerate = async (mode: "dry-run" | "exec") => {
+    if (dirtyCount > 0) {
+      const skip = window.confirm(
+        `${dirtyCount} シーンに未翻訳の日本語編集があります。\n` +
+          `（このまま実行すると古い英語プロンプトで Seedance が呼ばれます）\n\n` +
+          `OK: そのまま続行 / キャンセル: 中止して英訳ボタンを押す`,
+      );
+      if (!skip) return;
+    }
     if (mode === "exec") {
       const ok = window.confirm(
         `本実行します。Seedance Lite に ${totalScenes} シーン送信し、約 $${totalEstimatedUsd.toFixed(2)} の課金が発生します。続行しますか？`,
@@ -216,7 +287,8 @@ export function SceneReview({
           dryRun: mode === "dry-run",
           scenes: initialScenes.map(({ spec }) => ({
             index: spec.index,
-            videoPrompt: sceneState[spec.index]?.videoPrompt ?? spec.videoPrompt,
+            videoPrompt:
+              sceneState[spec.index]?.videoPromptEn ?? spec.videoPrompt,
             cameraFixed: sceneState[spec.index]?.cameraFixed ?? spec.cameraFixed,
           })),
         }),
@@ -396,7 +468,7 @@ export function SceneReview({
               <th style={th}>ナレーション / Action</th>
               <th style={th}>元画像</th>
               <th style={{ ...th, width: 220 }}>image prompt</th>
-              <th style={{ ...th, width: 320 }}>video prompt（編集可）</th>
+              <th style={{ ...th, width: 360 }}>video prompt（日本語で編集）</th>
               <th style={{ ...th, width: 100, textAlign: "center" }}>カメラ</th>
               <th style={{ ...th, width: 80, textAlign: "center" }}>OK</th>
             </tr>
@@ -457,21 +529,122 @@ export function SceneReview({
                   </td>
                   <td style={td}>
                     <textarea
-                      value={state.videoPrompt}
+                      value={state.videoPromptJa}
                       onChange={(e) =>
-                        updateScene(spec.index, { videoPrompt: e.target.value })
+                        updateScene(spec.index, {
+                          videoPromptJa: e.target.value,
+                          videoPromptDirty: true,
+                          // 未翻訳の Ja で承認されないよう、編集時に approved を外す
+                          approved: false,
+                        })
                       }
+                      placeholder="動作描写を日本語で入力（例: 飛脚が裸足で街道を駆け、旗指物が風にはためく…）"
                       style={{
                         width: "100%",
-                        minHeight: 100,
+                        minHeight: 90,
                         padding: 8,
                         fontSize: 12,
                         fontFamily: "inherit",
-                        border: "1px solid var(--border)",
+                        border: state.videoPromptDirty
+                          ? "1px solid #dc2626"
+                          : "1px solid var(--border)",
                         borderRadius: 4,
                         resize: "vertical",
+                        boxSizing: "border-box",
                       }}
                     />
+                    <div
+                      style={{
+                        marginTop: 6,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                      }}
+                    >
+                      <button
+                        onClick={() => handleTranslate(spec.index)}
+                        disabled={
+                          translatingScene !== null ||
+                          !state.videoPromptJa.trim()
+                        }
+                        style={{
+                          background:
+                            translatingScene === spec.index
+                              ? "#e5e7eb"
+                              : state.videoPromptDirty
+                                ? "var(--accent)"
+                                : "#fff",
+                          color:
+                            state.videoPromptDirty &&
+                            translatingScene !== spec.index
+                              ? "#fff"
+                              : "var(--accent)",
+                          border: "1px solid var(--accent)",
+                          padding: "6px 10px",
+                          borderRadius: 4,
+                          fontSize: 11,
+                          fontWeight: 700,
+                          cursor:
+                            translatingScene !== null ||
+                            !state.videoPromptJa.trim()
+                              ? "not-allowed"
+                              : "pointer",
+                          opacity:
+                            translatingScene !== null &&
+                            translatingScene !== spec.index
+                              ? 0.5
+                              : 1,
+                        }}
+                      >
+                        {translatingScene === spec.index
+                          ? "🌐 英訳中..."
+                          : "🌐 英訳して反映"}
+                      </button>
+                      {state.videoPromptDirty && (
+                        <span style={{ fontSize: 10, color: "#dc2626" }}>
+                          ⚠ 未翻訳
+                        </span>
+                      )}
+                    </div>
+                    {translateError?.index === spec.index && (
+                      <div
+                        style={{
+                          marginTop: 4,
+                          fontSize: 10,
+                          color: "#991b1b",
+                        }}
+                      >
+                        {translateError.message}
+                      </div>
+                    )}
+                    <details style={{ marginTop: 8 }}>
+                      <summary
+                        style={{
+                          cursor: "pointer",
+                          fontSize: 11,
+                          color: "var(--muted)",
+                        }}
+                      >
+                        ▼ Seedance 送信用（英語）
+                      </summary>
+                      <pre
+                        style={{
+                          marginTop: 6,
+                          padding: 6,
+                          background: "#f9fafb",
+                          border: "1px solid var(--border)",
+                          borderRadius: 4,
+                          fontSize: 11,
+                          whiteSpace: "pre-wrap",
+                          wordBreak: "break-word",
+                          color: state.videoPromptDirty
+                            ? "var(--muted)"
+                            : "inherit",
+                        }}
+                      >
+                        {state.videoPromptEn || "(まだ英訳されていません)"}
+                      </pre>
+                    </details>
                   </td>
                   <td style={{ ...td, textAlign: "center" }}>
                     <label
@@ -522,6 +695,11 @@ export function SceneReview({
       >
         <div style={{ color: "var(--muted)", fontSize: 13 }}>
           承認: {approvedCount} / {totalScenes}
+          {dirtyCount > 0 && (
+            <span style={{ marginLeft: 8, color: "#dc2626", fontSize: 12 }}>
+              ⚠ 未翻訳 {dirtyCount} 件
+            </span>
+          )}
           {!allApproved && (
             <button
               onClick={handleApproveAll}

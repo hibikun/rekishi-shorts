@@ -1,4 +1,4 @@
-import { readFile, readdir, stat } from "node:fs/promises";
+import { readFile, readdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { UkiyoePlanSchema, type UkiyoePlan } from "@rekishi/shared";
 import { repoRoot } from "./plan";
@@ -20,6 +20,15 @@ export async function loadUkiyoePlan(jobId: string): Promise<UkiyoePlan> {
   const filepath = ukiyoePlanJsonPath(jobId);
   const raw = await readFile(filepath, "utf-8");
   return UkiyoePlanSchema.parse(JSON.parse(raw));
+}
+
+export async function saveUkiyoePlan(
+  jobId: string,
+  plan: UkiyoePlan,
+): Promise<void> {
+  const filepath = ukiyoePlanJsonPath(jobId);
+  const validated = UkiyoePlanSchema.parse(plan);
+  await writeFile(filepath, `${JSON.stringify(validated, null, 2)}\n`, "utf-8");
 }
 
 export interface UkiyoeJobSummary {

@@ -10,7 +10,7 @@ import {
 } from "@/lib/plan";
 import {
   describeImageWithVision,
-  deriveSeedancePrompt,
+  deriveBilingualSeedancePrompt,
 } from "@/lib/scene-prompts";
 
 export const runtime = "nodejs";
@@ -81,16 +81,16 @@ export async function POST(
     );
   }
 
-  // Step 2: 記述 + scene 文脈で Seedance プロンプトを派生
+  // Step 2: 記述 + scene 文脈で Seedance プロンプトを bilingual 派生
   const assetKind = scene.assetKind ?? assetKindFromPath(scene.imagePath);
-  const newSeedancePrompt = await deriveSeedancePrompt({
+  const derived = await deriveBilingualSeedancePrompt({
     instruction: description,
     beat: scene.beat,
     narration: scene.narration,
     assetKind,
     overlayText: scene.overlay?.text ?? null,
   });
-  if (!newSeedancePrompt) {
+  if (!derived) {
     return NextResponse.json(
       {
         ok: false,
@@ -101,9 +101,10 @@ export async function POST(
     );
   }
 
-  // Step 3: plan を更新
+  // Step 3: plan を更新（EN/JA 両方を保存）
   const oldPrompt = scene.seedancePrompt;
-  scene.seedancePrompt = newSeedancePrompt;
+  scene.seedancePrompt = derived.en;
+  scene.seedancePromptJa = derived.ja;
   scene.assetKind = assetKind;
   await savePlan("manabilab", planId, plan);
 
@@ -116,7 +117,8 @@ export async function POST(
     narration: scene.narration,
     assetKind,
     visionDescription: description,
-    seedancePrompt: newSeedancePrompt,
+    seedancePrompt: derived.en,
+    seedancePromptJa: derived.ja,
     seedancePromptDerived: true,
     overlay: scene.overlay ?? null,
     refreshedAt: new Date().toISOString(),
@@ -127,7 +129,8 @@ export async function POST(
     ok: true,
     sceneIndex,
     description,
-    seedancePrompt: newSeedancePrompt,
+    seedancePrompt: derived.en,
+    seedancePromptJa: derived.ja,
     oldPrompt,
   });
 }

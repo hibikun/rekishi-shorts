@@ -26,6 +26,12 @@ export interface ImageScene {
   assetKind?: "character" | "broll";
   overlay?: Overlay;
   seedancePrompt: string;
+  /**
+   * 日本語版の seedancePrompt（編集用）。Web UI で人間が編集する一次入力。
+   * 翻訳ボタン押下時に Gemini で英訳されて seedancePrompt にコピーされる。
+   * 既存 plan で未設定の場合は undefined。
+   */
+  seedancePromptJa?: string;
   seedanceClipPath?: string | null;
   approved: boolean;
 }

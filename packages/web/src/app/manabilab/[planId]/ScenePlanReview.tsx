@@ -44,6 +44,7 @@ interface RegenerateImageApiResult {
   usedReference?: boolean;
   referenceSource?: "current" | "fallback-hero" | "none";
   seedancePrompt?: string;
+  seedancePromptJa?: string;
   seedancePromptDerived?: boolean;
   error?: string;
 }
@@ -53,7 +54,16 @@ interface RefreshSeedanceApiResult {
   sceneIndex?: number;
   description?: string;
   seedancePrompt?: string;
+  seedancePromptJa?: string;
   oldPrompt?: string;
+  error?: string;
+}
+
+interface TranslateSeedanceApiResult {
+  ok: boolean;
+  sceneIndex?: number;
+  en?: string;
+  ja?: string;
   error?: string;
 }
 
@@ -112,6 +122,13 @@ export function ScenePlanReview({
   const [regeneratingScene, setRegeneratingScene] = useState<number | null>(null);
   const [regenError, setRegenError] = useState<{ index: number; message: string } | null>(null);
   const [refreshingSeedanceScene, setRefreshingSeedanceScene] = useState<number | null>(null);
+  const [translatingScene, setTranslatingScene] = useState<number | null>(null);
+  /** Ja を編集したが英訳未押下＝plan の En が古い可能性のあるシーン */
+  const [dirtyScenes, setDirtyScenes] = useState<Record<number, boolean>>({});
+  const [translateError, setTranslateError] = useState<{
+    index: number;
+    message: string;
+  } | null>(null);
   const [ttsGenerating, setTtsGenerating] = useState(false);
   const [ttsResult, setTtsResult] = useState<GenerateTtsApiResult | null>(null);
   const [audioCacheBust, setAudioCacheBust] = useState<number>(0);
@@ -135,17 +152,82 @@ export function ScenePlanReview({
     );
   };
 
-  const setScenePrompt = (index: number, prompt: string) => {
+  const setScenePromptJa = (index: number, ja: string) => {
     setScenes((prev) =>
       prev.map((s) => {
         if (s.spec.index !== index || s.spec.kind !== "image") return s;
-        return { ...s, spec: { ...s.spec, seedancePrompt: prompt } };
+        return { ...s, spec: { ...s.spec, seedancePromptJa: ja, approved: false } };
       }),
     );
+    setDirtyScenes((prev) => ({ ...prev, [index]: true }));
+  };
+
+  const handleTranslate = async (sceneIndex: number) => {
+    const scene = scenes.find((s) => s.spec.index === sceneIndex);
+    if (!scene || scene.spec.kind !== "image") return;
+    const ja = (scene.spec.seedancePromptJa ?? "").trim();
+    if (!ja) {
+      setTranslateError({
+        index: sceneIndex,
+        message: "日本語を入力してください",
+      });
+      return;
+    }
+    setTranslateError(null);
+    setTranslatingScene(sceneIndex);
+    try {
+      const res = await fetch(
+        `/api/manabilab/${planId}/translate-seedance-prompt`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ index: sceneIndex, ja }),
+        },
+      );
+      const data = (await res.json()) as TranslateSeedanceApiResult;
+      if (!data.ok || !data.en) {
+        setTranslateError({
+          index: sceneIndex,
+          message: data.error ?? "英訳に失敗しました",
+        });
+        return;
+      }
+      setScenes((prev) =>
+        prev.map((s) => {
+          if (s.spec.index !== sceneIndex || s.spec.kind !== "image") return s;
+          return {
+            ...s,
+            spec: {
+              ...s.spec,
+              seedancePrompt: data.en!,
+              seedancePromptJa: data.ja ?? ja,
+            },
+          };
+        }),
+      );
+      setDirtyScenes((prev) => {
+        const next = { ...prev };
+        delete next[sceneIndex];
+        return next;
+      });
+    } catch (err) {
+      setTranslateError({
+        index: sceneIndex,
+        message: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setTranslatingScene(null);
+    }
   };
 
   const handleApproveAll = () => {
-    setScenes((prev) => prev.map((s) => ({ ...s, spec: { ...s.spec, approved: true } })));
+    setScenes((prev) =>
+      prev.map((s) => {
+        // dirty な行は承認しない（未翻訳の Ja で Seedance を呼ぶ事故を防ぐ）
+        if (dirtyScenes[s.spec.index]) return s;
+        return { ...s, spec: { ...s.spec, approved: true } };
+      }),
+    );
   };
 
   const handleRegenerateImage = async (sceneIndex: number) => {
@@ -174,7 +256,7 @@ export function ScenePlanReview({
         return;
       }
       // 画像を差し替え + キャッシュバスタを付けてブラウザに再取得させる
-      // Seedance プロンプトも自動派生されていればそれに更新する
+      // Seedance プロンプトも自動派生されていれば EN/JA 両方を更新する
       const cacheBustedUrl = `${data.imageUrl}?t=${Date.now()}`;
       setScenes((prev) =>
         prev.map((s) => {
@@ -189,10 +271,21 @@ export function ScenePlanReview({
               ...(data.seedancePrompt
                 ? { seedancePrompt: data.seedancePrompt }
                 : {}),
+              ...(data.seedancePromptJa
+                ? { seedancePromptJa: data.seedancePromptJa }
+                : {}),
             },
           };
         }),
       );
+      // 自動派生で EN/JA が揃ったので dirty を解除
+      if (data.seedancePromptJa) {
+        setDirtyScenes((prev) => {
+          const next = { ...prev };
+          delete next[sceneIndex];
+          return next;
+        });
+      }
       // 入力欄をクリア
       setImageInstructions((prev) => {
         const next = { ...prev };
@@ -304,10 +397,23 @@ export function ScenePlanReview({
           if (s.spec.index !== sceneIndex || s.spec.kind !== "image") return s;
           return {
             ...s,
-            spec: { ...s.spec, seedancePrompt: data.seedancePrompt! },
+            spec: {
+              ...s.spec,
+              seedancePrompt: data.seedancePrompt!,
+              ...(data.seedancePromptJa
+                ? { seedancePromptJa: data.seedancePromptJa }
+                : {}),
+            },
           };
         }),
       );
+      if (data.seedancePromptJa) {
+        setDirtyScenes((prev) => {
+          const next = { ...prev };
+          delete next[sceneIndex];
+          return next;
+        });
+      }
     } catch (err) {
       setRegenError({
         index: sceneIndex,
@@ -319,6 +425,15 @@ export function ScenePlanReview({
   };
 
   const handleGenerate = async (mode: "dry-run" | "exec") => {
+    const dirtyCount = Object.values(dirtyScenes).filter(Boolean).length;
+    if (dirtyCount > 0) {
+      const skip = window.confirm(
+        `${dirtyCount} シーンに未翻訳の日本語編集があります。\n` +
+          `（このまま実行すると古い英語プロンプトで Seedance が呼ばれます）\n\n` +
+          `OK: そのまま続行 / キャンセル: 中止して英訳ボタンを押す`,
+      );
+      if (!skip) return;
+    }
     if (mode === "exec") {
       const ok = window.confirm(
         `本実行します。Seedance Lite に ${imageSceneCount} 個のシーンを送信し、約 $${(imageSceneCount * 0.15).toFixed(2)} の課金が発生します。続行しますか？`,
@@ -439,7 +554,7 @@ export function ScenePlanReview({
               <th style={th}>Beat / 時間</th>
               <th style={th}>ナレーション</th>
               <th style={th}>素材</th>
-              <th style={{ ...th, width: 360 }}>Seedance プロンプト</th>
+              <th style={{ ...th, width: 380 }}>Seedance プロンプト（日本語で編集）</th>
               <th style={{ ...th, width: 80, textAlign: "center" }}>OK</th>
             </tr>
           </thead>
@@ -593,29 +708,128 @@ export function ScenePlanReview({
                   {spec.kind === "image" ? (
                     <>
                       <textarea
-                        value={spec.seedancePrompt}
-                        onChange={(e) => setScenePrompt(spec.index, e.target.value)}
+                        value={spec.seedancePromptJa ?? ""}
+                        onChange={(e) =>
+                          setScenePromptJa(spec.index, e.target.value)
+                        }
+                        placeholder="動作描写を日本語で入力（例: キャラの脳がやさしく明滅し、空気中に小さな粒子がふわりと漂う…）"
                         style={{
                           width: "100%",
-                          minHeight: 100,
+                          minHeight: 90,
                           padding: 8,
                           fontSize: 12,
                           fontFamily: "inherit",
-                          border: "1px solid var(--border)",
+                          border: dirtyScenes[spec.index]
+                            ? "1px solid #dc2626"
+                            : "1px solid var(--border)",
                           borderRadius: 4,
                           resize: "vertical",
                           boxSizing: "border-box",
                         }}
                       />
+                      <div
+                        style={{
+                          marginTop: 6,
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                          flexWrap: "wrap",
+                        }}
+                      >
+                        <button
+                          onClick={() => handleTranslate(spec.index)}
+                          disabled={
+                            translatingScene !== null ||
+                            !(spec.seedancePromptJa ?? "").trim()
+                          }
+                          style={{
+                            background:
+                              translatingScene === spec.index
+                                ? "#e5e7eb"
+                                : dirtyScenes[spec.index]
+                                  ? "var(--accent)"
+                                  : "#fff",
+                            color:
+                              dirtyScenes[spec.index] &&
+                              translatingScene !== spec.index
+                                ? "#fff"
+                                : "var(--accent)",
+                            border: "1px solid var(--accent)",
+                            padding: "6px 10px",
+                            borderRadius: 4,
+                            fontSize: 11,
+                            fontWeight: 700,
+                            cursor:
+                              translatingScene !== null ||
+                              !(spec.seedancePromptJa ?? "").trim()
+                                ? "not-allowed"
+                                : "pointer",
+                            opacity:
+                              translatingScene !== null &&
+                              translatingScene !== spec.index
+                                ? 0.5
+                                : 1,
+                          }}
+                        >
+                          {translatingScene === spec.index
+                            ? "🌐 英訳中..."
+                            : "🌐 英訳して反映"}
+                        </button>
+                        {dirtyScenes[spec.index] && (
+                          <span style={{ fontSize: 10, color: "#dc2626" }}>
+                            ⚠ 未翻訳
+                          </span>
+                        )}
+                      </div>
+                      {translateError?.index === spec.index && (
+                        <div
+                          style={{
+                            marginTop: 4,
+                            fontSize: 10,
+                            color: "#991b1b",
+                          }}
+                        >
+                          {translateError.message}
+                        </div>
+                      )}
+                      <details style={{ marginTop: 8 }}>
+                        <summary
+                          style={{
+                            cursor: "pointer",
+                            fontSize: 11,
+                            color: "var(--muted)",
+                          }}
+                        >
+                          ▼ Seedance 送信用（英語）
+                        </summary>
+                        <pre
+                          style={{
+                            marginTop: 6,
+                            padding: 6,
+                            background: "#f9fafb",
+                            border: "1px solid var(--border)",
+                            borderRadius: 4,
+                            fontSize: 11,
+                            whiteSpace: "pre-wrap",
+                            wordBreak: "break-word",
+                            color: dirtyScenes[spec.index]
+                              ? "var(--muted)"
+                              : "inherit",
+                          }}
+                        >
+                          {spec.seedancePrompt || "(まだ英訳されていません)"}
+                        </pre>
+                      </details>
                       <button
                         onClick={() => handleRefreshSeedance(spec.index)}
                         disabled={
                           regeneratingScene !== null ||
-                          refreshingSeedanceScene !== null
+                          refreshingSeedanceScene !== null ||
+                          translatingScene !== null
                         }
-                        title="現画像を Gemini Vision で読み取って Seedance プロンプトを再派生"
+                        title="現画像を Gemini Vision で読み取って Seedance プロンプト(EN/JA) を再派生"
                         style={{
-                          marginTop: 6,
+                          marginTop: 8,
                           width: "100%",
                           background:
                             refreshingSeedanceScene === spec.index
@@ -629,7 +843,8 @@ export function ScenePlanReview({
                           fontWeight: 600,
                           cursor:
                             regeneratingScene !== null ||
-                            refreshingSeedanceScene !== null
+                            refreshingSeedanceScene !== null ||
+                            translatingScene !== null
                               ? "not-allowed"
                               : "pointer",
                           opacity:
@@ -643,7 +858,7 @@ export function ScenePlanReview({
                       >
                         {refreshingSeedanceScene === spec.index
                           ? "🎬 Vision 解析中..."
-                          : "🎬 Seedance のみ更新"}
+                          : "🎬 画像から再派生（EN/JA）"}
                       </button>
                     </>
                   ) : (
@@ -677,6 +892,11 @@ export function ScenePlanReview({
       >
         <div style={{ color: "var(--muted)", fontSize: 13 }}>
           承認: {approvedCount} / {totalScenes}
+          {Object.values(dirtyScenes).filter(Boolean).length > 0 && (
+            <span style={{ marginLeft: 8, color: "#dc2626", fontSize: 12 }}>
+              ⚠ 未翻訳 {Object.values(dirtyScenes).filter(Boolean).length} 件
+            </span>
+          )}
           {!allApproved && (
             <button
               onClick={handleApproveAll}
