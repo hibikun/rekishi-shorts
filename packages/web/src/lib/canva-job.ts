@@ -38,6 +38,21 @@ export function scriptJsonPath(jobId: string): string {
   return path.join(jobDir(jobId), "script.json");
 }
 
+export function researchPromptPath(): string {
+  return path.join(
+    REPO_ROOT,
+    "packages",
+    "channels",
+    CANVA_CHANNEL_SLUG,
+    "prompts",
+    "research.md",
+  );
+}
+
+export async function readResearchPromptTemplate(): Promise<string> {
+  return readFile(researchPromptPath(), "utf-8");
+}
+
 function nowIso(): string {
   return new Date().toISOString();
 }

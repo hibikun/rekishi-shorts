@@ -16,6 +16,7 @@ interface Props {
   initialJob: ManabilabCanvaJob;
   initialResearchMd: string;
   initialScript: Script | null;
+  researchPromptTemplate: string;
 }
 
 function firstIncomplete(job: ManabilabCanvaJob): StepKey {
@@ -25,7 +26,12 @@ function firstIncomplete(job: ManabilabCanvaJob): StepKey {
   return "export";
 }
 
-export function CanvaWizard({ initialJob, initialResearchMd, initialScript }: Props) {
+export function CanvaWizard({
+  initialJob,
+  initialResearchMd,
+  initialScript,
+  researchPromptTemplate,
+}: Props) {
   const [job, setJob] = useState(initialJob);
   const [currentStep, setCurrentStep] = useState<StepKey>(firstIncomplete(initialJob));
   const [researchMd, setResearchMd] = useState(initialResearchMd);
@@ -56,6 +62,7 @@ export function CanvaWizard({ initialJob, initialResearchMd, initialScript }: Pr
           <ResearchStep
             job={job}
             researchMd={researchMd}
+            promptTemplate={researchPromptTemplate}
             onJobChange={setJob}
             onResearchChange={setResearchMd}
             onAdvance={() => advance("script")}

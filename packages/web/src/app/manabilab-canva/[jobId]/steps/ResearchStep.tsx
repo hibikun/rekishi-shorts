@@ -1,14 +1,23 @@
 "use client";
 
-import { useState } from "react";
-import type { ManabilabCanvaJob, ResearchSource } from "@rekishi/shared";
+import { useMemo, useState } from "react";
+import type { ManabilabCanvaJob, ResearchSource, Topic } from "@rekishi/shared";
 
 interface Props {
   job: ManabilabCanvaJob;
   researchMd: string;
+  promptTemplate: string;
   onJobChange: (job: ManabilabCanvaJob) => void;
   onResearchChange: (md: string) => void;
   onAdvance: () => void;
+}
+
+function renderPromptPreview(template: string, topic: Topic): string {
+  return template
+    .replace(/\{\{topic\.title\}\}/g, topic.title)
+    .replace(/\{\{topic\.era\}\}/g, topic.era ?? "指定なし")
+    .replace(/\{\{topic\.subject\}\}/g, topic.subject)
+    .replace(/\{\{topic\.target\}\}/g, topic.target);
 }
 
 interface RunResult {
@@ -29,6 +38,7 @@ interface SaveResult {
 export function ResearchStep({
   job,
   researchMd,
+  promptTemplate,
   onJobChange,
   onResearchChange,
   onAdvance,
@@ -41,6 +51,10 @@ export function ResearchStep({
   const sources = job.steps.research.sources ?? [];
   const queries = job.steps.research.queries ?? [];
   const status = job.steps.research.status;
+  const promptPreview = useMemo(
+    () => renderPromptPreview(promptTemplate, job.topic),
+    [promptTemplate, job.topic],
+  );
 
   const handleRun = async () => {
     setRunning(true);
@@ -98,6 +112,47 @@ export function ResearchStep({
           Gemini + Google Search でトピックの素材を収集する。生成後はマークダウンを直接編集して整える。
         </p>
       </header>
+
+      <details
+        open={!hasContent}
+        style={{
+          border: "1px solid var(--border)",
+          borderRadius: 6,
+          padding: "8px 12px",
+          background: "var(--card)",
+        }}
+      >
+        <summary
+          style={{
+            fontSize: 13,
+            fontWeight: 600,
+            cursor: "pointer",
+            color: "var(--accent)",
+          }}
+        >
+          ▼ Gemini に送るプロンプトを確認 ({promptPreview.length.toLocaleString()} 字)
+        </summary>
+        <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 8 }}>
+          下記が <code>generateResearch</code> 経由で Gemini に投げられる最終プロンプトです。
+          Topic を変更すると即座に反映されます。プロンプト本体を編集したい場合は{" "}
+          <code>packages/channels/manabilab-canva/prompts/research.md</code> を直接編集してください。
+        </p>
+        <pre
+          style={{
+            fontSize: 11,
+            lineHeight: 1.5,
+            background: "rgba(0,0,0,0.04)",
+            padding: 12,
+            borderRadius: 4,
+            maxHeight: 360,
+            overflow: "auto",
+            whiteSpace: "pre-wrap",
+            margin: "8px 0 0 0",
+          }}
+        >
+          {promptPreview}
+        </pre>
+      </details>
 
       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
         <button
