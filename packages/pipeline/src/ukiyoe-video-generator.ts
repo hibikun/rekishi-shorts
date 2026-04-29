@@ -30,10 +30,12 @@ interface ActionTagDef {
   cameraFixed: boolean;
 }
 
+// 各タグの prompt はカメラ運動を含めない（カメラ方針は CAMERA_*_HINT に一本化）。
+// 動作・身体・衣服・周囲の動きだけを記述する。
 const ACTION_TAG_PROMPTS: Record<UkiyoeActionTag, ActionTagDef> = {
   running_forward: {
     prompt:
-      "The figure runs forward dynamically, legs alternating, hair and clothes streaming back, scenery passes by.",
+      "The figure runs forward dynamically, legs alternating in rapid stride, hair and clothes streaming behind, dust kicked up at the heels.",
     cameraFixed: false,
   },
   eating_meal: {
@@ -43,31 +45,32 @@ const ACTION_TAG_PROMPTS: Record<UkiyoeActionTag, ActionTagDef> = {
   },
   drawing_sword: {
     prompt:
-      "The warrior pulls a sword from its sheath in one swift motion, cape and clothing flare outward.",
+      "The warrior pulls a sword from its sheath in one swift motion, cape and clothing flare outward, sleeves snap with the motion.",
     cameraFixed: false,
   },
   walking_carrying: {
     prompt:
-      "The figure walks forward steadily carrying a load on the shoulder, the load sways slightly.",
+      "The figure walks forward steadily carrying a load on the shoulder, the load sways slightly with each step, sleeves and hem move with the gait.",
     cameraFixed: false,
   },
   sleeping: {
     prompt:
-      "Subtle breathing motion, occasional small movement of cloth and blanket.",
+      "Subtle rise-and-fall breathing motion, occasional small movement of cloth and blanket, the air shimmers faintly.",
     cameraFixed: true,
   },
   crowd_cheering: {
     prompt:
-      "A crowd of people cheers, hands waving, banners fluttering in the wind.",
+      "A crowd of people cheers in waves, hands raised and waving, banners and flags flutter in the wind, dust rises from many feet.",
     cameraFixed: true,
   },
   weather_dynamic: {
     prompt:
-      "Rain falls diagonally, lightning flashes across the sky, banners and foliage move in the strong wind.",
+      "Rain falls diagonally in heavy sheets, lightning flashes across the sky, banners and foliage whip in the strong wind, cloth and hair are buffeted.",
     cameraFixed: true,
   },
   still_subtle: {
-    prompt: "Gentle wind moves through the scene, slow slight camera push-in.",
+    prompt:
+      "Gentle wind drifts through the scene, fabric and foliage sway softly, smoke or steam rises slowly.",
     cameraFixed: true,
   },
 };

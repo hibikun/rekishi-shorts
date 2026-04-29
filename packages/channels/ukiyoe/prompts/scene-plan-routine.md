@@ -40,7 +40,7 @@
 ## 画像 / 動画プロンプトの原則
 - 浮世絵で「動かせる」絵を選ぶ。座像／無地背景／硬直した構図は不可
 - `imagePrompt` は英語、被写体・構図・周囲の動かせる要素（雲・煙・波・雷・旗・群衆）を 1〜2 文で
-- `videoPrompt` は英語、何が動くかを 1 文で簡潔に（`actionTag` が大半を補うので最小限）
+- `videoPrompt` は英語、**2〜3 文で具体的に書く**。Seedance Lite は短い prompt だと汎用的な動きになるので、シーン固有の細部（誰の何がどう動くか、身体・衣服・髪・小道具の挙動、背景要素の連動、煙・水・布などの微細な動き、表情の変化）を盛り込む。**カメラ運動の語（push-in / pan / zoom / scenery passes）は書かない**（カメラ方針は別途制御するため、prompt 側で指定すると競合する）
 - 各シーン `durationSec` は 5 固定
 - `cameraFixed`: 大きく動く動作なら false、繊細な動きなら true（迷ったら省略）
 
@@ -66,7 +66,7 @@
       "narration": "入力ナレーションから抜き出した連続部分文字列",
       "durationSec": 5,
       "imagePrompt": "A barefoot Edo-period messenger sprints along a forested mountain road, banners fluttering, mist rising.",
-      "videoPrompt": "The messenger sprints forward, sandals slapping the ground.",
+      "videoPrompt": "The messenger sprints forward with rhythmic strides, his bare feet slapping the dirt road. The banner across his back whips and flutters in the wind. Loose hair strands fly and the long sleeves of his jacket snap behind him as he runs.",
       "actionTag": "running_forward",
       "cameraFixed": false
     }
