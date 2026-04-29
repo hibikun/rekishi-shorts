@@ -76,7 +76,12 @@ export function Editor({
 
       <details style={sectionDetailsStyle}>
         <summary style={summaryStyle}>📝 台本</summary>
-        <ScriptViewer script={script} />
+        <ScriptViewer
+          jobId={job.id}
+          script={script}
+          onScriptChange={setScript}
+          onJobChange={setJob}
+        />
       </details>
 
       <div
