@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { generateScript } from "@rekishi/pipeline";
+import { generateManabilabCanvaScript } from "@rekishi/pipeline";
 import { setChannel } from "@rekishi/shared/channel";
 import {
   CANVA_CHANNEL_SLUG,
@@ -59,7 +59,7 @@ export async function POST(_request: NextRequest, ctx: Ctx): Promise<Response> {
 
   try {
     setChannel(CANVA_CHANNEL_SLUG);
-    const result = await generateScript(job.topic, researchMd);
+    const result = await generateManabilabCanvaScript(job.topic, researchMd);
 
     await writeScriptJson(jobId, result.script);
 

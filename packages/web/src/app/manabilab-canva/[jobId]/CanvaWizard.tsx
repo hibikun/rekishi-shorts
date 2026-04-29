@@ -4,7 +4,7 @@ import { useState } from "react";
 import {
   STEP_ORDER,
   type ManabilabCanvaJob,
-  type Script,
+  type ManabilabCanvaScript,
   type StepKey,
 } from "@rekishi/shared";
 import { StepIndicator } from "./StepIndicator";
@@ -15,7 +15,7 @@ import { ScriptStep } from "./steps/ScriptStep";
 interface Props {
   initialJob: ManabilabCanvaJob;
   initialResearchMd: string;
-  initialScript: Script | null;
+  initialScript: ManabilabCanvaScript | null;
   researchPromptTemplate: string;
 }
 
@@ -35,7 +35,7 @@ export function CanvaWizard({
   const [job, setJob] = useState(initialJob);
   const [currentStep, setCurrentStep] = useState<StepKey>(firstIncomplete(initialJob));
   const [researchMd, setResearchMd] = useState(initialResearchMd);
-  const [script, setScript] = useState<Script | null>(initialScript);
+  const [script, setScript] = useState<ManabilabCanvaScript | null>(initialScript);
 
   const advance = (next: StepKey) => setCurrentStep(next);
 

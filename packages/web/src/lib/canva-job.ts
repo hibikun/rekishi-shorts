@@ -2,10 +2,11 @@ import { mkdir, readFile, readdir, writeFile, stat } from "node:fs/promises";
 import path from "node:path";
 import {
   ManabilabCanvaJobSchema,
+  ManabilabCanvaScriptSchema,
   type ManabilabCanvaJob,
+  type ManabilabCanvaScript,
   type StepKey,
   type Topic,
-  type Script,
 } from "@rekishi/shared";
 
 export const CANVA_CHANNEL_SLUG = "manabilab-canva";
@@ -175,10 +176,14 @@ export async function writeResearchMarkdown(
   await writeFile(researchMdPath(jobId), markdown, "utf-8");
 }
 
-export async function readScriptJson(jobId: string): Promise<Script | null> {
+export async function readScriptJson(
+  jobId: string,
+): Promise<ManabilabCanvaScript | null> {
   try {
     const raw = await readFile(scriptJsonPath(jobId), "utf-8");
-    return JSON.parse(raw) as Script;
+    const parsed = ManabilabCanvaScriptSchema.safeParse(JSON.parse(raw));
+    if (!parsed.success) return null; // 旧フォーマットなどは null 扱いで再生成を促す
+    return parsed.data;
   } catch {
     return null;
   }
@@ -186,7 +191,7 @@ export async function readScriptJson(jobId: string): Promise<Script | null> {
 
 export async function writeScriptJson(
   jobId: string,
-  script: Script,
+  script: ManabilabCanvaScript,
 ): Promise<void> {
   await mkdir(jobDir(jobId), { recursive: true });
   await writeFile(

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ScriptSchema } from "@rekishi/shared";
+import { ManabilabCanvaScriptSchema } from "@rekishi/shared";
 import { loadJob, saveJob, writeScriptJson } from "@/lib/canva-job";
 
 export const runtime = "nodejs";
@@ -23,7 +23,7 @@ export async function PATCH(request: NextRequest, ctx: Ctx): Promise<Response> {
     return NextResponse.json({ ok: false, error: "invalid JSON body" }, { status: 400 });
   }
 
-  const parsed = ScriptSchema.safeParse(body.script);
+  const parsed = ManabilabCanvaScriptSchema.safeParse(body.script);
   if (!parsed.success) {
     return NextResponse.json(
       { ok: false, error: parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join(", ") },
