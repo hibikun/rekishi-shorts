@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { TopicSchema } from "./script.js";
+import { TopicSchema } from "./script";
 
 export const StepStatusSchema = z.enum([
   "pending",

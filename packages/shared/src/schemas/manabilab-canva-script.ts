@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { TopicSchema, VideoTitleSchema } from "./script.js";
+import { TopicSchema, VideoTitleSchema } from "./script";
 
 export const CanvaStatementSchema = z.object({
   label: z
