@@ -11,6 +11,29 @@ export const CanvaSceneSourceSchema = z.discriminatedUnion("kind", [
 ]);
 export type CanvaSceneSource = z.infer<typeof CanvaSceneSourceSchema>;
 
+export const ImageCandidateSchema = z.object({
+  variantIndex: z
+    .number()
+    .int()
+    .nonnegative()
+    .describe("0/1/2 などのバリアント番号。ファイル名 scene-NN-vM.png に対応"),
+  promptEn: z
+    .string()
+    .describe("Nano Banana に渡る英語プロンプト（このバリアント分）"),
+  poseSummaryJa: z
+    .string()
+    .default("")
+    .describe("UI に表示する日本語要約（30 字以内程度）"),
+  imagePath: z
+    .string()
+    .optional()
+    .describe(
+      "生成済み画像の相対パス。例: 'jobs/{jobId}/images/scene-01-v0.png' (channels/manabilab-canva 起点)",
+    ),
+  generatedAt: z.string().optional().describe("画像生成日時 (ISO 8601)"),
+});
+export type ImageCandidate = z.infer<typeof ImageCandidateSchema>;
+
 export const ManabilabCanvaSceneSchema = z.object({
   index: z.number().int().positive().describe("1始まりのシーン番号"),
   source: CanvaSceneSourceSchema.describe(
@@ -28,24 +51,38 @@ export const ManabilabCanvaSceneSchema = z.object({
     .string()
     .default("")
     .describe(
-      "画像生成プロンプト（日本語・編集用）。後段の画像生成で英訳して使う",
+      "ユーザー指示（日本語・任意）。空なら caption / narration から推測。3 案すべての種として使う",
     ),
   imagePromptEn: z
     .string()
     .default("")
     .describe(
-      "画像生成プロンプト（英語・最終形）。Nano Banana など英語入力モデル用",
+      "選択された候補の英語プロンプトのスナップショット（後段互換用）。imageCandidates[selectedCandidateIndex].promptEn のコピー",
+    ),
+  imageCandidates: z
+    .array(ImageCandidateSchema)
+    .default([])
+    .describe(
+      "1 シーンに対する画像候補（通常 3 件）。ユーザーが selectedCandidateIndex で 1 つ選ぶ",
+    ),
+  selectedCandidateIndex: z
+    .number()
+    .int()
+    .nonnegative()
+    .optional()
+    .describe(
+      "ユーザーが選んだ候補の variantIndex。選択時に imagePath / imagePromptEn / imageGeneratedAt を該当候補のもので上書きする",
     ),
   imagePath: z
     .string()
     .optional()
     .describe(
-      "生成済み画像の相対パス。例: 'jobs/{jobId}/images/scene-01.png' (channels/manabilab-canva 起点)",
+      "選択候補の画像相対パスのスナップショット。後段（Seedance / レンダリング）はこのフィールドだけを参照する",
     ),
   imageGeneratedAt: z
     .string()
     .optional()
-    .describe("画像生成日時 (ISO 8601)"),
+    .describe("選択候補の画像生成日時 (ISO 8601)"),
   seedancePromptJa: z
     .string()
     .default("")

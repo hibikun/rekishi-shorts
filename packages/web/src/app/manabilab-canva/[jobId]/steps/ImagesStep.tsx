@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type {
   CanvaSceneSource,
+  ImageCandidate,
   ManabilabCanvaJob,
   ManabilabCanvaScene,
 } from "@rekishi/shared";
@@ -15,23 +16,20 @@ interface Props {
   onAdvance: () => void;
 }
 
-interface RegenPromptResult {
+interface GenVariantsResult {
   ok: boolean;
   sceneIndex?: number;
-  imagePromptEn?: string;
-  poseSummaryJa?: string;
+  candidates?: ImageCandidate[];
+  errors?: { variantIndex: number; error: string }[];
   error?: string;
 }
 
-interface GenImageResult {
+interface SelectCandidateResult {
   ok: boolean;
   sceneIndex?: number;
-  imagePath?: string;
-  imageUrl?: string;
-  generatedAt?: string;
-  imagePromptEn?: string;
-  imagePromptJa?: string;
-  promptRegenerated?: boolean;
+  selectedCandidateIndex?: number;
+  scene?: ManabilabCanvaScene;
+  job?: ManabilabCanvaJob | null;
   error?: string;
 }
 
@@ -40,19 +38,6 @@ interface RegenBaseResult {
   outputPath?: string;
   referenceUsed?: boolean;
   regeneratedAt?: string;
-  error?: string;
-}
-
-interface GenerateAllResult {
-  ok: boolean;
-  job?: ManabilabCanvaJob;
-  scenes?: ManabilabCanvaScene[];
-  results?: Array<{
-    index: number;
-    status: "done" | "skipped" | "error";
-    imagePath?: string;
-    error?: string;
-  }>;
   error?: string;
 }
 
@@ -69,6 +54,7 @@ interface GenAnimationResult {
 
 const CHARACTER_REF_URL = "/manabilab-canva/assets/character/manabikun-base.png";
 const CANVA_PUBLIC_PREFIX = "/manabilab-canva";
+const VARIANT_COUNT = 3;
 
 function sourceLabel(source: CanvaSceneSource): string {
   switch (source.kind) {
@@ -96,6 +82,13 @@ function sourceColor(source: CanvaSceneSource): string {
   }
 }
 
+function sceneNeedsGeneration(s: ManabilabCanvaScene): boolean {
+  const cands = s.imageCandidates ?? [];
+  if (cands.length === 0) return true;
+  // 1 案でも画像が落ちていたら、ユーザーは個別に再生成できる。一括の自動再開はしない
+  return false;
+}
+
 export function ImagesStep({
   job,
   scenes: initialScenes,
@@ -104,127 +97,214 @@ export function ImagesStep({
   onAdvance,
 }: Props) {
   const [scenes, setScenes] = useState<ManabilabCanvaScene[] | null>(initialScenes);
-  // index → cache-bust suffix（生成直後に img の URL を強制リロードするため）
-  const [imageVersion, setImageVersion] = useState<Record<number, number>>({});
-  const [regenPromptIdx, setRegenPromptIdx] = useState<number | null>(null);
-  const [genImageIdx, setGenImageIdx] = useState<number | null>(null);
-  const [genAnimationIdx, setGenAnimationIdx] = useState<number | null>(null);
+
+  // 進捗管理
+  const [generatingIndex, setGeneratingIndex] = useState<number | null>(null);
+  const [batchProgress, setBatchProgress] = useState<{
+    completed: number;
+    total: number;
+  } | null>(null);
+  const autoStartedRef = useRef(false);
+
+  // バージョン bust（生成直後に img を再読み込みさせる）
+  const [imageVersion, setImageVersion] = useState<Record<string, number>>({});
   const [videoVersion, setVideoVersion] = useState<Record<number, number>>({});
-  const [generatingAll, setGeneratingAll] = useState(false);
-  const [batchSummary, setBatchSummary] = useState<string | null>(null);
+
+  // ベース画像
   const [regeneratingBase, setRegeneratingBase] = useState(false);
   const [baseVersion, setBaseVersion] = useState<number>(0);
   const [baseError, setBaseError] = useState<string | null>(null);
+
+  // アニメ
+  const [genAnimationIdx, setGenAnimationIdx] = useState<number | null>(null);
+
+  // 選択中
+  const [selectingIdx, setSelectingIdx] = useState<{
+    scene: number;
+    variant: number;
+  } | null>(null);
+
+  // エラー
   const [error, setError] = useState<{ index: number; message: string } | null>(null);
   const [globalError, setGlobalError] = useState<string | null>(null);
 
   const scenesDone = job.steps.scenes.status === "done";
 
-  const handleRegeneratePrompt = async (sceneIndex: number) => {
-    if (!scenes) return;
-    const target = scenes.find((s) => s.index === sceneIndex);
-    if (!target) return;
-    setRegenPromptIdx(sceneIndex);
+  // 初回マウント時、未生成シーンがあれば自動で 3 案生成を開始
+  useEffect(() => {
+    if (autoStartedRef.current) return;
+    if (!scenes || scenes.length === 0) return;
+    if (!scenesDone) return;
+    const pending = scenes.filter(sceneNeedsGeneration);
+    if (pending.length === 0) return;
+    autoStartedRef.current = true;
+    void runBulkGenerate(pending.map((s) => s.index));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scenes, scenesDone]);
+
+  async function generateForScene(
+    sceneIndex: number,
+    userDirectionJa: string,
+  ): Promise<{ ok: boolean; error?: string }> {
+    setGeneratingIndex(sceneIndex);
     setError(null);
     try {
       const res = await fetch(
-        `/api/manabilab-canva/${job.id}/scenes/${sceneIndex}/regenerate-image-prompt`,
+        `/api/manabilab-canva/${job.id}/scenes/${sceneIndex}/generate-variants`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            userDirectionJa: (target.imagePromptJa ?? "").trim() || undefined,
-          }),
+          body: JSON.stringify({ userDirectionJa }),
         },
       );
-      const data = (await res.json()) as RegenPromptResult;
-      if (!data.ok || !data.imagePromptEn) {
-        setError({ index: sceneIndex, message: data.error ?? "プロンプト生成に失敗しました" });
-        return;
+      const data = (await res.json()) as GenVariantsResult;
+      if (!data.candidates) {
+        const msg = data.error ?? "3 案生成に失敗しました";
+        setError({ index: sceneIndex, message: msg });
+        return { ok: false, error: msg };
       }
-      const next = scenes.map((s) =>
-        s.index === sceneIndex ? { ...s, imagePromptEn: data.imagePromptEn! } : s,
-      );
-      setScenes(next);
-      onScenesChange(next);
-    } catch (err) {
-      setError({
-        index: sceneIndex,
-        message: err instanceof Error ? err.message : String(err),
+      const candidates = data.candidates;
+      const next =
+        scenes?.map((s) =>
+          s.index === sceneIndex
+            ? {
+                ...s,
+                imagePromptJa: userDirectionJa,
+                imageCandidates: candidates,
+                selectedCandidateIndex: undefined,
+                imagePath: undefined,
+                imagePromptEn: "",
+                imageGeneratedAt: undefined,
+              }
+            : s,
+        ) ?? null;
+      if (next) {
+        setScenes(next);
+        onScenesChange(next);
+      }
+      const v = Date.now();
+      setImageVersion((prev) => {
+        const updated = { ...prev };
+        for (const c of candidates) {
+          updated[`${sceneIndex}-${c.variantIndex}`] = v;
+        }
+        return updated;
       });
+
+      // 部分的失敗の通知
+      if (data.errors && data.errors.length > 0) {
+        setError({
+          index: sceneIndex,
+          message: `一部失敗: ${data.errors
+            .map((e) => `v${e.variantIndex}: ${e.error}`)
+            .join(" / ")}`,
+        });
+      }
+      return { ok: data.ok };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setError({ index: sceneIndex, message: msg });
+      return { ok: false, error: msg };
     } finally {
-      setRegenPromptIdx(null);
+      setGeneratingIndex(null);
     }
+  }
+
+  async function runBulkGenerate(indices: number[]): Promise<void> {
+    if (indices.length === 0) return;
+    setBatchProgress({ completed: 0, total: indices.length });
+    setGlobalError(null);
+
+    // images ステップを in-progress に
+    if (job.steps.images.status === "pending") {
+      const now = new Date().toISOString();
+      onJobChange({
+        ...job,
+        steps: {
+          ...job.steps,
+          images: { ...job.steps.images, status: "in-progress", updatedAt: now },
+        },
+      });
+    }
+
+    let completed = 0;
+    for (const sceneIndex of indices) {
+      const target = scenes?.find((s) => s.index === sceneIndex);
+      const userDirection = (target?.imagePromptJa ?? "").trim();
+      const result = await generateForScene(sceneIndex, userDirection);
+      completed += 1;
+      setBatchProgress({ completed, total: indices.length });
+      if (!result.ok) {
+        // 続行はするがグローバルエラーに残す
+        setGlobalError(
+          (prev) =>
+            (prev ?? "") +
+            (prev ? " / " : "") +
+            `#${sceneIndex}: ${result.error ?? "失敗"}`,
+        );
+      }
+    }
+    setBatchProgress(null);
+  }
+
+  const handleRegenerateScene = async (
+    sceneIndex: number,
+    userDirectionJa: string,
+  ) => {
+    if (generatingIndex !== null || batchProgress) return;
+    await generateForScene(sceneIndex, userDirectionJa);
   };
 
-  const handleGenerateImage = async (sceneIndex: number) => {
-    if (!scenes) return;
-    const target = scenes.find((s) => s.index === sceneIndex);
-    if (!target) return;
+  const handleRegenerateAll = async () => {
+    if (!scenes || scenes.length === 0) return;
+    if (
+      !confirm(
+        `全 ${scenes.length} シーン × 3 案を再生成します。数分かかります。続行しますか？`,
+      )
+    ) {
+      return;
+    }
+    autoStartedRef.current = true;
+    await runBulkGenerate(scenes.map((s) => s.index));
+  };
 
-    setGenImageIdx(sceneIndex);
+  const handleSelectCandidate = async (
+    sceneIndex: number,
+    variantIndex: number,
+  ) => {
+    setSelectingIdx({ scene: sceneIndex, variant: variantIndex });
     setError(null);
     try {
       const res = await fetch(
-        `/api/manabilab-canva/${job.id}/scenes/${sceneIndex}/generate-image`,
+        `/api/manabilab-canva/${job.id}/scenes/${sceneIndex}/select-candidate`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            userDirectionJa: (target.imagePromptJa ?? "").trim() || "",
-            // 統合 API: ユーザー指示があれば必ず英語プロンプトを再生成する
-            regeneratePrompt: true,
-          }),
+          body: JSON.stringify({ variantIndex }),
         },
       );
-      const data = (await res.json()) as GenImageResult;
-      if (!data.ok || !data.imagePath) {
-        setError({ index: sceneIndex, message: data.error ?? "画像生成に失敗しました" });
+      const data = (await res.json()) as SelectCandidateResult;
+      if (!data.ok || !data.scene) {
+        setError({
+          index: sceneIndex,
+          message: data.error ?? "選択に失敗しました",
+        });
         return;
       }
-      const next = scenes.map((s) =>
-        s.index === sceneIndex
-          ? {
-              ...s,
-              imagePath: data.imagePath!,
-              imageGeneratedAt: data.generatedAt,
-              imagePromptEn: data.imagePromptEn ?? s.imagePromptEn,
-              imagePromptJa: data.imagePromptJa ?? s.imagePromptJa,
-            }
-          : s,
-      );
-      setScenes(next);
-      onScenesChange(next);
-      setImageVersion((prev) => ({ ...prev, [sceneIndex]: Date.now() }));
-
-      // images ステップを done にする（最低1枚生成されたら）
-      const allHaveImage = next.every((s) => !!s.imagePath);
-      if (allHaveImage && job.steps.images.status !== "done") {
-        const now = new Date().toISOString();
-        onJobChange({
-          ...job,
-          steps: {
-            ...job.steps,
-            images: { ...job.steps.images, status: "done", updatedAt: now },
-          },
-        });
-      } else if (job.steps.images.status === "pending") {
-        const now = new Date().toISOString();
-        onJobChange({
-          ...job,
-          steps: {
-            ...job.steps,
-            images: { ...job.steps.images, status: "in-progress", updatedAt: now },
-          },
-        });
+      const next =
+        scenes?.map((s) => (s.index === sceneIndex ? data.scene! : s)) ?? null;
+      if (next) {
+        setScenes(next);
+        onScenesChange(next);
       }
+      if (data.job) onJobChange(data.job);
     } catch (err) {
       setError({
         index: sceneIndex,
         message: err instanceof Error ? err.message : String(err),
       });
     } finally {
-      setGenImageIdx(null);
+      setSelectingIdx(null);
     }
   };
 
@@ -254,76 +334,6 @@ export function ImagesStep({
     } finally {
       setRegeneratingBase(false);
     }
-  };
-
-  const handleGenerateAll = async (force: boolean) => {
-    if (!scenes || scenes.length === 0) return;
-    if (
-      !confirm(
-        force
-          ? "既存画像も含めて全シーンを再生成します。よろしいですか？"
-          : `未生成のシーンに対して画像をまとめて生成します。${scenes.length} シーン分、数分かかります。続行しますか？`,
-      )
-    ) {
-      return;
-    }
-    setGeneratingAll(true);
-    setBatchSummary(null);
-    setGlobalError(null);
-    setError(null);
-    try {
-      const res = await fetch(
-        `/api/manabilab-canva/${job.id}/images/generate-all`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ force, generateMissingPrompts: true }),
-        },
-      );
-      const data = (await res.json()) as GenerateAllResult;
-      if (!data.ok && !data.results) {
-        setGlobalError(data.error ?? "一括生成に失敗しました");
-        return;
-      }
-      if (data.scenes) {
-        setScenes(data.scenes);
-        onScenesChange(data.scenes);
-        const v = Date.now();
-        const versions: Record<number, number> = {};
-        for (const s of data.scenes) versions[s.index] = v;
-        setImageVersion(versions);
-      }
-      if (data.job) onJobChange(data.job);
-      if (data.results) {
-        const done = data.results.filter((r) => r.status === "done").length;
-        const skipped = data.results.filter((r) => r.status === "skipped").length;
-        const errored = data.results.filter((r) => r.status === "error");
-        const parts: string[] = [`生成 ${done}`];
-        if (skipped > 0) parts.push(`スキップ ${skipped}`);
-        if (errored.length > 0) {
-          parts.push(`失敗 ${errored.length}`);
-        }
-        setBatchSummary(parts.join(" / "));
-        if (errored.length > 0) {
-          setGlobalError(
-            errored.map((e) => `#${e.index}: ${e.error}`).join(" / "),
-          );
-        }
-      }
-    } catch (err) {
-      setGlobalError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setGeneratingAll(false);
-    }
-  };
-
-  const updatePromptEn = (sceneIndex: number, value: string) => {
-    if (!scenes) return;
-    const next = scenes.map((s) =>
-      s.index === sceneIndex ? { ...s, imagePromptEn: value } : s,
-    );
-    setScenes(next);
-    onScenesChange(next);
   };
 
   const updatePromptJa = (sceneIndex: number, value: string) => {
@@ -360,7 +370,7 @@ export function ImagesStep({
     if (!target.imagePath) {
       setError({
         index: sceneIndex,
-        message: "先に静止画を生成してからアニメ化してください",
+        message: "先に静止画の候補を 1 つ「決定」してからアニメ化してください",
       });
       return;
     }
@@ -411,13 +421,17 @@ export function ImagesStep({
     }
   };
 
+  const allSelected =
+    !!scenes && scenes.length > 0 && scenes.every((s) => !!s.imagePath);
+
   return (
     <div style={{ display: "grid", gap: 16 }}>
       <header>
         <h2 style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>⑤ Images</h2>
         <p style={{ fontSize: 13, color: "var(--muted)", marginTop: 4 }}>
-          各シーンに対して、参照画像（マナビくん基準）と Gemini で組み立てた英語プロンプトで
-          画像を生成する。背景は純白固定。Canva 上で背景削除して使う前提。
+          各シーンに対して <strong>3 つの構図候補</strong>を独立に生成します。
+          1 案だけを「✓ これに決定」で確定すると、後段の TTS / アニメ /
+          レンダリングがその 1 枚を使います。
         </p>
       </header>
 
@@ -455,8 +469,6 @@ export function ImagesStep({
             <code>assets/character/manabikun-base.png</code>
             <br />
             全シーンの画像生成でこの 1 枚を referenceImages として使います。
-            <code>reference.png</code> を構造リファレンスに、
-            <code>prompts/character-base.md</code> の規範でベースを生成し直せます。
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <button
@@ -484,35 +496,13 @@ export function ImagesStep({
         </div>
       </section>
 
-      <div
-        style={{
-          display: "flex",
-          gap: 8,
-          alignItems: "center",
-          flexWrap: "wrap",
-        }}
-      >
+      <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
         <button
           type="button"
-          onClick={() => handleGenerateAll(false)}
-          disabled={generatingAll || !scenesDone || !scenes || scenes.length === 0}
-          style={{
-            padding: "8px 16px",
-            background: "var(--accent)",
-            color: "white",
-            border: "none",
-            borderRadius: 6,
-            fontWeight: 600,
-            cursor: generatingAll ? "not-allowed" : "pointer",
-            opacity: generatingAll ? 0.6 : 1,
-          }}
-        >
-          {generatingAll ? "一括生成中..." : "未生成のシーンを一括生成"}
-        </button>
-        <button
-          type="button"
-          onClick={() => handleGenerateAll(true)}
-          disabled={generatingAll || !scenesDone || !scenes || scenes.length === 0}
+          onClick={handleRegenerateAll}
+          disabled={
+            !!batchProgress || generatingIndex !== null || !scenes || scenes.length === 0
+          }
           style={{
             padding: "8px 16px",
             background: "transparent",
@@ -520,16 +510,48 @@ export function ImagesStep({
             border: "1px solid var(--accent)",
             borderRadius: 6,
             fontWeight: 600,
-            cursor: generatingAll ? "not-allowed" : "pointer",
-            opacity: generatingAll ? 0.6 : 1,
+            cursor: batchProgress ? "not-allowed" : "pointer",
+            opacity: batchProgress ? 0.6 : 1,
           }}
         >
-          全シーンを上書き再生成
+          全シーン × 3 案を再生成
         </button>
-        {batchSummary ? (
-          <span style={{ fontSize: 12, color: "var(--muted)" }}>{batchSummary}</span>
+
+        {batchProgress ? (
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <div
+              aria-hidden
+              style={{
+                width: 14,
+                height: 14,
+                border: "2px solid var(--accent)",
+                borderTopColor: "transparent",
+                borderRadius: "50%",
+                animation: "imagesstep-spin 0.8s linear infinite",
+              }}
+            />
+            <span style={{ fontSize: 13, fontWeight: 600 }}>
+              生成中: シーン {batchProgress.completed} / {batchProgress.total}{" "}
+              完了
+              {generatingIndex !== null ? `（#${generatingIndex} 進行中）` : ""}
+            </span>
+          </div>
+        ) : null}
+
+        {!batchProgress && allSelected ? (
+          <span style={{ fontSize: 12, color: "#2e7d32", fontWeight: 600 }}>
+            ✓ 全シーンで候補が選択されています
+          </span>
         ) : null}
       </div>
+
+      <style jsx>{`
+        @keyframes imagesstep-spin {
+          to {
+            transform: rotate(360deg);
+          }
+        }
+      `}</style>
 
       {globalError ? (
         <p style={{ color: "#d32f2f", fontSize: 13, margin: 0 }}>{globalError}</p>
@@ -538,13 +560,10 @@ export function ImagesStep({
       {scenes && scenes.length > 0 ? (
         <div style={{ display: "grid", gap: 12 }}>
           {scenes.map((s) => {
-            const v = imageVersion[s.index];
-            const imageSrc = s.imagePath
-              ? `${CANVA_PUBLIC_PREFIX}/${s.imagePath}${v ? `?t=${v}` : ""}`
-              : null;
             const errForThis = error?.index === s.index ? error.message : null;
-            const isRegen = regenPromptIdx === s.index;
-            const isGen = genImageIdx === s.index;
+            const isThisGenerating = generatingIndex === s.index;
+            const candidates = s.imageCandidates ?? [];
+            const selectedIdx = s.selectedCandidateIndex;
             return (
               <div
                 key={s.index}
@@ -555,382 +574,421 @@ export function ImagesStep({
                   background: "rgba(0,0,0,0.02)",
                   display: "grid",
                   gap: 10,
-                  gridTemplateColumns: "200px 1fr",
                 }}
               >
-                {/* 左: サムネ */}
-                <div style={{ display: "grid", gap: 8 }}>
-                  <div
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <span
                     style={{
-                      width: 200,
-                      aspectRatio: "9 / 16",
-                      background: "#fafafa",
-                      border: "1px solid var(--border)",
-                      borderRadius: 4,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      overflow: "hidden",
+                      fontSize: 11,
+                      fontWeight: 700,
+                      color: "white",
+                      background: sourceColor(s.source),
+                      padding: "2px 8px",
+                      borderRadius: 999,
                     }}
                   >
-                    {imageSrc ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={imageSrc}
-                        alt={`scene ${s.index}`}
-                        style={{ width: "100%", height: "100%", objectFit: "contain" }}
-                      />
-                    ) : (
-                      <span style={{ fontSize: 11, color: "var(--muted)" }}>未生成</span>
-                    )}
-                  </div>
-                  {imageSrc ? (
-                    <a
-                      href={imageSrc}
-                      download={`scene-${String(s.index).padStart(2, "0")}.png`}
-                      style={{
-                        fontSize: 12,
-                        textAlign: "center",
-                        textDecoration: "none",
-                        color: "var(--accent)",
-                        border: "1px solid var(--accent)",
-                        borderRadius: 4,
-                        padding: "4px 8px",
-                      }}
-                    >
-                      ⬇ ダウンロード
-                    </a>
+                    #{s.index} · {sourceLabel(s.source)}
+                  </span>
+                  {selectedIdx !== undefined ? (
+                    <span style={{ fontSize: 11, color: "#2e7d32", fontWeight: 600 }}>
+                      ✓ v{selectedIdx} 採用中
+                    </span>
+                  ) : candidates.length > 0 ? (
+                    <span style={{ fontSize: 11, color: "#f57c00", fontWeight: 600 }}>
+                      未選択
+                    </span>
+                  ) : null}
+                  {isThisGenerating ? (
+                    <span style={{ fontSize: 11, color: "var(--accent)", fontWeight: 600 }}>
+                      生成中...
+                    </span>
                   ) : null}
                 </div>
 
-                {/* 右: 情報 + プロンプト + ボタン */}
-                <div style={{ display: "grid", gap: 8 }}>
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 8,
-                      flexWrap: "wrap",
-                    }}
-                  >
-                    <span
-                      style={{
-                        fontSize: 11,
-                        fontWeight: 700,
-                        color: "white",
-                        background: sourceColor(s.source),
-                        padding: "2px 8px",
-                        borderRadius: 999,
-                      }}
-                    >
-                      #{s.index} · {sourceLabel(s.source)}
-                    </span>
-                    {s.imageGeneratedAt ? (
-                      <span style={{ fontSize: 11, color: "var(--muted)" }}>
-                        生成 {new Date(s.imageGeneratedAt).toLocaleString("ja-JP")}
-                      </span>
-                    ) : null}
-                  </div>
+                <div style={{ fontSize: 12, color: "var(--muted)" }}>
+                  <strong style={{ color: "inherit" }}>caption:</strong>{" "}
+                  {s.caption}
+                  <br />
+                  <strong style={{ color: "inherit" }}>narration:</strong>{" "}
+                  {s.narration.length > 80
+                    ? s.narration.slice(0, 80) + "…"
+                    : s.narration}
+                </div>
 
-                  <div
-                    style={{
-                      fontSize: 12,
-                      color: "var(--muted)",
-                      padding: "4px 0",
-                    }}
-                  >
-                    <strong style={{ color: "inherit" }}>caption:</strong> {s.caption}
-                    <br />
-                    <strong style={{ color: "inherit" }}>narration:</strong>{" "}
-                    {s.narration.length > 80 ? s.narration.slice(0, 80) + "…" : s.narration}
-                  </div>
-
-                  <label style={{ display: "grid", gap: 4, fontSize: 13 }}>
-                    <span style={{ fontWeight: 600 }}>
-                      ポーズの指示{" "}
-                      <span
+                {/* 3 候補のサムネ横並び */}
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: `repeat(${VARIANT_COUNT}, 1fr)`,
+                    gap: 10,
+                  }}
+                >
+                  {Array.from({ length: VARIANT_COUNT }, (_, vi) => {
+                    const c = candidates.find((x) => x.variantIndex === vi);
+                    const v = imageVersion[`${s.index}-${vi}`];
+                    const imageSrc = c?.imagePath
+                      ? `${CANVA_PUBLIC_PREFIX}/${c.imagePath}${v ? `?t=${v}` : ""}`
+                      : null;
+                    const isSelected = selectedIdx === vi;
+                    const isSelecting =
+                      selectingIdx?.scene === s.index &&
+                      selectingIdx.variant === vi;
+                    return (
+                      <div
+                        key={vi}
                         style={{
-                          fontWeight: 400,
-                          color: "var(--muted)",
-                          fontSize: 11,
-                          marginLeft: 4,
+                          display: "grid",
+                          gap: 6,
+                          padding: 8,
+                          border: isSelected
+                            ? "2px solid #2e7d32"
+                            : "1px solid var(--border)",
+                          borderRadius: 6,
+                          background: isSelected
+                            ? "rgba(46, 125, 50, 0.06)"
+                            : "transparent",
                         }}
                       >
-                        日本語・任意 / 例: 「ケーキを食べている姿」「両手で板チョコを掲げてドヤ顔」
-                      </span>
-                    </span>
-                    <textarea
-                      value={s.imagePromptJa ?? ""}
-                      onChange={(e) => updatePromptJa(s.index, e.target.value)}
-                      rows={3}
-                      placeholder="空でも OK。空なら caption / narration から AI が自動でポーズを推測します。"
-                      disabled={isRegen || isGen}
-                      style={{
-                        padding: "8px 10px",
-                        border: "1px solid var(--border)",
-                        borderRadius: 6,
-                        fontSize: 13,
-                        background: "var(--card)",
-                        color: "inherit",
-                        lineHeight: 1.5,
-                        resize: "vertical",
-                      }}
-                    />
-                  </label>
-
-                  {errForThis ? (
-                    <p style={{ color: "#d32f2f", fontSize: 12, margin: 0 }}>
-                      {errForThis}
-                    </p>
-                  ) : null}
-
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <button
-                      type="button"
-                      onClick={() => handleGenerateImage(s.index)}
-                      disabled={isRegen || isGen}
-                      style={smallPrimary(isGen)}
-                    >
-                      {isGen
-                        ? "生成中..."
-                        : s.imagePath
-                        ? "画像を再生成"
-                        : "画像を生成"}
-                    </button>
-                  </div>
-
-                  <details
-                    open={!!s.imagePath && !s.videoPath ? false : !!s.videoPath}
-                    style={{
-                      borderTop: "1px dashed var(--border)",
-                      paddingTop: 8,
-                      marginTop: 4,
-                    }}
-                  >
-                    <summary
-                      style={{
-                        fontSize: 13,
-                        fontWeight: 600,
-                        cursor: "pointer",
-                        color: s.videoPath ? "#2e7d32" : "var(--accent)",
-                      }}
-                    >
-                      🎬 アニメーション {s.videoPath ? "（生成済み）" : "（任意）"}
-                    </summary>
-                    <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
-                      {/* 動画プレビュー / placeholder */}
-                      {s.videoPath ? (
-                        <div style={{ display: "grid", gap: 4 }}>
-                          <video
-                            key={`${s.index}-${videoVersion[s.index] ?? 0}`}
-                            src={`${CANVA_PUBLIC_PREFIX}/${s.videoPath}${
-                              videoVersion[s.index]
-                                ? `?t=${videoVersion[s.index]}`
-                                : ""
-                            }`}
-                            controls
-                            loop
-                            muted
-                            playsInline
-                            style={{
-                              width: "100%",
-                              maxWidth: 320,
-                              aspectRatio: "9 / 16",
-                              background: "#000",
-                              borderRadius: 4,
-                            }}
-                          />
-                          <div
-                            style={{
-                              display: "flex",
-                              gap: 8,
-                              fontSize: 11,
-                              color: "var(--muted)",
-                            }}
-                          >
-                            {s.videoGeneratedAt ? (
-                              <span>
-                                生成{" "}
-                                {new Date(s.videoGeneratedAt).toLocaleString(
-                                  "ja-JP",
-                                )}
-                              </span>
-                            ) : null}
-                            <a
-                              href={`${CANVA_PUBLIC_PREFIX}/${s.videoPath}`}
-                              download={`scene-${String(s.index).padStart(
-                                2,
-                                "0",
-                              )}.mp4`}
-                              style={{
-                                color: "var(--accent)",
-                                textDecoration: "none",
-                              }}
-                            >
-                              ⬇ MP4 をダウンロード
-                            </a>
-                          </div>
-                        </div>
-                      ) : (
                         <div
                           style={{
-                            fontSize: 11,
+                            fontSize: 10,
                             color: "var(--muted)",
-                            padding: "8px 0",
+                            fontWeight: 600,
+                            textTransform: "uppercase",
                           }}
                         >
-                          {s.imagePath
-                            ? "未生成（指示を書いて「アニメを生成」を押してください）"
-                            : "先に静止画を生成してください"}
+                          v{vi}
+                          {c?.poseSummaryJa ? ` · ${c.poseSummaryJa}` : ""}
                         </div>
-                      )}
-
-                      <label style={{ display: "grid", gap: 4, fontSize: 13 }}>
-                        <span style={{ fontWeight: 600 }}>
-                          アニメ指示{" "}
-                          <span
-                            style={{
-                              fontWeight: 400,
-                              color: "var(--muted)",
-                              fontSize: 11,
-                              marginLeft: 4,
-                            }}
-                          >
-                            日本語・任意 / 例: 「血流が巡る」「マナビくんがチョコをかじる」
-                          </span>
-                        </span>
-                        <textarea
-                          value={s.seedancePromptJa ?? ""}
-                          onChange={(e) =>
-                            updateSeedancePromptJa(s.index, e.target.value)
-                          }
-                          rows={2}
-                          placeholder="空でも OK。空なら caption / narration から AI が控えめなアニメを推測します。"
-                          disabled={genAnimationIdx === s.index || !s.imagePath}
+                        <div
                           style={{
-                            padding: "8px 10px",
+                            width: "100%",
+                            aspectRatio: "9 / 16",
+                            background: "#fafafa",
                             border: "1px solid var(--border)",
-                            borderRadius: 6,
-                            fontSize: 13,
-                            background: "var(--card)",
-                            color: "inherit",
-                            lineHeight: 1.5,
-                            resize: "vertical",
-                          }}
-                        />
-                      </label>
-
-                      <button
-                        type="button"
-                        onClick={() => handleGenerateAnimation(s.index)}
-                        disabled={
-                          !s.imagePath || genAnimationIdx === s.index || isGen
-                        }
-                        style={smallPrimary(genAnimationIdx === s.index)}
-                      >
-                        {genAnimationIdx === s.index
-                          ? "アニメ生成中... (30〜90秒)"
-                          : s.videoPath
-                          ? "アニメを再生成"
-                          : "アニメを生成"}
-                      </button>
-
-                      <details>
-                        <summary
-                          style={{
-                            fontSize: 11,
-                            color: "var(--muted)",
-                            cursor: "pointer",
+                            borderRadius: 4,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            overflow: "hidden",
                           }}
                         >
-                          ▼ アニメ詳細（Seedance に渡る英語プロンプト）
-                        </summary>
-                        <div style={{ marginTop: 6 }}>
-                          <textarea
-                            value={s.seedancePromptEn ?? ""}
-                            onChange={(e) =>
-                              updateSeedancePromptEn(s.index, e.target.value)
-                            }
-                            rows={4}
-                            placeholder="まだ生成されていません。"
-                            disabled={genAnimationIdx === s.index}
-                            style={{
-                              width: "100%",
-                              padding: "6px 8px",
-                              border: "1px solid var(--border)",
-                              borderRadius: 4,
-                              fontSize: 11,
-                              background: "var(--card)",
-                              color: "inherit",
-                              fontFamily:
-                                "ui-monospace, SFMono-Regular, monospace",
-                              lineHeight: 1.5,
-                              resize: "vertical",
-                              boxSizing: "border-box",
-                            }}
-                          />
+                          {isThisGenerating && !imageSrc ? (
+                            <div
+                              aria-hidden
+                              style={{
+                                width: 18,
+                                height: 18,
+                                border: "2px solid var(--accent)",
+                                borderTopColor: "transparent",
+                                borderRadius: "50%",
+                                animation:
+                                  "imagesstep-spin 0.8s linear infinite",
+                              }}
+                            />
+                          ) : imageSrc ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={imageSrc}
+                              alt={`scene ${s.index} v${vi}`}
+                              style={{
+                                width: "100%",
+                                height: "100%",
+                                objectFit: "contain",
+                              }}
+                            />
+                          ) : c && !c.imagePath ? (
+                            <span
+                              style={{
+                                fontSize: 10,
+                                color: "#d32f2f",
+                                padding: 4,
+                                textAlign: "center",
+                              }}
+                            >
+                              画像生成失敗
+                            </span>
+                          ) : (
+                            <span style={{ fontSize: 11, color: "var(--muted)" }}>
+                              未生成
+                            </span>
+                          )}
                         </div>
-                      </details>
-                    </div>
-                  </details>
+                        <button
+                          type="button"
+                          onClick={() => handleSelectCandidate(s.index, vi)}
+                          disabled={
+                            !imageSrc ||
+                            isSelecting ||
+                            isThisGenerating ||
+                            !!batchProgress
+                          }
+                          style={{
+                            padding: "4px 8px",
+                            fontSize: 11,
+                            fontWeight: 600,
+                            border: isSelected
+                              ? "1px solid #2e7d32"
+                              : "1px solid var(--accent)",
+                            background: isSelected ? "#2e7d32" : "transparent",
+                            color: isSelected ? "white" : "var(--accent)",
+                            borderRadius: 4,
+                            cursor:
+                              !imageSrc || isSelecting || isThisGenerating
+                                ? "not-allowed"
+                                : "pointer",
+                            opacity: !imageSrc ? 0.4 : isSelecting ? 0.6 : 1,
+                          }}
+                        >
+                          {isSelected
+                            ? "✓ 採用中"
+                            : isSelecting
+                            ? "決定中..."
+                            : "✓ これに決定"}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
 
-                  <details>
-                    <summary
+                <label style={{ display: "grid", gap: 4, fontSize: 13 }}>
+                  <span style={{ fontWeight: 600 }}>
+                    ポーズの指示{" "}
+                    <span
                       style={{
-                        fontSize: 11,
+                        fontWeight: 400,
                         color: "var(--muted)",
-                        cursor: "pointer",
+                        fontSize: 11,
+                        marginLeft: 4,
                       }}
                     >
-                      ▼ 詳細・上級者向け（生成された英語プロンプトの確認・編集）
-                    </summary>
-                    <div style={{ display: "grid", gap: 6, marginTop: 8 }}>
-                      <label style={{ display: "grid", gap: 4, fontSize: 12 }}>
-                        <span style={{ fontWeight: 600 }}>
-                          imagePromptEn{" "}
-                          <span
+                      日本語・任意 / 3 案すべての種として渡される
+                    </span>
+                  </span>
+                  <textarea
+                    value={s.imagePromptJa ?? ""}
+                    onChange={(e) => updatePromptJa(s.index, e.target.value)}
+                    rows={2}
+                    placeholder="空でも OK。空なら caption / narration から AI がポーズを推測します。"
+                    disabled={isThisGenerating || !!batchProgress}
+                    style={{
+                      padding: "8px 10px",
+                      border: "1px solid var(--border)",
+                      borderRadius: 6,
+                      fontSize: 13,
+                      background: "var(--card)",
+                      color: "inherit",
+                      lineHeight: 1.5,
+                      resize: "vertical",
+                    }}
+                  />
+                </label>
+
+                {errForThis ? (
+                  <p style={{ color: "#d32f2f", fontSize: 12, margin: 0 }}>
+                    {errForThis}
+                  </p>
+                ) : null}
+
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      handleRegenerateScene(s.index, (s.imagePromptJa ?? "").trim())
+                    }
+                    disabled={
+                      isThisGenerating ||
+                      !!batchProgress ||
+                      generatingIndex !== null
+                    }
+                    style={smallPrimary(isThisGenerating)}
+                  >
+                    {isThisGenerating
+                      ? "3 案生成中..."
+                      : candidates.length > 0
+                      ? "3 案を再生成"
+                      : "3 案を生成"}
+                  </button>
+                </div>
+
+                <details
+                  open={!!s.imagePath && !s.videoPath ? false : !!s.videoPath}
+                  style={{
+                    borderTop: "1px dashed var(--border)",
+                    paddingTop: 8,
+                    marginTop: 4,
+                  }}
+                >
+                  <summary
+                    style={{
+                      fontSize: 13,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      color: s.videoPath ? "#2e7d32" : "var(--accent)",
+                    }}
+                  >
+                    🎬 アニメーション {s.videoPath ? "（生成済み）" : "（任意）"}
+                  </summary>
+                  <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
+                    {s.videoPath ? (
+                      <div style={{ display: "grid", gap: 4 }}>
+                        <video
+                          key={`${s.index}-${videoVersion[s.index] ?? 0}`}
+                          src={`${CANVA_PUBLIC_PREFIX}/${s.videoPath}${
+                            videoVersion[s.index]
+                              ? `?t=${videoVersion[s.index]}`
+                              : ""
+                          }`}
+                          controls
+                          loop
+                          muted
+                          playsInline
+                          style={{
+                            width: "100%",
+                            maxWidth: 320,
+                            aspectRatio: "9 / 16",
+                            background: "#000",
+                            borderRadius: 4,
+                          }}
+                        />
+                        <div
+                          style={{
+                            display: "flex",
+                            gap: 8,
+                            fontSize: 11,
+                            color: "var(--muted)",
+                          }}
+                        >
+                          {s.videoGeneratedAt ? (
+                            <span>
+                              生成{" "}
+                              {new Date(s.videoGeneratedAt).toLocaleString(
+                                "ja-JP",
+                              )}
+                            </span>
+                          ) : null}
+                          <a
+                            href={`${CANVA_PUBLIC_PREFIX}/${s.videoPath}`}
+                            download={`scene-${String(s.index).padStart(
+                              2,
+                              "0",
+                            )}.mp4`}
                             style={{
-                              fontWeight: 400,
-                              color: "var(--muted)",
-                              fontSize: 11,
-                              marginLeft: 4,
+                              color: "var(--accent)",
+                              textDecoration: "none",
                             }}
                           >
-                            実際に Nano Banana に渡る英語プロンプト
-                          </span>
-                        </span>
-                        <textarea
-                          value={s.imagePromptEn ?? ""}
-                          onChange={(e) => updatePromptEn(s.index, e.target.value)}
-                          rows={5}
-                          placeholder="まだ生成されていません。"
-                          disabled={isRegen || isGen}
+                            ⬇ MP4 をダウンロード
+                          </a>
+                        </div>
+                      </div>
+                    ) : (
+                      <div
+                        style={{
+                          fontSize: 11,
+                          color: "var(--muted)",
+                          padding: "8px 0",
+                        }}
+                      >
+                        {s.imagePath
+                          ? "未生成（指示を書いて「アニメを生成」を押してください）"
+                          : "先に 3 案から 1 つ「決定」してください"}
+                      </div>
+                    )}
+
+                    <label style={{ display: "grid", gap: 4, fontSize: 13 }}>
+                      <span style={{ fontWeight: 600 }}>
+                        アニメ指示{" "}
+                        <span
                           style={{
+                            fontWeight: 400,
+                            color: "var(--muted)",
+                            fontSize: 11,
+                            marginLeft: 4,
+                          }}
+                        >
+                          日本語・任意 / 例: 「血流が巡る」「マナビくんがチョコをかじる」
+                        </span>
+                      </span>
+                      <textarea
+                        value={s.seedancePromptJa ?? ""}
+                        onChange={(e) =>
+                          updateSeedancePromptJa(s.index, e.target.value)
+                        }
+                        rows={2}
+                        placeholder="空でも OK。空なら caption / narration から AI が控えめなアニメを推測します。"
+                        disabled={genAnimationIdx === s.index || !s.imagePath}
+                        style={{
+                          padding: "8px 10px",
+                          border: "1px solid var(--border)",
+                          borderRadius: 6,
+                          fontSize: 13,
+                          background: "var(--card)",
+                          color: "inherit",
+                          lineHeight: 1.5,
+                          resize: "vertical",
+                        }}
+                      />
+                    </label>
+
+                    <button
+                      type="button"
+                      onClick={() => handleGenerateAnimation(s.index)}
+                      disabled={!s.imagePath || genAnimationIdx === s.index}
+                      style={smallPrimary(genAnimationIdx === s.index)}
+                    >
+                      {genAnimationIdx === s.index
+                        ? "アニメ生成中... (30〜90秒)"
+                        : s.videoPath
+                        ? "アニメを再生成"
+                        : "アニメを生成"}
+                    </button>
+
+                    <details>
+                      <summary
+                        style={{
+                          fontSize: 11,
+                          color: "var(--muted)",
+                          cursor: "pointer",
+                        }}
+                      >
+                        ▼ アニメ詳細（Seedance に渡る英語プロンプト）
+                      </summary>
+                      <div style={{ marginTop: 6 }}>
+                        <textarea
+                          value={s.seedancePromptEn ?? ""}
+                          onChange={(e) =>
+                            updateSeedancePromptEn(s.index, e.target.value)
+                          }
+                          rows={4}
+                          placeholder="まだ生成されていません。"
+                          disabled={genAnimationIdx === s.index}
+                          style={{
+                            width: "100%",
                             padding: "6px 8px",
                             border: "1px solid var(--border)",
                             borderRadius: 4,
                             fontSize: 11,
                             background: "var(--card)",
                             color: "inherit",
-                            fontFamily: "ui-monospace, SFMono-Regular, monospace",
+                            fontFamily:
+                              "ui-monospace, SFMono-Regular, monospace",
                             lineHeight: 1.5,
                             resize: "vertical",
+                            boxSizing: "border-box",
                           }}
                         />
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() => handleRegeneratePrompt(s.index)}
-                        disabled={isRegen || isGen}
-                        style={smallSecondary(isRegen)}
-                      >
-                        {isRegen
-                          ? "プロンプト生成中..."
-                          : "英語プロンプトのみ再生成（画像は作らない）"}
-                      </button>
-                    </div>
-                  </details>
-                </div>
+                      </div>
+                    </details>
+                  </div>
+                </details>
               </div>
             );
           })}
@@ -975,20 +1033,6 @@ function smallPrimary(loading: boolean): React.CSSProperties {
     background: "var(--accent)",
     color: "white",
     border: "none",
-    borderRadius: 4,
-    fontSize: 12,
-    fontWeight: 600,
-    cursor: loading ? "not-allowed" : "pointer",
-    opacity: loading ? 0.6 : 1,
-  };
-}
-
-function smallSecondary(loading: boolean): React.CSSProperties {
-  return {
-    padding: "6px 14px",
-    background: "transparent",
-    color: "var(--accent)",
-    border: "1px solid var(--accent)",
     borderRadius: 4,
     fontSize: 12,
     fontWeight: 600,

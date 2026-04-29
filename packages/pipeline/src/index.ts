@@ -5,8 +5,15 @@ export type { ResearchResult, ResearchSource } from "./research-generator.js";
 export { generateManabilabCanvaScript } from "./manabilab-canva-script-generator.js";
 export type { ManabilabCanvaScriptResult } from "./manabilab-canva-script-generator.js";
 export { expandScriptToScenes } from "./manabilab-canva-scene-expander.js";
-export { generateImagePromptForScene } from "./manabilab-canva-image-prompt-generator.js";
-export type { ImagePromptResult } from "./manabilab-canva-image-prompt-generator.js";
+export {
+  generateImagePromptForScene,
+  VARIANT_DIRECTIVES,
+  DEFAULT_VARIANT_COUNT,
+} from "./manabilab-canva-image-prompt-generator.js";
+export type {
+  ImagePromptResult,
+  GenerateImagePromptOptions,
+} from "./manabilab-canva-image-prompt-generator.js";
 export { regenerateCharacterBase } from "./manabilab-canva-character-base-generator.js";
 export type { RegenerateCharacterBaseResult } from "./manabilab-canva-character-base-generator.js";
 export { generateAnimationPromptForScene } from "./manabilab-canva-animation-prompt-generator.js";

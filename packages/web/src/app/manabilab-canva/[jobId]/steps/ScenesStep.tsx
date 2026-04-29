@@ -153,6 +153,10 @@ export function ScenesStep({
           台本の <code>hook / statements[] / cta / punchline</code> を 1 シーンずつに展開する。
           各シーンは TTS 用ナレと、Canva に流す画面字幕（caption）と、画像生成用プロンプトを持つ。
         </p>
+        <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>
+          「保存して次へ →」で確定すると、Images ステップでシーンごとに <strong>3 つの構図候補</strong>{" "}
+          が自動で生成される。
+        </p>
       </header>
 
       {!scriptDone ? (
