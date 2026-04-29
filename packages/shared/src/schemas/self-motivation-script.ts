@@ -30,7 +30,9 @@ export const SelfMotivationScriptSchema = z.object({
   openingHook: z
     .string()
     .min(1)
-    .describe("冒頭5〜10秒の掴み。視聴者を引き込む 1〜2 文（30〜80字）"),
+    .describe(
+      "冒頭フック。PAS フレームワーク拡張型 7 ステップ (痛み列挙 → 根本原因の断定 → 将来への警告 → 内なる声の代弁 → 免責と犯人交代 → 二者択一 → 動画の約束) を順序通りに繋いだ 250〜350 字。詳細は channels/self-motivation/prompts/script.md の『冒頭フック構造』参照",
+    ),
   chapters: z
     .array(SelfMotivationChapterSchema)
     .min(1)
