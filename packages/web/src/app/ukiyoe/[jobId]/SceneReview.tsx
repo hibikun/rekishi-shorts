@@ -1,7 +1,14 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import type { MotionGrammar } from "@rekishi/shared";
 import type { UkiyoeSceneWithUrls } from "./page";
+import {
+  MOTION_PRESETS,
+  motionForPreset,
+  motionSummary,
+  presetForMotion,
+} from "@/lib/motion-options";
 
 interface Props {
   jobId: string;
@@ -45,6 +52,7 @@ interface SceneState {
   /** Ja を編集したが英訳ボタン未押下＝ En が古い可能性あり */
   videoPromptDirty: boolean;
   cameraFixed: boolean | undefined;
+  motion: MotionGrammar | undefined;
   approved: boolean;
 }
 
@@ -95,6 +103,7 @@ export function SceneReview({
         videoPromptEn: spec.videoPrompt,
         videoPromptDirty: false,
         cameraFixed: spec.cameraFixed,
+        motion: spec.motion,
         approved: false,
       };
     }
@@ -105,6 +114,11 @@ export function SceneReview({
   const [videoCacheBust, setVideoCacheBust] = useState<number>(0);
   const [translatingScene, setTranslatingScene] = useState<number | null>(null);
   const [translateError, setTranslateError] = useState<{
+    index: number;
+    message: string;
+  } | null>(null);
+  const [savingMotionScene, setSavingMotionScene] = useState<number | null>(null);
+  const [motionError, setMotionError] = useState<{
     index: number;
     message: string;
   } | null>(null);
@@ -209,6 +223,43 @@ export function SceneReview({
       });
     } finally {
       setTranslatingScene(null);
+    }
+  };
+
+  const handleMotionPresetChange = async (sceneIndex: number, presetId: string) => {
+    const motion = motionForPreset(presetId);
+    updateScene(sceneIndex, { motion });
+    setMotionError(null);
+    setSavingMotionScene(sceneIndex);
+    try {
+      const res = await fetch(
+        `/api/ukiyoe/${jobId}/scenes/${sceneIndex}/motion`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ motion: motion ?? null }),
+        },
+      );
+      const data = (await res.json()) as {
+        ok: boolean;
+        motion?: MotionGrammar | null;
+        error?: string;
+      };
+      if (!data.ok) {
+        setMotionError({
+          index: sceneIndex,
+          message: data.error ?? "保存に失敗しました",
+        });
+        return;
+      }
+      updateScene(sceneIndex, { motion: data.motion ?? undefined });
+    } catch (err) {
+      setMotionError({
+        index: sceneIndex,
+        message: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setSavingMotionScene(null);
     }
   };
 
@@ -470,6 +521,7 @@ export function SceneReview({
               <th style={{ ...th, width: 220 }}>image prompt</th>
               <th style={{ ...th, width: 360 }}>video prompt（日本語で編集）</th>
               <th style={{ ...th, width: 100, textAlign: "center" }}>カメラ</th>
+              <th style={{ ...th, width: 180 }}>Animation</th>
               <th style={{ ...th, width: 80, textAlign: "center" }}>OK</th>
             </tr>
           </thead>
@@ -655,6 +707,51 @@ export function SceneReview({
                       />
                       固定
                     </label>
+                  </td>
+                  <td style={td}>
+                    <select
+                      value={presetForMotion(state.motion)}
+                      onChange={(e) =>
+                        handleMotionPresetChange(spec.index, e.target.value)
+                      }
+                      disabled={savingMotionScene !== null}
+                      style={{
+                        width: "100%",
+                        padding: "8px 10px",
+                        border: "1px solid var(--border)",
+                        borderRadius: 6,
+                        background: "#fff",
+                        fontSize: 12,
+                        fontFamily: "inherit",
+                      }}
+                    >
+                      {MOTION_PRESETS.map((preset) => (
+                        <option key={preset.id} value={preset.id}>
+                          {preset.label}
+                        </option>
+                      ))}
+                      <option value="custom" disabled>
+                        Custom
+                      </option>
+                    </select>
+                    <div style={{ marginTop: 6, fontSize: 11, color: "var(--muted)" }}>
+                      {MOTION_PRESETS.find(
+                        (preset) => preset.id === presetForMotion(state.motion),
+                      )?.description ?? motionSummary(state.motion)}
+                    </div>
+                    <div style={{ marginTop: 4, fontSize: 10, color: "var(--muted)" }}>
+                      {motionSummary(state.motion)}
+                    </div>
+                    {savingMotionScene === spec.index && (
+                      <div style={{ marginTop: 4, fontSize: 10, color: "var(--accent)" }}>
+                        保存中...
+                      </div>
+                    )}
+                    {motionError?.index === spec.index && (
+                      <div style={{ marginTop: 4, fontSize: 10, color: "#991b1b" }}>
+                        {motionError.message}
+                      </div>
+                    )}
                   </td>
                   <td style={{ ...td, textAlign: "center" }}>
                     <input
