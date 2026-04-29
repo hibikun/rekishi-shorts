@@ -36,6 +36,16 @@ export const ManabilabCanvaSceneSchema = z.object({
     .describe(
       "画像生成プロンプト（英語・最終形）。Nano Banana など英語入力モデル用",
     ),
+  imagePath: z
+    .string()
+    .optional()
+    .describe(
+      "生成済み画像の相対パス。例: 'jobs/{jobId}/images/scene-01.png' (channels/manabilab-canva 起点)",
+    ),
+  imageGeneratedAt: z
+    .string()
+    .optional()
+    .describe("画像生成日時 (ISO 8601)"),
 });
 export type ManabilabCanvaScene = z.infer<typeof ManabilabCanvaSceneSchema>;
 
