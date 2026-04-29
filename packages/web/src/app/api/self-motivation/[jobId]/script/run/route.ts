@@ -4,6 +4,7 @@ import {
   SELF_MOTIVATION_CHANNEL,
   generateSelfMotivationScript,
   loadJob,
+  readAllYoutubeTranscripts,
   readResearchMarkdown,
   saveJob,
   writeScriptJson,
@@ -25,7 +26,18 @@ export async function POST(_request: NextRequest, ctx: Ctx): Promise<Response> {
     setChannel(SELF_MOTIVATION_CHANNEL);
     const job = await loadJob(jobId);
     const md = await readResearchMarkdown(jobId);
-    const r = await generateSelfMotivationScript(job.topic, md);
+    const transcripts = await readAllYoutubeTranscripts(jobId);
+    const r = await generateSelfMotivationScript(
+      job.topic,
+      md,
+      transcripts.map(({ ref, markdown }) => ({
+        videoId: ref.videoId,
+        url: ref.url,
+        title: ref.title,
+        note: ref.note,
+        markdown,
+      })),
+    );
     await writeScriptJson(jobId, r.script);
     const now = new Date().toISOString();
     const next = {

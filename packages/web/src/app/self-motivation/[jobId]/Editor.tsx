@@ -69,6 +69,7 @@ export function Editor({
           jobId={job.id}
           markdown={researchMd}
           onChange={setResearchMd}
+          youtubeRefs={job.steps.research.youtubeRefs ?? []}
           onJobChange={setJob}
         />
       </details>
