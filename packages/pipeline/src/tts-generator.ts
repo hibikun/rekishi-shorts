@@ -10,10 +10,12 @@ import { config } from "./config.js";
 // - ranking: "大人でリッチ" 基調で Zubenelgenubi
 // - manabilab: 低音・権威感のある男性ボイス Charon (informative, deep)。
 //   合わなければ Fenrir (dramatic, deep) / Orus (firm) を試す。
+// - ukiyoe: 浮世絵×講談的な重厚さに合わせ Fenrir (dramatic, deep)。
 // - rekishi/kosei: 明示エントリを置かず、従来通り GEMINI_TTS_VOICE / "Kore" にフォールバック。
 const NARRATOR_VOICE_BY_CHANNEL: Record<string, string> = {
   ranking: "Zubenelgenubi",
   manabilab: "Zubenelgenubi",
+  ukiyoe: "Fenrir",
 };
 
 /**
