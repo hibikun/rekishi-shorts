@@ -158,6 +158,9 @@ importers:
       '@rekishi/shared':
         specifier: workspace:*
         version: link:../shared
+      '@remotion/player':
+        specifier: ^4.0.446
+        version: 4.0.448(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       next:
         specifier: ^15.0.0
         version: 15.5.15(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
@@ -167,6 +170,9 @@ importers:
       react-dom:
         specifier: ^19.0.0
         version: 19.2.5(react@19.2.5)
+      remotion:
+        specifier: ^4.0.446
+        version: 4.0.448(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
     devDependencies:
       '@types/node':
         specifier: ^22.0.0

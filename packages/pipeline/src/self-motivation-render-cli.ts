@@ -32,8 +32,10 @@ import {
   renderStatusPath,
   saveJob,
 } from "./self-motivation-index.js";
-import { buildLongformCaptionSegments } from "./self-motivation-captions.js";
-import { renderSelfMotivationVideo } from "./self-motivation-render.js";
+import {
+  buildLongformCaptionSegments,
+  renderSelfMotivationVideo,
+} from "@rekishi/renderer";
 
 setChannel(SELF_MOTIVATION_CHANNEL);
 
