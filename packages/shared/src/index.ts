@@ -3,6 +3,7 @@ export * from "./schemas/asset";
 export * from "./schemas/render-plan";
 export * from "./schemas/ranking-plan";
 export * from "./schemas/ukiyoe-plan";
+export * from "./schemas/motion";
 export * from "./schemas/manabilab-canva-job";
 export * from "./schemas/manabilab-canva-script";
 export * from "./schemas/manabilab-canva-scene";

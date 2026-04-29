@@ -1,8 +1,15 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import type { MotionGrammar } from "@rekishi/shared";
 import type { PlanAudio, SceneSpec } from "@/lib/plan";
 import type { SceneWithUrl } from "./page";
+import {
+  MOTION_PRESETS,
+  motionForPreset,
+  motionSummary,
+  presetForMotion,
+} from "@/lib/motion-options";
 
 interface Props {
   planId: string;
@@ -134,6 +141,11 @@ export function ScenePlanReview({
   const [audioCacheBust, setAudioCacheBust] = useState<number>(0);
   const [rendering, setRendering] = useState(false);
   const [renderResult, setRenderResult] = useState<RenderApiResult | null>(null);
+  const [savingMotionScene, setSavingMotionScene] = useState<number | null>(null);
+  const [motionError, setMotionError] = useState<{
+    index: number;
+    message: string;
+  } | null>(null);
 
   const totalScenes = scenes.length;
   const approvedCount = scenes.filter((s) => s.spec.approved).length;
@@ -160,6 +172,55 @@ export function ScenePlanReview({
       }),
     );
     setDirtyScenes((prev) => ({ ...prev, [index]: true }));
+  };
+
+  const handleMotionPresetChange = async (sceneIndex: number, presetId: string) => {
+    const motion = motionForPreset(presetId);
+    setScenes((prev) =>
+      prev.map((s) =>
+        s.spec.index === sceneIndex
+          ? { ...s, spec: { ...s.spec, motion } }
+          : s,
+      ),
+    );
+    setMotionError(null);
+    setSavingMotionScene(sceneIndex);
+    try {
+      const res = await fetch(
+        `/api/manabilab/${planId}/scenes/${sceneIndex}/motion`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ motion: motion ?? null }),
+        },
+      );
+      const data = (await res.json()) as {
+        ok: boolean;
+        motion?: MotionGrammar | null;
+        error?: string;
+      };
+      if (!data.ok) {
+        setMotionError({
+          index: sceneIndex,
+          message: data.error ?? "保存に失敗しました",
+        });
+        return;
+      }
+      setScenes((prev) =>
+        prev.map((s) =>
+          s.spec.index === sceneIndex
+            ? { ...s, spec: { ...s.spec, motion: data.motion ?? undefined } }
+            : s,
+        ),
+      );
+    } catch (err) {
+      setMotionError({
+        index: sceneIndex,
+        message: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setSavingMotionScene(null);
+    }
   };
 
   const handleTranslate = async (sceneIndex: number) => {
@@ -555,6 +616,7 @@ export function ScenePlanReview({
               <th style={th}>ナレーション</th>
               <th style={th}>素材</th>
               <th style={{ ...th, width: 380 }}>Seedance プロンプト（日本語で編集）</th>
+              <th style={{ ...th, width: 180 }}>Animation</th>
               <th style={{ ...th, width: 80, textAlign: "center" }}>OK</th>
             </tr>
           </thead>
@@ -853,6 +915,51 @@ export function ScenePlanReview({
                   ) : (
                     <div style={{ color: "var(--muted)", fontSize: 12 }}>
                       （Remotion 描画のため Seedance 不要）
+                    </div>
+                  )}
+                </td>
+                <td style={td}>
+                  <select
+                    value={presetForMotion(spec.motion)}
+                    onChange={(e) =>
+                      handleMotionPresetChange(spec.index, e.target.value)
+                    }
+                    disabled={savingMotionScene !== null}
+                    style={{
+                      width: "100%",
+                      padding: "8px 10px",
+                      border: "1px solid var(--border)",
+                      borderRadius: 6,
+                      background: "#fff",
+                      fontSize: 12,
+                      fontFamily: "inherit",
+                    }}
+                  >
+                    {MOTION_PRESETS.map((preset) => (
+                      <option key={preset.id} value={preset.id}>
+                        {preset.label}
+                      </option>
+                    ))}
+                    <option value="custom" disabled>
+                      Custom
+                    </option>
+                  </select>
+                  <div style={{ marginTop: 6, fontSize: 11, color: "var(--muted)" }}>
+                    {MOTION_PRESETS.find(
+                      (preset) => preset.id === presetForMotion(spec.motion),
+                    )?.description ?? motionSummary(spec.motion)}
+                  </div>
+                  <div style={{ marginTop: 4, fontSize: 10, color: "var(--muted)" }}>
+                    {motionSummary(spec.motion)}
+                  </div>
+                  {savingMotionScene === spec.index && (
+                    <div style={{ marginTop: 4, fontSize: 10, color: "var(--accent)" }}>
+                      保存中...
+                    </div>
+                  )}
+                  {motionError?.index === spec.index && (
+                    <div style={{ marginTop: 4, fontSize: 10, color: "#991b1b" }}>
+                      {motionError.message}
                     </div>
                   )}
                 </td>

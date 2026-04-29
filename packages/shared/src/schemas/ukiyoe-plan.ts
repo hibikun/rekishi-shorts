@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { CaptionSegmentSchema, CaptionWordSchema } from "./asset";
+import { MotionGrammarSchema } from "./motion";
 
 export const UkiyoeActionTagSchema = z.enum([
   "running_forward",
@@ -31,6 +32,7 @@ export const UkiyoeSceneSchema = z.object({
   videoPromptJa: z.string().optional(),
   actionTag: UkiyoeActionTagSchema,
   cameraFixed: z.boolean().optional(),
+  motion: MotionGrammarSchema.optional(),
 });
 export type UkiyoeScene = z.infer<typeof UkiyoeSceneSchema>;
 

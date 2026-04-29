@@ -1,5 +1,6 @@
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import type { MotionGrammar } from "@rekishi/shared";
 
 export interface Overlay {
   text: string;
@@ -33,6 +34,7 @@ export interface ImageScene {
    */
   seedancePromptJa?: string;
   seedanceClipPath?: string | null;
+  motion?: MotionGrammar;
   approved: boolean;
 }
 
@@ -45,6 +47,7 @@ export interface TitleCardScene {
   narration: string;
   titleCardKind: "method-1" | "method-2" | "spirit-vs-science";
   methodName?: string;
+  motion?: MotionGrammar;
   approved: boolean;
 }
 

@@ -1,6 +1,7 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import fs from "node:fs";
 import { promptPath } from "@rekishi/shared/channel";
+import type { MotionGrammar } from "@rekishi/shared";
 import { config } from "./config.js";
 import type { UkiyoeActionTag } from "./ukiyoe-video-generator.js";
 import type { UkiyoeScript } from "./ukiyoe-script-generator.js";
@@ -17,6 +18,7 @@ export interface UkiyoeSceneSpec {
   videoPromptJa: string;
   actionTag: UkiyoeActionTag;
   cameraFixed?: boolean;
+  motion?: MotionGrammar;
 }
 
 export interface UkiyoeScenePlan {
@@ -59,6 +61,29 @@ const responseSchema = {
           videoPromptJa: { type: Type.STRING },
           actionTag: { type: Type.STRING, enum: ACTION_TAGS as unknown as string[] },
           cameraFixed: { type: Type.BOOLEAN },
+          motion: {
+            type: Type.OBJECT,
+            properties: {
+              transitionIn: {
+                type: Type.STRING,
+                enum: ["hard-cut", "swipe-left", "swipe-right", "snap-zoom", "blur-pop", "focus-in"],
+              },
+              transitionOut: {
+                type: Type.STRING,
+                enum: ["none", "whip", "focus-out", "push-away"],
+              },
+              cameraMove: {
+                type: Type.STRING,
+                enum: ["locked", "slow-push", "impact-zoom", "drift", "pull-in"],
+              },
+              energy: { type: Type.STRING, enum: ["low", "mid", "high"] },
+              sfxCue: { type: Type.STRING, enum: ["none", "hit", "whoosh", "pop"] },
+              emphasisWords: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING },
+              },
+            },
+          },
         },
         required: [
           "index",
@@ -128,6 +153,7 @@ export async function planUkiyoeScenes(
       videoPromptJa?: string;
       actionTag: string;
       cameraFixed?: boolean;
+      motion?: MotionGrammar;
     }>;
   };
 
@@ -148,6 +174,7 @@ export async function planUkiyoeScenes(
       videoPromptJa: s.videoPromptJa ?? "",
       actionTag: s.actionTag as UkiyoeActionTag,
       cameraFixed: s.cameraFixed,
+      motion: s.motion,
     };
   });
 

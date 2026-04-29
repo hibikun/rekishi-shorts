@@ -38,6 +38,7 @@ export function buildUkiyoePlan(input: BuildUkiyoePlanInput): UkiyoePlan {
       videoPromptJa: s.videoPromptJa || undefined,
       actionTag: s.actionTag,
       cameraFixed: s.cameraFixed,
+      motion: s.motion,
     };
   });
 
