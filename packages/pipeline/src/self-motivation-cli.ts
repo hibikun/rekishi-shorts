@@ -38,13 +38,17 @@ import {
   readResearchMarkdown,
   readScenesJson,
   readScriptJson,
+  readYoutubeTranscript,
   saveJob,
   updateStep,
   writeResearchMarkdown,
   writeScenesJson,
   writeScriptJson,
 } from "./self-motivation-job-store.js";
-import { generateSelfMotivationScript } from "./self-motivation-script-generator.js";
+import {
+  generateSelfMotivationScript,
+  regenerateMethodChapters,
+} from "./self-motivation-script-generator.js";
 import { expandScriptToScenes } from "./self-motivation-scene-expander.js";
 import { generateImagePromptForScene } from "./self-motivation-image-prompt-generator.js";
 import { generateLongformImage } from "./self-motivation-image-generator.js";
@@ -111,6 +115,64 @@ program
         `✅ script saved (chapters=${r.script.chapters.length}, est=${r.script.estimatedDurationSec}s)`,
       ),
     );
+  });
+
+program
+  .command("regenerate-chapters <jobId>")
+  .description(
+    "Method-Teaching 章のみを再生成 (第 1 章 / フック / CTA は触らない)。--from と --to は 1-indexed",
+  )
+  .requiredOption("--from <n>", "再生成を始める章番号 (1-indexed、第 2 章なら 2)")
+  .requiredOption("--to <n>", "再生成を終える章番号 (含む)")
+  .action(async (jobId, opts) => {
+    const fromIndex = Number(opts.from) - 1;
+    const toIndex = Number(opts.to) - 1;
+    if (Number.isNaN(fromIndex) || Number.isNaN(toIndex)) {
+      throw new Error("--from / --to は数字で指定してください");
+    }
+    const script = await readScriptJson(jobId);
+    if (!script) throw new Error("script.json がない");
+    const md = await readResearchMarkdown(jobId);
+    const job = await loadJob(jobId);
+    const transcripts = job.steps.research.youtubeRefs ?? [];
+    const youtubeRefs = await Promise.all(
+      transcripts
+        .filter((r) => r.status === "done")
+        .map(async (r) => ({
+          videoId: r.videoId,
+          url: r.url,
+          title: r.title,
+          note: r.note,
+          markdown: await readYoutubeTranscript(jobId, r.videoId),
+        })),
+    );
+
+    console.log(
+      chalk.bold(
+        `🔄 regenerate chapters ${fromIndex + 1}〜${toIndex + 1} of ${script.chapters.length}: ${job.topic.title}`,
+      ),
+    );
+    const result = await regenerateMethodChapters({
+      existingScript: script,
+      fromIndex,
+      toIndex,
+      researchMd: md,
+      youtubeRefs: youtubeRefs.filter((r) => r.markdown.trim().length > 0),
+    });
+    await writeScriptJson(jobId, result.script);
+    console.log(
+      chalk.green(
+        `✅ regenerated ${result.regenerated.length} chapters (model=${result.usage.model}, out=${result.usage.outputTokens} tok)`,
+      ),
+    );
+    result.regenerated.forEach((c, i) => {
+      const total = c.narrationParagraphs.reduce((s, p) => s + p.length, 0);
+      console.log(
+        chalk.dim(
+          `  ${fromIndex + i + 1}: ${c.title} (${c.narrationParagraphs.length}段落, ${total}字)`,
+        ),
+      );
+    });
   });
 
 program

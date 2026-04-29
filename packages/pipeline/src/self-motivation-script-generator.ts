@@ -1,10 +1,13 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import fs from "node:fs";
 import {
+  SelfMotivationChapterSchema,
   SelfMotivationScriptSchema,
+  type SelfMotivationChapter,
   type SelfMotivationScript,
   type SelfMotivationTopic,
 } from "@rekishi/shared";
+import { z } from "zod";
 import { config } from "./config.js";
 import { promptFilePath } from "./self-motivation-paths.js";
 
@@ -142,6 +145,178 @@ export async function generateSelfMotivationScript(
 
   return {
     script,
+    usage: {
+      inputTokens: response.usageMetadata?.promptTokenCount ?? 0,
+      outputTokens: response.usageMetadata?.candidatesTokenCount ?? 0,
+      model: config.gemini.scriptModel,
+    },
+  };
+}
+
+// ────────────────────────────────────────────────────────────
+// 部分再生成: Method-Teaching 章のみを書き直す
+// ────────────────────────────────────────────────────────────
+
+function renderRegeneratePrompt(args: {
+  topic: SelfMotivationTopic;
+  openingHook: string;
+  chapter1: SelfMotivationChapter;
+  targets: SelfMotivationChapter[];
+  researchMd: string;
+  youtubeRefs: YoutubeReferenceForPrompt[];
+}): string {
+  const tpl = fs.readFileSync(
+    promptFilePath("regenerate-method-chapters"),
+    "utf-8",
+  );
+  const targetSection = args.targets
+    .map(
+      (c, i) =>
+        `### 対象 ${i + 1}: 「${c.title}」 (テーマ: ${c.title.replace(/[「」]/g, "")})\n` +
+          `現状の本文 (参考、これを書き直す):\n${c.narrationParagraphs.join("\n")}`,
+    )
+    .join("\n\n---\n\n");
+  return tpl
+    .replace(/\{\{topic\.title\}\}/g, args.topic.title)
+    .replace(/\{\{topic\.subject\}\}/g, args.topic.subject)
+    .replace(/\{\{openingHook\}\}/g, args.openingHook)
+    .replace(/\{\{chapter1\.title\}\}/g, args.chapter1.title)
+    .replace(
+      /\{\{chapter1\.body\}\}/g,
+      args.chapter1.narrationParagraphs.join("\n"),
+    )
+    .replace(/\{\{targetChapters\}\}/g, targetSection)
+    .replace(/\{\{chapterCount\}\}/g, String(args.targets.length))
+    .replace(
+      /\{\{research\}\}/g,
+      args.researchMd.trim() || "（リサーチ資料なし）",
+    )
+    .replace(
+      /\{\{youtubeReferences\}\}/g,
+      formatYoutubeReferences(args.youtubeRefs),
+    );
+}
+
+const regenerateResponseSchema = {
+  type: Type.OBJECT,
+  properties: {
+    chapters: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          title: { type: Type.STRING },
+          narrationParagraphs: {
+            type: Type.ARRAY,
+            items: { type: Type.STRING },
+          },
+        },
+        required: ["title", "narrationParagraphs"],
+      },
+    },
+  },
+  required: ["chapters"],
+};
+
+const RegenerateChaptersOutputSchema = z.object({
+  chapters: z.array(SelfMotivationChapterSchema).min(1),
+});
+
+export interface RegenerateMethodChaptersResult {
+  /** 全章マージ済みの新しい script */
+  script: SelfMotivationScript;
+  /** 差し替えた章だけ */
+  regenerated: SelfMotivationChapter[];
+  usage: { inputTokens: number; outputTokens: number; model: string };
+}
+
+/**
+ * 既存 script の指定範囲の章 (Method-Teaching) だけを再生成して差し替える。
+ *
+ * @param fromIndex 0-indexed (含む)
+ * @param toIndex   0-indexed (含む)
+ *
+ * 第 1 章 (Myth-Busting)・openingHook・closingCta は **触らない**。
+ */
+export async function regenerateMethodChapters(args: {
+  existingScript: SelfMotivationScript;
+  fromIndex: number;
+  toIndex: number;
+  researchMd: string;
+  youtubeRefs?: YoutubeReferenceForPrompt[];
+}): Promise<RegenerateMethodChaptersResult> {
+  const {
+    existingScript,
+    fromIndex,
+    toIndex,
+    researchMd,
+    youtubeRefs = [],
+  } = args;
+  if (fromIndex < 1) {
+    throw new Error(
+      "fromIndex は 1 以上にしてください (第 1 章 Myth-Busting は触れません)",
+    );
+  }
+  if (toIndex < fromIndex) {
+    throw new Error("toIndex は fromIndex 以上にしてください");
+  }
+  if (toIndex >= existingScript.chapters.length) {
+    throw new Error(
+      `toIndex=${toIndex} が章数 (${existingScript.chapters.length}) を超えています`,
+    );
+  }
+  const chapter1 = existingScript.chapters[0];
+  if (!chapter1) throw new Error("既存 script に第 1 章がありません");
+  const targets = existingScript.chapters.slice(fromIndex, toIndex + 1);
+
+  const ai = new GoogleGenAI({ apiKey: config.gemini.apiKey });
+  const prompt = renderRegeneratePrompt({
+    topic: existingScript.topic,
+    openingHook: existingScript.openingHook,
+    chapter1,
+    targets,
+    researchMd,
+    youtubeRefs,
+  });
+
+  const response = await ai.models.generateContent({
+    model: config.gemini.scriptModel,
+    contents: prompt,
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: regenerateResponseSchema,
+      temperature: 0.8,
+    },
+  });
+
+  const text = response.text;
+  if (!text) throw new Error("Gemini returned empty regenerate response");
+
+  const raw = JSON.parse(text) as unknown;
+  const parsed = RegenerateChaptersOutputSchema.safeParse(raw);
+  if (!parsed.success) {
+    throw new Error(
+      `regenerate JSON が schema に合致しません: ${parsed.error.message}`,
+    );
+  }
+  if (parsed.data.chapters.length !== targets.length) {
+    throw new Error(
+      `Gemini が ${targets.length} 章を返すはずが ${parsed.data.chapters.length} 章でした`,
+    );
+  }
+
+  const newChapters = [...existingScript.chapters];
+  parsed.data.chapters.forEach((c, i) => {
+    newChapters[fromIndex + i] = c;
+  });
+  const newScript: SelfMotivationScript = {
+    ...existingScript,
+    chapters: newChapters,
+  };
+
+  return {
+    script: newScript,
+    regenerated: parsed.data.chapters,
     usage: {
       inputTokens: response.usageMetadata?.promptTokenCount ?? 0,
       outputTokens: response.usageMetadata?.candidatesTokenCount ?? 0,
