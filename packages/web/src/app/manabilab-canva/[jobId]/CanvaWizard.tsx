@@ -4,6 +4,7 @@ import { useState } from "react";
 import {
   STEP_ORDER,
   type ManabilabCanvaJob,
+  type ManabilabCanvaScene,
   type ManabilabCanvaScript,
   type StepKey,
 } from "@rekishi/shared";
@@ -11,11 +12,13 @@ import { StepIndicator } from "./StepIndicator";
 import { TopicStep } from "./steps/TopicStep";
 import { ResearchStep } from "./steps/ResearchStep";
 import { ScriptStep } from "./steps/ScriptStep";
+import { ScenesStep } from "./steps/ScenesStep";
 
 interface Props {
   initialJob: ManabilabCanvaJob;
   initialResearchMd: string;
   initialScript: ManabilabCanvaScript | null;
+  initialScenes: ManabilabCanvaScene[] | null;
   researchPromptTemplate: string;
 }
 
@@ -30,12 +33,14 @@ export function CanvaWizard({
   initialJob,
   initialResearchMd,
   initialScript,
+  initialScenes,
   researchPromptTemplate,
 }: Props) {
   const [job, setJob] = useState(initialJob);
   const [currentStep, setCurrentStep] = useState<StepKey>(firstIncomplete(initialJob));
   const [researchMd, setResearchMd] = useState(initialResearchMd);
   const [script, setScript] = useState<ManabilabCanvaScript | null>(initialScript);
+  const [scenes, setScenes] = useState<ManabilabCanvaScene[] | null>(initialScenes);
 
   const advance = (next: StepKey) => setCurrentStep(next);
 
@@ -77,7 +82,15 @@ export function CanvaWizard({
             onAdvance={() => advance("scenes")}
           />
         )}
-        {currentStep === "scenes" && <UpcomingPlaceholder label="Scenes" />}
+        {currentStep === "scenes" && (
+          <ScenesStep
+            job={job}
+            scenes={scenes}
+            onJobChange={setJob}
+            onScenesChange={setScenes}
+            onAdvance={() => advance("images")}
+          />
+        )}
         {currentStep === "images" && <UpcomingPlaceholder label="Images" />}
         {currentStep === "tts" && <UpcomingPlaceholder label="TTS" />}
         {currentStep === "export" && <UpcomingPlaceholder label="Export" />}

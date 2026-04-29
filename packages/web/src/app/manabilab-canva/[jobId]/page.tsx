@@ -4,6 +4,7 @@ import {
   loadJob,
   readResearchMarkdown,
   readResearchPromptTemplate,
+  readScenesJson,
   readScriptJson,
 } from "@/lib/canva-job";
 import { CanvaWizard } from "./CanvaWizard";
@@ -25,9 +26,10 @@ export default async function CanvaJobPage({ params }: PageProps) {
     notFound();
   }
 
-  const [researchMd, script, researchPromptTemplate] = await Promise.all([
+  const [researchMd, script, scenes, researchPromptTemplate] = await Promise.all([
     readResearchMarkdown(jobId),
     readScriptJson(jobId),
+    readScenesJson(jobId),
     readResearchPromptTemplate(),
   ]);
 
@@ -50,6 +52,7 @@ export default async function CanvaJobPage({ params }: PageProps) {
         initialJob={job}
         initialResearchMd={researchMd}
         initialScript={script}
+        initialScenes={scenes}
         researchPromptTemplate={researchPromptTemplate}
       />
     </main>

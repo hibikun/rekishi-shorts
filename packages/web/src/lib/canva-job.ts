@@ -3,7 +3,9 @@ import path from "node:path";
 import {
   ManabilabCanvaJobSchema,
   ManabilabCanvaScriptSchema,
+  ManabilabCanvaScenesSchema,
   type ManabilabCanvaJob,
+  type ManabilabCanvaScene,
   type ManabilabCanvaScript,
   type StepKey,
   type Topic,
@@ -37,6 +39,10 @@ export function researchMdPath(jobId: string): string {
 
 export function scriptJsonPath(jobId: string): string {
   return path.join(jobDir(jobId), "script.json");
+}
+
+export function scenesJsonPath(jobId: string): string {
+  return path.join(jobDir(jobId), "scenes.json");
 }
 
 export function researchPromptPath(): string {
@@ -197,6 +203,31 @@ export async function writeScriptJson(
   await writeFile(
     scriptJsonPath(jobId),
     `${JSON.stringify(script, null, 2)}\n`,
+    "utf-8",
+  );
+}
+
+export async function readScenesJson(
+  jobId: string,
+): Promise<ManabilabCanvaScene[] | null> {
+  try {
+    const raw = await readFile(scenesJsonPath(jobId), "utf-8");
+    const parsed = ManabilabCanvaScenesSchema.safeParse(JSON.parse(raw));
+    if (!parsed.success) return null;
+    return parsed.data.scenes;
+  } catch {
+    return null;
+  }
+}
+
+export async function writeScenesJson(
+  jobId: string,
+  scenes: ManabilabCanvaScene[],
+): Promise<void> {
+  await mkdir(jobDir(jobId), { recursive: true });
+  await writeFile(
+    scenesJsonPath(jobId),
+    `${JSON.stringify({ scenes }, null, 2)}\n`,
     "utf-8",
   );
 }
