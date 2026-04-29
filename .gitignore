@@ -56,3 +56,10 @@ packages/channels/*/assets/sfx/
 packages/channels/*/assets/backgrounds/
 # TTS 生成済みナレーション (再生成可能、サイズも MB オーダーなのでローカル保管)
 packages/channels/*/assets/audio/
+
+# manabilab-canva のジョブ作業ディレクトリは各自ローカルに保管（生成物のみ）
+packages/channels/manabilab-canva/jobs/*
+!packages/channels/manabilab-canva/jobs/.gitkeep
+
+# ローカルプレビュー用（モーションショーケース等の試作出力）
+data/previews/

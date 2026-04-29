@@ -970,6 +970,7 @@ program
   .option("--job-id <id>", "ジョブID。省略時は timestamp ベース")
   .option("--no-images", "image-gen を skip（既存 scene-NN.png を使う）")
   .option("--no-videos", "video-gen を skip（既存 scene-NN.mp4 を使う）")
+  .option("--video-dry-run", "video-gen を dry-run（fal.ai を呼ばず prompt と試算コストを表示）")
   .option("--no-tts", "TTS を skip（既存 narration.wav を使う）")
   .option("--no-render", "Remotion レンダリングを skip")
   .action(async (opts) => {
@@ -1056,9 +1057,14 @@ program
 
     // ---- 4. videos ----
     if (opts.videos !== false) {
-      console.log(chalk.bold(`\n🎥 [4/7] video-gen (${scenePlan.scenes.length} scenes)...`));
+      const dryRun = !!opts.videoDryRun;
+      console.log(
+        chalk.bold(
+          `\n🎥 [4/7] video-gen (${scenePlan.scenes.length} scenes)${dryRun ? " [DRY RUN]" : ""}...`,
+        ),
+      );
       const { generateUkiyoeVideos } = await import("./ukiyoe-video-generator.js");
-      await generateUkiyoeVideos(
+      const results = await generateUkiyoeVideos(
         scenePlan.scenes.map((s) => ({
           index: s.index,
           imagePath: sceneImagePath(paths, s.index),
@@ -1067,8 +1073,25 @@ program
           cameraFixed: s.cameraFixed,
         })),
         paths.videosDir,
-        { skipExisting: true, concurrency: 3 },
+        { skipExisting: true, concurrency: 3, dryRun },
       );
+      if (dryRun) {
+        console.log(chalk.bold(`\n📋 dry-run prompt summary:`));
+        for (const r of results) {
+          console.log(
+            chalk.cyan(
+              `  scene[${r.index}] ${r.duration}s ${r.resolution} ~$${r.estimatedCostUsd.toFixed(3)}`,
+            ),
+          );
+          console.log(chalk.dim(`    ${r.prompt}`));
+        }
+        const total = results.reduce((s, r) => s + r.estimatedCostUsd, 0);
+        console.log(chalk.bold(`\n  total estimated: $${total.toFixed(3)}`));
+        console.log(
+          chalk.yellow(`\n⚠ dry-run のため video-gen 以降をスキップして終了します`),
+        );
+        return;
+      }
     } else {
       console.log(chalk.yellow(`\n⚠ video-gen skipped (--no-videos)`));
     }
