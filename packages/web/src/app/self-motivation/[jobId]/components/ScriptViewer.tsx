@@ -37,23 +37,89 @@ export function ScriptViewer({ script }: Props) {
         <div style={{ fontWeight: 700, marginBottom: 4 }}>
           章 ({script.chapters.length})
         </div>
-        <ol style={{ paddingLeft: 20, margin: 0, display: "grid", gap: 6 }}>
-          {script.chapters.map((c, i) => (
-            <li key={i}>
-              <strong>{c.title}</strong>
-              <div
+        <div style={{ display: "grid", gap: 6 }}>
+          {script.chapters.map((c, i) => {
+            const totalChars = c.narrationParagraphs.reduce(
+              (s, p) => s + p.length,
+              0,
+            );
+            return (
+              <details
+                key={i}
                 style={{
-                  color: "var(--muted)",
-                  fontSize: 12,
-                  marginTop: 2,
+                  border: "1px solid var(--border)",
+                  borderRadius: 6,
+                  background: "var(--card)",
+                  padding: "8px 10px",
                 }}
               >
-                {c.narrationParagraphs.length} 段落 ·{" "}
-                {c.narrationParagraphs.reduce((s, p) => s + p.length, 0)} 字
-              </div>
-            </li>
-          ))}
-        </ol>
+                <summary
+                  style={{
+                    cursor: "pointer",
+                    listStyle: "none",
+                    display: "flex",
+                    alignItems: "baseline",
+                    gap: 8,
+                    userSelect: "none",
+                  }}
+                >
+                  <span
+                    style={{
+                      fontSize: 11,
+                      fontFamily: "ui-monospace, monospace",
+                      color: "var(--muted)",
+                      minWidth: 24,
+                    }}
+                  >
+                    #{i + 1}
+                  </span>
+                  <strong style={{ flex: 1 }}>{c.title}</strong>
+                  <span
+                    style={{
+                      fontSize: 11,
+                      color: "var(--muted)",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {c.narrationParagraphs.length} 段落 · {totalChars} 字
+                  </span>
+                </summary>
+                <ol
+                  style={{
+                    margin: "8px 0 0",
+                    paddingLeft: 20,
+                    display: "grid",
+                    gap: 6,
+                  }}
+                >
+                  {c.narrationParagraphs.map((p, pi) => (
+                    <li
+                      key={pi}
+                      style={{
+                        fontSize: 12,
+                        lineHeight: 1.7,
+                        color: "var(--muted)",
+                        whiteSpace: "pre-wrap",
+                      }}
+                    >
+                      {p}
+                      <span
+                        style={{
+                          marginLeft: 6,
+                          fontSize: 10,
+                          color: "var(--muted)",
+                          opacity: 0.6,
+                        }}
+                      >
+                        ({p.length} 字)
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+              </details>
+            );
+          })}
+        </div>
       </div>
       <div>
         <div style={{ fontWeight: 700, marginBottom: 4 }}>CTA</div>
