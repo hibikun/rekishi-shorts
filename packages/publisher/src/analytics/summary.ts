@@ -3,7 +3,7 @@ import chalk from "chalk";
 import { dataPath } from "../config.js";
 import { StatsSnapshotSchema, type StatsSnapshot } from "./types.js";
 
-export type SortKey = "views" | "likeRate" | "retention" | "subs" | "age";
+export type SortKey = "views" | "likeRate" | "retention" | "subs" | "age" | "swipe";
 
 export interface VideoSummary {
   videoId: string;
@@ -22,6 +22,12 @@ export interface VideoSummary {
   hasAnalytics: boolean;
   analyticsError: string | null;
   latestFetchedAt: string;
+  videoDurationSec: number | null;
+  swipeRate3s: number | null;
+  swipeRate10s: number | null;
+  swipeRate50pct: number | null;
+  hasRetention: boolean;
+  retentionError: string | null;
 }
 
 export async function readAllSnapshots(): Promise<StatsSnapshot[]> {
@@ -67,12 +73,22 @@ function findClosest24hAgo(snaps: StatsSnapshot[], latest: StatsSnapshot): Stats
   return best;
 }
 
+// retention 情報は古いスナップショットには無い。最新で取れていなければ過去を遡る。
+function findLatestRetention(snaps: StatsSnapshot[]): StatsSnapshot["retention"] | null {
+  for (let i = snaps.length - 1; i >= 0; i--) {
+    const s = snaps[i];
+    if (s?.retention) return s.retention;
+  }
+  return null;
+}
+
 function toSummary(snaps: StatsSnapshot[]): VideoSummary {
   const latest = snaps[snaps.length - 1];
   if (!latest) throw new Error("toSummary: empty snapshots array");
   const prior = findClosest24hAgo(snaps, latest);
   const views = latest.statistics.viewCount;
   const likes = latest.statistics.likeCount;
+  const retention = latest.retention ?? findLatestRetention(snaps);
   return {
     videoId: latest.videoId,
     jobId: latest.jobId,
@@ -93,6 +109,12 @@ function toSummary(snaps: StatsSnapshot[]): VideoSummary {
     hasAnalytics: latest.analytics !== null,
     analyticsError: latest.analyticsError ?? null,
     latestFetchedAt: latest.fetchedAt,
+    videoDurationSec: retention?.videoDurationSec ?? null,
+    swipeRate3s: retention?.swipeRate3s ?? null,
+    swipeRate10s: retention?.swipeRate10s ?? null,
+    swipeRate50pct: retention?.swipeRate50pct ?? null,
+    hasRetention: retention !== null,
+    retentionError: latest.retentionError ?? null,
   };
 }
 
@@ -120,6 +142,9 @@ export async function buildSummary(opts: BuildSummaryOptions = {}): Promise<Vide
         return (b.viewPercentage ?? -1) - (a.viewPercentage ?? -1);
       case "subs":
         return (b.subsPer1k ?? -1) - (a.subsPer1k ?? -1);
+      case "swipe":
+        // 低い方が良い（離脱が少ない）。null は末尾。
+        return (a.swipeRate3s ?? 2) - (b.swipeRate3s ?? 2);
       case "age":
         return a.ageHours - b.ageHours;
       case "views":
@@ -200,17 +225,28 @@ export function renderSummaryTable(rows: VideoSummary[], opts: { now?: Date } = 
   const topLike = pickMax(rows, (r) => r.likeRate);
   const topRet = pickMax(rows, (r) => r.viewPercentage);
   const topSubs = pickMax(rows, (r) => r.subsPer1k);
+  // swipe rate は「低い方が良い」ので最小値を強調
+  const minSwipe3s = (() => {
+    let v: number | null = null;
+    for (const r of rows) {
+      if (r.swipeRate3s === null) continue;
+      if (v === null || r.swipeRate3s < v) v = r.swipeRate3s;
+    }
+    return v;
+  })();
 
   const colW = {
     rank: 3,
-    title: 30,
+    title: 28,
     age: 5,
     views: 7,
     delta: 7,
-    likeRate: 7,
-    ret: 8,
-    dur: 6,
-    subs: 8,
+    likeRate: 6,
+    ret: 7,
+    dur: 5,
+    swipe3: 8,
+    swipe10: 8,
+    subs: 7,
   };
 
   const head =
@@ -229,6 +265,10 @@ export function renderSummaryTable(rows: VideoSummary[], opts: { now?: Date } = 
     padVisual("視聴率", colW.ret) +
     " " +
     padVisual("平均s", colW.dur) +
+    " " +
+    padVisual("Swipe3s", colW.swipe3) +
+    " " +
+    padVisual("Swipe10s", colW.swipe10) +
     " " +
     padVisual("登録/1k", colW.subs);
   out.push(chalk.dim(head));
@@ -249,6 +289,8 @@ export function renderSummaryTable(rows: VideoSummary[], opts: { now?: Date } = 
       r.avgDuration !== null ? r.avgDuration.toFixed(0) + "s" : "—",
       colW.dur,
     );
+    const swipe3Raw = padVisual(fmtRate(r.swipeRate3s, 1), colW.swipe3);
+    const swipe10Raw = padVisual(fmtRate(r.swipeRate10s, 1), colW.swipe10);
     const subsRaw = padVisual(
       r.subsPer1k !== null ? r.subsPer1k.toFixed(2) : "—",
       colW.subs,
@@ -259,6 +301,10 @@ export function renderSummaryTable(rows: VideoSummary[], opts: { now?: Date } = 
       topRet !== null && r.viewPercentage === topRet ? chalk.green(retRaw) : retRaw;
     const subsStr =
       topSubs !== null && r.subsPer1k === topSubs && topSubs > 0 ? chalk.green(subsRaw) : subsRaw;
+    const swipe3Str =
+      minSwipe3s !== null && r.swipeRate3s === minSwipe3s
+        ? chalk.green(swipe3Raw)
+        : swipe3Raw;
 
     const zeroDim = r.views === 0 ? chalk.dim : (x: string) => x;
 
@@ -280,6 +326,10 @@ export function renderSummaryTable(rows: VideoSummary[], opts: { now?: Date } = 
         retStr +
         " " +
         durRaw +
+        " " +
+        swipe3Str +
+        " " +
+        swipe10Raw +
         " " +
         subsStr,
     );
@@ -317,6 +367,30 @@ export function renderSummaryTable(rows: VideoSummary[], opts: { now?: Date } = 
   }
   if ((topRet ?? 0) > 100) {
     out.push(chalk.dim(" * 視聴率100%超 = ループ視聴分を含む"));
+  }
+
+  // Swipe rate サマリ: 全体平均 + 最良/最悪
+  const swipe3sRows = rows.filter((r) => r.swipeRate3s !== null) as (VideoSummary & { swipeRate3s: number })[];
+  if (swipe3sRows.length > 0) {
+    const avg = swipe3sRows.reduce((a, b) => a + b.swipeRate3s, 0) / swipe3sRows.length;
+    const best = [...swipe3sRows].sort((a, b) => a.swipeRate3s - b.swipeRate3s)[0]!;
+    const worst = [...swipe3sRows].sort((a, b) => b.swipeRate3s - a.swipeRate3s)[0]!;
+    out.push(
+      chalk.dim(` Swipe@3s 平均: `) +
+        fmtRate(avg, 1) +
+        chalk.dim(`  | 最良: `) +
+        chalk.green(fmtRate(best.swipeRate3s, 1)) +
+        chalk.dim(` (${shortTitle(best.title)})`) +
+        chalk.dim(`  | 最悪: `) +
+        chalk.red(fmtRate(worst.swipeRate3s, 1)) +
+        chalk.dim(` (${shortTitle(worst.title)})`),
+    );
+  }
+  const pendingRetention = rows.filter((r) => !r.hasRetention && r.views > 0);
+  if (pendingRetention.length > 0) {
+    out.push(
+      chalk.dim(` ℹ Retention待ち: ${pendingRetention.length}本（投稿後 数日〜 で反映 / 視聴数不足だと取れない）`),
+    );
   }
 
   return out.join("\n");

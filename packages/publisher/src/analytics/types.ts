@@ -21,6 +21,21 @@ export const VideoAnalyticsSchema = z.object({
 });
 export type VideoAnalytics = z.infer<typeof VideoAnalyticsSchema>;
 
+export const RetentionPointSchema = z.object({
+  ratio: z.number().min(0),
+  watchRatio: z.number().min(0),
+});
+export type RetentionPoint = z.infer<typeof RetentionPointSchema>;
+
+export const RetentionCurveSchema = z.object({
+  videoDurationSec: z.number().nonnegative().nullable(),
+  points: z.array(RetentionPointSchema),
+  swipeRate3s: z.number().nullable(),
+  swipeRate10s: z.number().nullable(),
+  swipeRate50pct: z.number().nullable(),
+});
+export type RetentionCurve = z.infer<typeof RetentionCurveSchema>;
+
 export const StatsSnapshotSchema = z.object({
   fetchedAt: z.string(),
   videoId: z.string(),
@@ -32,5 +47,7 @@ export const StatsSnapshotSchema = z.object({
   statistics: VideoStatisticsSchema,
   analytics: VideoAnalyticsSchema.nullable(),
   analyticsError: z.string().optional(),
+  retention: RetentionCurveSchema.nullable().optional(),
+  retentionError: z.string().optional(),
 });
 export type StatsSnapshot = z.infer<typeof StatsSnapshotSchema>;
