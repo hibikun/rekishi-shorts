@@ -83,11 +83,11 @@ const STYLE_PROMPTS: Record<VoicePersona, string> = {
 const NARRATOR_STYLE_BY_CHANNEL: Record<string, string> = {
   manabilab:
     "Say the following in natural Japanese with a deep, authoritative narrator's voice — like a trusted mentor revealing important scientific truths. Speak at a confident, brisk pace fit for fast-cut YouTube Shorts — energetic but clear, never blurred. Use CLEAR INFLECTION and put noticeable EMPHASIS on key words (numbers like 「2倍以上」「100年以上前」, scientific terms like 「想起練習」「分散学習」「Karpicke」, and key conclusions). Move smoothly between sentences without long pauses. Convey intellectual confidence and gravitas — NOT monotone, NOT slow:",
-  // manabilab-canva: 学習科学 × deadpan / laid-back トーン + 早めのテンポ + 短い間。
-  // Charon の低音感を活かしつつ「ぼそっと早口でつぶやく詳しい兄ちゃん」を狙う。
-  // 「低くだるい」と「速くて間が短い」を両立する指示なので、両方の強制ワードを CAPS で並べる。
+  // manabilab-canva: 学習科学 × 落ち着いてクール × 早口・短い間。
+  // Charon の低音感を活かしつつ、「クールに淡々と早口で語る」を狙う。
+  // 「だるい / 眠そう / lazy」のニュアンスは入れない。flat と calm は残すが energy は失わない。
   "manabilab-canva":
-    "Say the following in natural Japanese with a LOW-PITCHED, deadpan, laid-back narrator's voice — like a slightly tired but knowledgeable older brother MUTTERING science facts to a friend, but delivering them at a BRISK, FAST pace. Keep the pitch noticeably LOW and the energy detached, almost lazy. SPEAK QUICKLY and KEEP PAUSES BETWEEN PHRASES AND SENTENCES VERY SHORT — minimal breath, almost run sentences together, no drawn-out gaps. Keep INFLECTION MINIMAL AND FLAT: barely any emphasis on key words, no punching, no rising intonation at phrase endings. Sound knowing and unbothered, almost world-weary or deadpan — as if everything you're saying is obvious to you and you're casually rattling it off. STAY CLEAR AND AUDIBLE, deadpan and low-effort, but always KEEP THE PACE FAST. AVOID: enthusiasm, anchorman crispness, emphatic stress, sing-song cadence, slow plodding pace, drawn-out pauses, breath gaps between sentences:",
+    "Say the following in natural Japanese with a LOW-PITCHED, calm, composed narrator's voice — like a confident, level-headed friend explaining science facts efficiently. Keep the pitch noticeably LOW and the energy STEADY and FOCUSED — grounded, not excited, but DEFINITELY NOT tired and DEFINITELY NOT sluggish. SPEAK QUICKLY and KEEP PAUSES BETWEEN PHRASES AND SENTENCES VERY SHORT — minimal breath, almost run sentences together, no drawn-out gaps. Keep INFLECTION MINIMAL AND FLAT: barely any emphasis on key words, no punching, no rising intonation at phrase endings. Sound CLEAR-HEADED and MATTER-OF-FACT — clean, efficient, deadpan-cool, like rattling off familiar information you know well. STAY CLEAR AND AUDIBLE, always KEEP THE PACE FAST. AVOID: enthusiasm, anchorman crispness, emphatic stress, sing-song cadence, slow plodding pace, drawn-out pauses, breath gaps between sentences. ALSO STRICTLY AVOID sounding tired, sleepy, lazy, drowsy, world-weary, mumbling, muttering, low-effort, or unmotivated:",
 };
 
 function resolveNarratorStylePrompt(persona: VoicePersona, override?: string): string {
