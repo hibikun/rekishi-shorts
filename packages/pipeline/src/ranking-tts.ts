@@ -1,8 +1,6 @@
 import fs from "node:fs";
 import fsp from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
-import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   type AudioClip,
@@ -15,6 +13,7 @@ import {
   synthesizeNarration,
   probeDurationSec,
 } from "./tts-generator.js";
+import { ffmpegConcatWavs, runFfmpeg } from "./audio-concat.js";
 
 // ========================================================================
 // セグメント別 TTS で ranking three-pick の narration を組み立てるパイプライン。
@@ -571,52 +570,3 @@ async function applyReviewerPostProcess(
   await fsp.rename(tmpPath, wavPath);
 }
 
-/**
- * 同形式 (24000Hz / mono / pcm_s16le) の wav 群を ffmpeg concat demuxer で 1 本に結合する。
- */
-async function ffmpegConcatWavs(inputs: string[], outPath: string): Promise<void> {
-  if (inputs.length === 0) {
-    throw new Error("ffmpegConcatWavs: inputs is empty");
-  }
-  const listFile = path.join(
-    await fsp.mkdtemp(path.join(os.tmpdir(), "ranking-tts-concat-")),
-    "list.txt",
-  );
-  const body = inputs
-    .map((p) => `file '${p.replace(/'/g, "'\\''")}'`)
-    .join("\n");
-  await fsp.writeFile(listFile, body, "utf-8");
-
-  await runFfmpeg([
-    "-y",
-    "-hide_banner",
-    "-loglevel",
-    "error",
-    "-f",
-    "concat",
-    "-safe",
-    "0",
-    "-i",
-    listFile,
-    "-c",
-    "copy",
-    outPath,
-  ]);
-
-  await fsp.rm(path.dirname(listFile), { recursive: true, force: true });
-}
-
-function runFfmpeg(args: string[]): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const proc = spawn("ffmpeg", args, { stdio: ["ignore", "ignore", "pipe"] });
-    let stderr = "";
-    proc.stderr.on("data", (chunk) => {
-      stderr += chunk.toString();
-    });
-    proc.on("error", reject);
-    proc.on("close", (code) => {
-      if (code === 0) resolve();
-      else reject(new Error(`ffmpeg exited ${code}: ${stderr}`));
-    });
-  });
-}

@@ -28,6 +28,7 @@ export type {
   GenerateSceneTtsOptions,
   GenerateSceneTtsResult,
 } from "./manabilab-canva-tts.js";
+export { ffmpegConcatWavs } from "./audio-concat.js";
 export { planScenes } from "./scene-planner.js";
 export { resolveSceneAssets } from "./asset-resolver.js";
 export { synthesizeNarration } from "./tts-generator.js";
