@@ -11,7 +11,7 @@ export const SelfMotivationChapterSchema = z.object({
     .array(z.string().min(1))
     .min(1)
     .describe(
-      "この章で読み上げる段落の配列。1段落 = 1〜3 文（40〜120字）が目安。後段で句読点+budoux で 2-3 フレーズ単位の Scene に展開される",
+      "この章で読み上げる段落の配列。各章は『Declaration & Distill』型の P1〜P6 の役割に対応し、6 段落 (P3+P4 を含む) または 4 段落 (P3+P4 省略) のどちらか。詳細は channels/self-motivation/prompts/script.md の『章本文の構造（厳守）』参照。後段で句読点+budoux で 2-3 フレーズ単位の Scene に展開される",
     ),
 });
 export type SelfMotivationChapter = z.infer<typeof SelfMotivationChapterSchema>;
