@@ -57,9 +57,20 @@ Composition: vertical 9:16 frame, character centered slightly above middle, full
 - ソース種別: {{scene.sourceLabel}}  (hook / statement-{N} / cta / punchline)
 - 画面字幕（caption）: {{scene.caption}}
 - ナレーション本文（narration）: {{scene.narration}}
-- 既存の日本語ヒント（参考程度。無視して良い）: {{scene.imagePromptJa}}
 - 動画トピック: {{topic.title}}
 - 視聴者: {{topic.target}}
+
+### 🎯 ユーザーからの直接指示（最優先・日本語）
+
+```
+{{userDirection}}
+```
+
+**この欄に内容がある場合は、その指示を最優先で英語化してください**。
+例えば「ケーキを食べている姿」と書かれていたら、マナビくんがケーキを食べているポーズの英語プロンプトを組み立てる。
+caption / narration はあくまで補助情報で、ユーザー指示と矛盾する場合はユーザー指示を優先する。
+
+この欄が `（指示なし）` または空の場合のみ、caption と narration から自動でポーズを推測する。
 
 ## 出力フォーマット
 

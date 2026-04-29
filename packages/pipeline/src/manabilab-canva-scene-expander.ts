@@ -14,17 +14,13 @@ function shortCaption(text: string, fallback: string): string {
   return trimmed.slice(0, MAX_CAPTION_CHARS);
 }
 
-function deriveImagePromptJa(
-  topicTitle: string,
-  hint: string,
-  body: string,
-): string {
-  const hintPart = hint.trim() ? `${hint.trim()} を表現する` : "";
-  return `${topicTitle} の YouTube ショート動画用イラスト。${hintPart}9:16 縦構図、明るく親しみやすいフラットイラスト。テキスト要素は描かない。文脈: ${body
-    .replace(/\s+/g, " ")
-    .slice(0, 80)}`;
-}
-
+/**
+ * 台本を 1 セグメント = 1 シーンに展開する。
+ *
+ * imagePromptJa はユーザーが直接「どんなポーズか」を入力するフィールドとして
+ * 空文字で初期化する。空のままでも画像生成 API は caption / narration から
+ * 自動でポーズを推測するので、入力は任意。
+ */
 export function expandScriptToScenes(
   script: ManabilabCanvaScript,
 ): ManabilabCanvaScene[] {
@@ -37,11 +33,7 @@ export function expandScriptToScenes(
     source: { kind: "hook" },
     narration: script.hook,
     caption: shortCaption(script.hook, script.title.bottom),
-    imagePromptJa: deriveImagePromptJa(
-      script.topic.title,
-      "視聴者を引き止める印象的な掴み",
-      script.hook,
-    ),
+    imagePromptJa: "",
     imagePromptEn: "",
   });
 
@@ -53,7 +45,7 @@ export function expandScriptToScenes(
       source: { kind: "statement", statementIndex: i },
       narration: body,
       caption: s.label.trim() || shortCaption(s.claim, `セグメント ${i + 1}`),
-      imagePromptJa: deriveImagePromptJa(script.topic.title, s.label, s.claim),
+      imagePromptJa: "",
       imagePromptEn: "",
     });
   });
@@ -64,11 +56,7 @@ export function expandScriptToScenes(
     source: { kind: "cta" },
     narration: script.cta,
     caption: shortCaption(script.cta, "やってみよう"),
-    imagePromptJa: deriveImagePromptJa(
-      script.topic.title,
-      "視聴者の小さな行動を促すシーン",
-      script.cta,
-    ),
+    imagePromptJa: "",
     imagePromptEn: "",
   });
 
@@ -78,11 +66,7 @@ export function expandScriptToScenes(
     source: { kind: "punchline" },
     narration: script.punchline,
     caption: shortCaption(script.punchline, script.punchline),
-    imagePromptJa: deriveImagePromptJa(
-      script.topic.title,
-      "余韻とツッコミ余地のある締めシーン",
-      script.punchline,
-    ),
+    imagePromptJa: "",
     imagePromptEn: "",
   });
 

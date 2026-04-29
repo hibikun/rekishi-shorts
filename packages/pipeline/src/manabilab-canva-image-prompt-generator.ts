@@ -21,14 +21,19 @@ function sourceLabel(source: CanvaSceneSource): string {
   }
 }
 
-function renderPrompt(scene: ManabilabCanvaScene, topic: Topic): string {
+function renderPrompt(
+  scene: ManabilabCanvaScene,
+  topic: Topic,
+  userDirection?: string,
+): string {
   const tpl = fs.readFileSync(promptPath("image-prompt"), "utf-8");
+  const direction = (userDirection ?? scene.imagePromptJa ?? "").trim();
   return tpl
     .replace(/\{\{scene\.index\}\}/g, String(scene.index))
     .replace(/\{\{scene\.sourceLabel\}\}/g, sourceLabel(scene.source))
     .replace(/\{\{scene\.caption\}\}/g, scene.caption)
     .replace(/\{\{scene\.narration\}\}/g, scene.narration)
-    .replace(/\{\{scene\.imagePromptJa\}\}/g, scene.imagePromptJa || "（なし）")
+    .replace(/\{\{userDirection\}\}/g, direction || "（指示なし）")
     .replace(/\{\{topic\.title\}\}/g, topic.title)
     .replace(/\{\{topic\.target\}\}/g, topic.target);
 }
@@ -51,9 +56,10 @@ export interface ImagePromptResult {
 export async function generateImagePromptForScene(
   scene: ManabilabCanvaScene,
   topic: Topic,
+  userDirection?: string,
 ): Promise<ImagePromptResult> {
   const ai = new GoogleGenAI({ apiKey: config.gemini.apiKey });
-  const prompt = renderPrompt(scene, topic);
+  const prompt = renderPrompt(scene, topic, userDirection);
 
   const response = await ai.models.generateContent({
     // 画像プロンプト生成は scene-plan 並みの軽い処理なので flash-lite で十分

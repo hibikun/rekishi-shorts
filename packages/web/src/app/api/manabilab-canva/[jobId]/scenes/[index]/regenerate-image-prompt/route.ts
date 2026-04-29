@@ -15,7 +15,12 @@ interface Ctx {
   params: Promise<{ jobId: string; index: string }>;
 }
 
-export async function POST(_request: NextRequest, ctx: Ctx): Promise<Response> {
+interface PostBody {
+  /** ユーザーの日本語ポーズ指示（任意）。未指定なら scene.imagePromptJa を使う */
+  userDirectionJa?: string;
+}
+
+export async function POST(request: NextRequest, ctx: Ctx): Promise<Response> {
   const { jobId: rawJobId, index: rawIndex } = await ctx.params;
   const jobId = decodeURIComponent(rawJobId);
   const sceneIndex = Number(rawIndex);
@@ -25,6 +30,14 @@ export async function POST(_request: NextRequest, ctx: Ctx): Promise<Response> {
       { status: 400 },
     );
   }
+
+  let body: PostBody = {};
+  try {
+    body = (await request.json()) as PostBody;
+  } catch {
+    // body 無し OK
+  }
+  const userDirectionJa = (body.userDirectionJa ?? "").trim();
 
   let job;
   try {
@@ -58,11 +71,20 @@ export async function POST(_request: NextRequest, ctx: Ctx): Promise<Response> {
 
   try {
     setChannel(CANVA_CHANNEL_SLUG);
-    const result = await generateImagePromptForScene(target, job.topic);
+    const result = await generateImagePromptForScene(
+      target,
+      job.topic,
+      userDirectionJa || undefined,
+    );
 
     const nextScenes = scenes.map((s) =>
       s.index === sceneIndex
-        ? { ...s, imagePromptEn: result.imagePromptEn }
+        ? {
+            ...s,
+            imagePromptEn: result.imagePromptEn,
+            // ユーザー指示を保存（次回の自動生成でも使えるよう）
+            imagePromptJa: userDirectionJa || s.imagePromptJa,
+          }
         : s,
     );
     await writeScenesJson(jobId, nextScenes);

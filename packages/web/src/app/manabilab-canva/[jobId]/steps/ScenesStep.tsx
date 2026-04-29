@@ -139,7 +139,7 @@ export function ScenesStep({
 
   const updateScene = (
     index: number,
-    patch: Partial<Pick<ManabilabCanvaScene, "narration" | "caption" | "imagePromptJa" | "imagePromptEn">>,
+    patch: Partial<Pick<ManabilabCanvaScene, "narration" | "caption">>,
   ) => {
     if (!scenes) return;
     setScenes(scenes.map((s) => (s.index === index ? { ...s, ...patch } : s)));
@@ -255,21 +255,6 @@ export function ScenesStep({
                   />
                 </label>
 
-                <label style={fieldLabelStyle}>
-                  <span style={fieldHeaderStyle}>
-                    imagePromptJa{" "}
-                    <span style={hintStyle}>画像生成プロンプト（日本語）。Phase 3 で英訳して使う</span>
-                  </span>
-                  <textarea
-                    value={s.imagePromptJa}
-                    onChange={(e) =>
-                      updateScene(s.index, { imagePromptJa: e.target.value })
-                    }
-                    rows={3}
-                    style={textareaStyle}
-                    disabled={saving || expanding}
-                  />
-                </label>
               </div>
             ))}
           </div>

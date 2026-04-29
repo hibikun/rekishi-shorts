@@ -108,9 +108,19 @@ export async function POST(request: NextRequest, ctx: Ctx): Promise<Response> {
   for (const scene of scenes) {
     try {
       let promptEn = scene.imagePromptEn?.trim() ?? "";
+      const userDirection = (scene.imagePromptJa ?? "").trim();
 
-      if (!promptEn && generateMissingPrompts) {
-        const r = await generateImagePromptForScene(scene, job.topic);
+      // imagePromptEn が空なら、または force（上書き）+ generateMissingPrompts なら再生成
+      // ユーザー指示があれば、それを最優先で英訳する
+      const shouldGen =
+        (!promptEn && generateMissingPrompts) || (force && userDirection.length > 0);
+
+      if (shouldGen) {
+        const r = await generateImagePromptForScene(
+          scene,
+          job.topic,
+          userDirection || undefined,
+        );
         promptEn = r.imagePromptEn;
         scenes = scenes!.map((s) =>
           s.index === scene.index ? { ...s, imagePromptEn: promptEn } : s,

@@ -29,6 +29,9 @@ interface GenImageResult {
   imagePath?: string;
   imageUrl?: string;
   generatedAt?: string;
+  imagePromptEn?: string;
+  imagePromptJa?: string;
+  promptRegenerated?: boolean;
   error?: string;
 }
 
@@ -106,12 +109,20 @@ export function ImagesStep({
 
   const handleRegeneratePrompt = async (sceneIndex: number) => {
     if (!scenes) return;
+    const target = scenes.find((s) => s.index === sceneIndex);
+    if (!target) return;
     setRegenPromptIdx(sceneIndex);
     setError(null);
     try {
       const res = await fetch(
         `/api/manabilab-canva/${job.id}/scenes/${sceneIndex}/regenerate-image-prompt`,
-        { method: "POST" },
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            userDirectionJa: (target.imagePromptJa ?? "").trim() || undefined,
+          }),
+        },
       );
       const data = (await res.json()) as RegenPromptResult;
       if (!data.ok || !data.imagePromptEn) {
@@ -137,19 +148,21 @@ export function ImagesStep({
     if (!scenes) return;
     const target = scenes.find((s) => s.index === sceneIndex);
     if (!target) return;
-    if (!target.imagePromptEn?.trim()) {
-      setError({
-        index: sceneIndex,
-        message: "先にポーズプロンプトを生成してください",
-      });
-      return;
-    }
+
     setGenImageIdx(sceneIndex);
     setError(null);
     try {
       const res = await fetch(
         `/api/manabilab-canva/${job.id}/scenes/${sceneIndex}/generate-image`,
-        { method: "POST" },
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            userDirectionJa: (target.imagePromptJa ?? "").trim() || "",
+            // 統合 API: ユーザー指示があれば必ず英語プロンプトを再生成する
+            regeneratePrompt: true,
+          }),
+        },
       );
       const data = (await res.json()) as GenImageResult;
       if (!data.ok || !data.imagePath) {
@@ -162,6 +175,8 @@ export function ImagesStep({
               ...s,
               imagePath: data.imagePath!,
               imageGeneratedAt: data.generatedAt,
+              imagePromptEn: data.imagePromptEn ?? s.imagePromptEn,
+              imagePromptJa: data.imagePromptJa ?? s.imagePromptJa,
             }
           : s,
       );
@@ -293,6 +308,15 @@ export function ImagesStep({
     if (!scenes) return;
     const next = scenes.map((s) =>
       s.index === sceneIndex ? { ...s, imagePromptEn: value } : s,
+    );
+    setScenes(next);
+    onScenesChange(next);
+  };
+
+  const updatePromptJa = (sceneIndex: number, value: string) => {
+    if (!scenes) return;
+    const next = scenes.map((s) =>
+      s.index === sceneIndex ? { ...s, imagePromptJa: value } : s,
     );
     setScenes(next);
     onScenesChange(next);
@@ -534,7 +558,7 @@ export function ImagesStep({
 
                   <label style={{ display: "grid", gap: 4, fontSize: 13 }}>
                     <span style={{ fontWeight: 600 }}>
-                      imagePromptEn{" "}
+                      ポーズの指示{" "}
                       <span
                         style={{
                           fontWeight: 400,
@@ -543,23 +567,22 @@ export function ImagesStep({
                           marginLeft: 4,
                         }}
                       >
-                        Nano Banana に渡る英語プロンプト
+                        日本語・任意 / 例: 「ケーキを食べている姿」「両手で板チョコを掲げてドヤ顔」
                       </span>
                     </span>
                     <textarea
-                      value={s.imagePromptEn ?? ""}
-                      onChange={(e) => updatePromptEn(s.index, e.target.value)}
-                      rows={6}
-                      placeholder="未生成。「ポーズプロンプトを再生成」を押すと AI が組み立てます。"
+                      value={s.imagePromptJa ?? ""}
+                      onChange={(e) => updatePromptJa(s.index, e.target.value)}
+                      rows={3}
+                      placeholder="空でも OK。空なら caption / narration から AI が自動でポーズを推測します。"
                       disabled={isRegen || isGen}
                       style={{
                         padding: "8px 10px",
                         border: "1px solid var(--border)",
                         borderRadius: 6,
-                        fontSize: 12,
+                        fontSize: 13,
                         background: "var(--card)",
                         color: "inherit",
-                        fontFamily: "ui-monospace, SFMono-Regular, monospace",
                         lineHeight: 1.5,
                         resize: "vertical",
                       }}
@@ -575,25 +598,74 @@ export function ImagesStep({
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                     <button
                       type="button"
-                      onClick={() => handleRegeneratePrompt(s.index)}
-                      disabled={isRegen || isGen}
-                      style={smallSecondary(isRegen)}
-                    >
-                      {isRegen ? "プロンプト生成中..." : "ポーズプロンプトを再生成"}
-                    </button>
-                    <button
-                      type="button"
                       onClick={() => handleGenerateImage(s.index)}
-                      disabled={isRegen || isGen || !s.imagePromptEn?.trim()}
+                      disabled={isRegen || isGen}
                       style={smallPrimary(isGen)}
                     >
                       {isGen
-                        ? "画像生成中..."
+                        ? "生成中..."
                         : s.imagePath
                         ? "画像を再生成"
                         : "画像を生成"}
                     </button>
                   </div>
+
+                  <details>
+                    <summary
+                      style={{
+                        fontSize: 11,
+                        color: "var(--muted)",
+                        cursor: "pointer",
+                      }}
+                    >
+                      ▼ 詳細・上級者向け（生成された英語プロンプトの確認・編集）
+                    </summary>
+                    <div style={{ display: "grid", gap: 6, marginTop: 8 }}>
+                      <label style={{ display: "grid", gap: 4, fontSize: 12 }}>
+                        <span style={{ fontWeight: 600 }}>
+                          imagePromptEn{" "}
+                          <span
+                            style={{
+                              fontWeight: 400,
+                              color: "var(--muted)",
+                              fontSize: 11,
+                              marginLeft: 4,
+                            }}
+                          >
+                            実際に Nano Banana に渡る英語プロンプト
+                          </span>
+                        </span>
+                        <textarea
+                          value={s.imagePromptEn ?? ""}
+                          onChange={(e) => updatePromptEn(s.index, e.target.value)}
+                          rows={5}
+                          placeholder="まだ生成されていません。"
+                          disabled={isRegen || isGen}
+                          style={{
+                            padding: "6px 8px",
+                            border: "1px solid var(--border)",
+                            borderRadius: 4,
+                            fontSize: 11,
+                            background: "var(--card)",
+                            color: "inherit",
+                            fontFamily: "ui-monospace, SFMono-Regular, monospace",
+                            lineHeight: 1.5,
+                            resize: "vertical",
+                          }}
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => handleRegeneratePrompt(s.index)}
+                        disabled={isRegen || isGen}
+                        style={smallSecondary(isRegen)}
+                      >
+                        {isRegen
+                          ? "プロンプト生成中..."
+                          : "英語プロンプトのみ再生成（画像は作らない）"}
+                      </button>
+                    </div>
+                  </details>
                 </div>
               </div>
             );
