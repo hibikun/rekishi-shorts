@@ -1,6 +1,14 @@
 import React from "react";
 import { Composition, staticFile } from "remotion";
-import { UKIYOE_VIDEO_FPS, VIDEO_FPS, VIDEO_HEIGHT, VIDEO_WIDTH } from "@rekishi/shared";
+import {
+  LONGFORM_VIDEO_FPS,
+  LONGFORM_VIDEO_HEIGHT,
+  LONGFORM_VIDEO_WIDTH,
+  UKIYOE_VIDEO_FPS,
+  VIDEO_FPS,
+  VIDEO_HEIGHT,
+  VIDEO_WIDTH,
+} from "@rekishi/shared";
 import { HistoryShort, type HistoryShortProps } from "./compositions/HistoryShort";
 import { RankingShort, type RankingShortProps } from "./compositions/RankingShort";
 import { UkiyoeShort, type UkiyoeShortProps } from "./compositions/UkiyoeShort";
@@ -17,6 +25,7 @@ import {
   GeneticTestStyleIntro,
   GENETIC_TEST_STYLE_INTRO_DURATION_SEC,
 } from "./compositions/GeneticTestStyleIntro";
+import { LongformVideo, type LongformVideoProps } from "./compositions/LongformVideo";
 
 const defaultProps: HistoryShortProps = {
   scenes: [],
@@ -251,6 +260,15 @@ const MotionShowcaseComponent = MotionShowcase as unknown as React.FC<Record<str
 const CanvaMotionShowcaseComponent = CanvaMotionShowcase as unknown as React.FC<Record<string, unknown>>;
 const GeneticTestStyleIntroComponent = GeneticTestStyleIntro as unknown as React.FC<Record<string, unknown>>;
 
+const longformVideoDefaultProps: LongformVideoProps = {
+  scenes: [],
+  audioSrc: "",
+  totalDurationSec: 60,
+  captionSegments: [],
+};
+
+const LongformVideoComponent = LongformVideo as unknown as React.FC<Record<string, unknown>>;
+
 export const Root: React.FC = () => {
   return (
     <>
@@ -313,6 +331,18 @@ export const Root: React.FC = () => {
         fps={VIDEO_FPS}
         width={VIDEO_WIDTH}
         height={VIDEO_HEIGHT}
+      />
+      <Composition
+        id="LongformVideo"
+        component={LongformVideoComponent}
+        durationInFrames={Math.max(
+          1,
+          Math.ceil(longformVideoDefaultProps.totalDurationSec * LONGFORM_VIDEO_FPS),
+        )}
+        fps={LONGFORM_VIDEO_FPS}
+        width={LONGFORM_VIDEO_WIDTH}
+        height={LONGFORM_VIDEO_HEIGHT}
+        defaultProps={longformVideoDefaultProps as unknown as Record<string, unknown>}
       />
     </>
   );

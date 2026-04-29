@@ -10,3 +10,5 @@ export * from "./self-motivation-image-prompt-generator.js";
 export * from "./self-motivation-image-generator.js";
 export * from "./self-motivation-tts.js";
 export * from "./self-motivation-tts-concat.js";
+export * from "./self-motivation-captions.js";
+export * from "./self-motivation-render.js";
