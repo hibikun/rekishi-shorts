@@ -12,7 +12,7 @@ function channelOption(): Option {
 }
 import { generateYouTubeMetadata } from "./metadata-generator.js";
 import { metadataToDraftMd, draftMdToMetadata } from "./meta-draft-io.js";
-import { uploadToYouTube, formatUploadError } from "./youtube/uploader.js";
+import { uploadToYouTube, setThumbnail, formatUploadError } from "./youtube/uploader.js";
 import { runOAuthFlow } from "./youtube/oauth-flow.js";
 import { loadChannelBrandingFromMd, updateChannelBranding } from "./youtube/channel-update.js";
 import { appendUploadLog, hasBeenUploaded, readAllUploads } from "./upload-log.js";
@@ -368,6 +368,37 @@ program
       log(chalk.green(`\n✅ 完了: ${result.url}`));
     } catch (err) {
       log(chalk.red("\n❌ アップロード失敗"));
+      log(chalk.red(`   ${formatUploadError(err)}`));
+      process.exit(1);
+    }
+  });
+
+program
+  .command("set-thumbnail")
+  .description("既存 YouTube 動画にカスタムサムネイル画像を設定 (thumbnails.set)")
+  .requiredOption("--video-id <id>", "対象動画の YouTube videoId")
+  .requiredOption("--image <path>", "サムネイル画像ファイル (PNG / JPG, 2MB 以下)")
+  .addOption(channelOption())
+  .action(async (opts) => {
+    const imagePath = path.resolve(String(opts.image));
+    const videoId = String(opts.videoId);
+
+    log(chalk.bold(`\n🖼  set-thumbnail: ${videoId}\n`));
+    log(chalk.dim(`   image: ${imagePath}`));
+
+    try {
+      await fs.access(imagePath);
+    } catch {
+      log(chalk.red(`❌ 画像ファイルが見つかりません: ${imagePath}`));
+      process.exit(1);
+    }
+
+    try {
+      const result = await setThumbnail({ videoId, imagePath });
+      log(chalk.green(`\n✅ サムネイル設定完了: https://youtube.com/shorts/${result.videoId}`));
+      if (result.imageUrl) log(chalk.dim(`   thumbnail url: ${result.imageUrl}`));
+    } catch (err) {
+      log(chalk.red("\n❌ サムネイル設定失敗"));
       log(chalk.red(`   ${formatUploadError(err)}`));
       process.exit(1);
     }

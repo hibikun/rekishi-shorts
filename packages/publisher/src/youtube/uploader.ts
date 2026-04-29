@@ -77,6 +77,57 @@ export async function uploadToYouTube(input: UploadInput): Promise<UploadResult>
   };
 }
 
+export interface SetThumbnailInput {
+  videoId: string;
+  imagePath: string;
+}
+
+export interface SetThumbnailResult {
+  videoId: string;
+  imageUrl: string;
+}
+
+export async function setThumbnail(input: SetThumbnailInput): Promise<SetThumbnailResult> {
+  const { videoId, imagePath } = input;
+
+  const stat = fs.statSync(imagePath);
+  const MAX_BYTES = 2 * 1024 * 1024;
+  if (stat.size > MAX_BYTES) {
+    throw new Error(`サムネイル画像が 2MB 制限を超えています: ${stat.size} bytes (${imagePath})`);
+  }
+
+  const ext = imagePath.toLowerCase().split(".").pop();
+  const mimeType =
+    ext === "png" ? "image/png" :
+    ext === "jpg" || ext === "jpeg" ? "image/jpeg" :
+    ext === "gif" ? "image/gif" :
+    ext === "bmp" ? "image/bmp" :
+    null;
+  if (!mimeType) {
+    throw new Error(`サムネイル画像の拡張子が未対応です: .${ext} (PNG / JPG / GIF / BMP のみ)`);
+  }
+
+  const auth = createAuthClient();
+  const youtube = google.youtube({ version: "v3", auth });
+
+  const res = await youtube.thumbnails.set({
+    videoId,
+    media: {
+      mimeType,
+      body: fs.createReadStream(imagePath),
+    },
+  });
+
+  const imageUrl =
+    res.data.items?.[0]?.maxres?.url ??
+    res.data.items?.[0]?.high?.url ??
+    res.data.items?.[0]?.medium?.url ??
+    res.data.items?.[0]?.default?.url ??
+    "";
+
+  return { videoId, imageUrl };
+}
+
 export function formatUploadError(err: unknown): string {
   const anyErr = err as { code?: number; errors?: Array<{ reason?: string; message?: string }>; message?: string };
   const reason = anyErr.errors?.[0]?.reason;
