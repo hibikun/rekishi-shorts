@@ -13,13 +13,20 @@
 ## マナビくんキャラ規範（Reference 文に必ず含める）
 
 ```
-Same character as the reference image — IDENTICAL stylized PINK BRAIN as head (no skull,
-no hair, with soft cute gyri folds and a small white dumbbell icon on the front),
-IDENTICAL TWO WHITE OVAL EYE-DOTS only (no mouth, no nose, no eyebrows),
-IDENTICAL coral / salmon pink muscular body with defined pecs and abs,
-IDENTICAL deep magenta knee-length workout shorts, IDENTICAL bare feet.
-2D vector illustration, flat colors with subtle cel-shading, bold smooth dark-pink line art.
+Same character as the reference image — IDENTICAL faceless egg-shaped helmet head
+in coral / salmon pink (NO skull, NO hair, NO ears, NO mouth, NO nose, NO eyebrows),
+IDENTICAL solid WHITE BRAIN-SILHOUETTE icon on the forehead (front-view symmetric brain
+shape with rounded lobes on top and a vertical center groove, NOT a letter, NOT text),
+IDENTICAL TWO THIN DIAGONAL WHITE SLITS for eyes (sharp, cool, slightly downward angle),
+IDENTICAL coral / salmon pink muscular body with defined pecs, six-pack abs, broad shoulders,
+SHIRTLESS upper body,
+IDENTICAL deep magenta knee-length workout shorts with a small white drawstring,
+IDENTICAL bare feet.
+2D vector illustration, flat colors with subtle 1-tone darker pink cel-shading,
+bold uniform dark-warm-pink / burgundy line art (NEVER pure black).
 ```
+
+**絶対に描かないもの**: 額に文字（W, B, ロゴ文字など）、口、鼻、眉、耳、髪、脳の凹凸、白いオーバル目（楕円目）、ピンクの脳形の頭、ダンベル型のアイコン、シャツ・タンクトップ、靴・靴下。
 
 ## 1 シーンに対するプロンプト構造（この順序で書く）
 

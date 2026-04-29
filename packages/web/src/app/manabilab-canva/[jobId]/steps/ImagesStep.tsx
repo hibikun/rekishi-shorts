@@ -32,6 +32,14 @@ interface GenImageResult {
   error?: string;
 }
 
+interface RegenBaseResult {
+  ok: boolean;
+  outputPath?: string;
+  referenceUsed?: boolean;
+  regeneratedAt?: string;
+  error?: string;
+}
+
 interface GenerateAllResult {
   ok: boolean;
   job?: ManabilabCanvaJob;
@@ -88,6 +96,9 @@ export function ImagesStep({
   const [genImageIdx, setGenImageIdx] = useState<number | null>(null);
   const [generatingAll, setGeneratingAll] = useState(false);
   const [batchSummary, setBatchSummary] = useState<string | null>(null);
+  const [regeneratingBase, setRegeneratingBase] = useState(false);
+  const [baseVersion, setBaseVersion] = useState<number>(0);
+  const [baseError, setBaseError] = useState<string | null>(null);
   const [error, setError] = useState<{ index: number; message: string } | null>(null);
   const [globalError, setGlobalError] = useState<string | null>(null);
 
@@ -189,6 +200,34 @@ export function ImagesStep({
     }
   };
 
+  const handleRegenerateBase = async () => {
+    if (
+      !confirm(
+        "キャラ基準画像を再生成します。以降の全シーン画像はこの新しいベースから生成されます。続行しますか？",
+      )
+    ) {
+      return;
+    }
+    setRegeneratingBase(true);
+    setBaseError(null);
+    try {
+      const res = await fetch(
+        `/api/manabilab-canva/character/regenerate-base`,
+        { method: "POST" },
+      );
+      const data = (await res.json()) as RegenBaseResult;
+      if (!data.ok) {
+        setBaseError(data.error ?? "ベース画像の再生成に失敗しました");
+        return;
+      }
+      setBaseVersion(Date.now());
+    } catch (err) {
+      setBaseError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setRegeneratingBase(false);
+    }
+  };
+
   const handleGenerateAll = async (force: boolean) => {
     if (!scenes || scenes.length === 0) return;
     if (
@@ -279,21 +318,56 @@ export function ImagesStep({
         style={{
           display: "flex",
           gap: 12,
-          alignItems: "center",
+          alignItems: "flex-start",
           border: "1px dashed var(--border)",
           borderRadius: 8,
           padding: 10,
         }}
       >
         <img
-          src={CHARACTER_REF_URL}
+          src={`${CHARACTER_REF_URL}${baseVersion ? `?t=${baseVersion}` : ""}`}
           alt="マナビくん基準画像"
-          style={{ width: 64, height: 64, objectFit: "contain", background: "white", borderRadius: 4 }}
+          style={{
+            width: 96,
+            height: 96,
+            objectFit: "contain",
+            background: "white",
+            borderRadius: 4,
+            border: "1px solid var(--border)",
+          }}
         />
-        <div style={{ fontSize: 12, color: "var(--muted)", flex: 1 }}>
-          <strong>参照キャラ画像</strong>: <code>assets/character/manabikun-base.png</code>
-          <br />
-          全シーンの画像生成でこの 1 枚をリファレンスとして使います。差し替えはファイルを上書きしてください。
+        <div style={{ fontSize: 12, color: "var(--muted)", flex: 1, display: "grid", gap: 6 }}>
+          <div>
+            <strong style={{ color: "inherit" }}>参照キャラ画像</strong>:{" "}
+            <code>assets/character/manabikun-base.png</code>
+            <br />
+            全シーンの画像生成でこの 1 枚を referenceImages として使います。
+            <code>reference.png</code> を構造リファレンスに、
+            <code>prompts/character-base.md</code> の規範でベースを生成し直せます。
+          </div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <button
+              type="button"
+              onClick={handleRegenerateBase}
+              disabled={regeneratingBase}
+              style={{
+                padding: "6px 12px",
+                background: "transparent",
+                color: "var(--accent)",
+                border: "1px solid var(--accent)",
+                borderRadius: 4,
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: regeneratingBase ? "not-allowed" : "pointer",
+                opacity: regeneratingBase ? 0.6 : 1,
+              }}
+            >
+              {regeneratingBase ? "再生成中..." : "⟲ ベース画像を再生成"}
+            </button>
+            {baseError ? (
+              <span style={{ color: "#d32f2f", fontSize: 11 }}>{baseError}</span>
+            ) : null}
+          </div>
         </div>
       </section>
 

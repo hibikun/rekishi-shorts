@@ -7,6 +7,8 @@ export type { ManabilabCanvaScriptResult } from "./manabilab-canva-script-genera
 export { expandScriptToScenes } from "./manabilab-canva-scene-expander.js";
 export { generateImagePromptForScene } from "./manabilab-canva-image-prompt-generator.js";
 export type { ImagePromptResult } from "./manabilab-canva-image-prompt-generator.js";
+export { regenerateCharacterBase } from "./manabilab-canva-character-base-generator.js";
+export type { RegenerateCharacterBaseResult } from "./manabilab-canva-character-base-generator.js";
 export { planScenes } from "./scene-planner.js";
 export { resolveSceneAssets } from "./asset-resolver.js";
 export { synthesizeNarration } from "./tts-generator.js";
