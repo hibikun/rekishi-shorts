@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { TopicSchema, VideoTitleSchema } from "./script";
+import { VideoTitleSchema } from "./script";
+import { SelfMotivationTopicSchema } from "./self-motivation-topic";
 
 export const SelfMotivationChapterSchema = z.object({
   title: z
@@ -22,7 +23,7 @@ export const SelfMotivationReadingSchema = z.object({
 export type SelfMotivationReading = z.infer<typeof SelfMotivationReadingSchema>;
 
 export const SelfMotivationScriptSchema = z.object({
-  topic: TopicSchema,
+  topic: SelfMotivationTopicSchema,
   openingTitle: VideoTitleSchema.describe(
     "動画冒頭のタイトルカード（top 小・bottom 大の2行）",
   ),

@@ -1,6 +1,6 @@
 import { GoogleGenAI, createPartFromUri } from "@google/genai";
 import fs from "node:fs";
-import { type Topic } from "@rekishi/shared";
+import { type SelfMotivationTopic } from "@rekishi/shared";
 import { config } from "./config.js";
 import {
   normalizeYoutubeWatchUrl,
@@ -12,7 +12,7 @@ export interface YoutubeTranscribeResult {
   usage: { inputTokens: number; outputTokens: number; model: string };
 }
 
-function renderPrompt(topic: Topic, videoUrl: string, note?: string): string {
+function renderPrompt(topic: SelfMotivationTopic, videoUrl: string, note?: string): string {
   const tpl = fs.readFileSync(promptFilePath("youtube-research"), "utf-8");
   return tpl
     .replace(/\{\{topic\.title\}\}/g, topic.title)
@@ -32,7 +32,7 @@ function renderPrompt(topic: Topic, videoUrl: string, note?: string): string {
  * モデルは researchModel を流用する (Pro 系) — 長尺動画の理解には Pro が安定。
  */
 export async function transcribeYoutubeVideo(args: {
-  topic: Topic;
+  topic: SelfMotivationTopic;
   videoId: string;
   note?: string;
 }): Promise<YoutubeTranscribeResult> {

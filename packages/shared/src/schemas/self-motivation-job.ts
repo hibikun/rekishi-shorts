@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { TopicSchema } from "./script";
+import { SelfMotivationTopicSchema } from "./self-motivation-topic";
 
 export const SelfMotivationStepStatusSchema = z.enum([
   "pending",
@@ -119,7 +119,7 @@ export const SelfMotivationJobSchema = z.object({
   id: z.string(),
   createdAt: z.string(),
   updatedAt: z.string(),
-  topic: TopicSchema,
+  topic: SelfMotivationTopicSchema,
   steps: z.object({
     topic: StepBaseSchema,
     research: SelfMotivationResearchStepSchema,

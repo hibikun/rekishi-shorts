@@ -8,6 +8,7 @@ export * from "./schemas/manabilab-canva-job";
 export * from "./schemas/manabilab-canva-script";
 export * from "./schemas/manabilab-canva-scene";
 export * from "./schemas/longform-render-plan";
+export * from "./schemas/self-motivation-topic";
 export * from "./schemas/self-motivation-job";
 export * from "./schemas/self-motivation-script";
 export * from "./schemas/self-motivation-scene";

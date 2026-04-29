@@ -1,6 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
 import fs from "node:fs";
-import { type Topic } from "@rekishi/shared";
 import { promptPath } from "@rekishi/shared/channel";
 import { config } from "./config.js";
 
@@ -17,16 +16,30 @@ export interface ResearchResult {
   usage: { inputTokens: number; outputTokens: number; model: string };
 }
 
-function renderPrompt(topic: Topic): string {
+/**
+ * リサーチプロンプトに展開できる最小構造。
+ * rekishi 系の `Topic` は `target` / `era` を持つが、self-motivation 系は持たない。
+ * チャンネル間で再利用するためにここでは構造的型として緩く受ける。
+ */
+export interface ResearchTopic {
+  title: string;
+  subject: string;
+  era?: string;
+  target?: string;
+}
+
+function renderPrompt(topic: ResearchTopic): string {
   const tpl = fs.readFileSync(promptPath("research"), "utf-8");
   return tpl
     .replace(/\{\{topic\.title\}\}/g, topic.title)
     .replace(/\{\{topic\.era\}\}/g, topic.era ?? "指定なし")
     .replace(/\{\{topic\.subject\}\}/g, topic.subject)
-    .replace(/\{\{topic\.target\}\}/g, topic.target);
+    .replace(/\{\{topic\.target\}\}/g, topic.target ?? "汎用");
 }
 
-export async function generateResearch(topic: Topic): Promise<ResearchResult> {
+export async function generateResearch(
+  topic: ResearchTopic,
+): Promise<ResearchResult> {
   const ai = new GoogleGenAI({ apiKey: config.gemini.apiKey });
   const prompt = renderPrompt(topic);
 

@@ -16,7 +16,10 @@ import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { Command } from "commander";
 import chalk from "chalk";
-import { TopicSchema, type Topic } from "@rekishi/shared";
+import {
+  SelfMotivationTopicSchema,
+  type SelfMotivationTopic,
+} from "@rekishi/shared";
 import { setChannel } from "@rekishi/shared/channel";
 import { generateResearch } from "./research-generator.js";
 import {
@@ -59,11 +62,9 @@ program
   .requiredOption("--topic <title>", "トピック名")
   .option("--subject <subject>", "カテゴリ", "自己啓発")
   .action(async (opts) => {
-    const topic: Topic = TopicSchema.parse({
+    const topic: SelfMotivationTopic = SelfMotivationTopicSchema.parse({
       title: opts.topic,
       subject: opts.subject,
-      target: "汎用",
-      format: "single",
     });
     const job = await createJob(topic);
     console.log(chalk.green(`✅ created jobId=${job.id}`));

@@ -8,8 +8,8 @@ import {
   type SelfMotivationScene,
   type SelfMotivationScript,
   type SelfMotivationStepKey,
+  type SelfMotivationTopic,
   type SelfMotivationYoutubeRef,
-  type Topic,
 } from "@rekishi/shared";
 import {
   jobDir,
@@ -43,7 +43,7 @@ export function generateJobId(title: string): string {
   return slug ? `sm-${date}-${slug}` : `sm-${date}-${randomSuffix()}`;
 }
 
-export function emptyJob(jobId: string, topic: Topic): SelfMotivationJob {
+export function emptyJob(jobId: string, topic: SelfMotivationTopic): SelfMotivationJob {
   const now = nowIso();
   return {
     id: jobId,
@@ -76,7 +76,7 @@ async function fileExists(p: string): Promise<boolean> {
   }
 }
 
-export async function createJob(topic: Topic): Promise<SelfMotivationJob> {
+export async function createJob(topic: SelfMotivationTopic): Promise<SelfMotivationJob> {
   let id = generateJobId(topic.title);
   await mkdir(jobDir(id), { recursive: true });
 

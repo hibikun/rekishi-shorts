@@ -3,7 +3,7 @@ import fs from "node:fs";
 import type {
   SelfMotivationScene,
   SelfMotivationScript,
-  Topic,
+  SelfMotivationTopic,
 } from "@rekishi/shared";
 import { config } from "./config.js";
 import { promptFilePath } from "./self-motivation-paths.js";
@@ -11,7 +11,7 @@ import { promptFilePath } from "./self-motivation-paths.js";
 function renderPrompt(
   scene: SelfMotivationScene,
   script: SelfMotivationScript,
-  topic: Topic,
+  topic: SelfMotivationTopic,
   userDirection: string,
 ): string {
   const tpl = fs.readFileSync(promptFilePath("image-prompt"), "utf-8");
@@ -42,7 +42,7 @@ export interface SelfMotivationImagePromptResult {
 export async function generateImagePromptForScene(
   scene: SelfMotivationScene,
   script: SelfMotivationScript,
-  topic: Topic,
+  topic: SelfMotivationTopic,
   userDirection = "",
 ): Promise<SelfMotivationImagePromptResult> {
   const ai = new GoogleGenAI({ apiKey: config.gemini.apiKey });

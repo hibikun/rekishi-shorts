@@ -3,7 +3,7 @@ import fs from "node:fs";
 import {
   SelfMotivationScriptSchema,
   type SelfMotivationScript,
-  type Topic,
+  type SelfMotivationTopic,
 } from "@rekishi/shared";
 import { config } from "./config.js";
 import { promptFilePath } from "./self-motivation-paths.js";
@@ -33,7 +33,7 @@ function formatYoutubeReferences(refs: YoutubeReferenceForPrompt[]): string {
 }
 
 function renderPrompt(
-  topic: Topic,
+  topic: SelfMotivationTopic,
   researchMd: string,
   youtubeRefs: YoutubeReferenceForPrompt[],
 ): string {
@@ -49,20 +49,12 @@ function renderPrompt(
     .replace(/\{\{youtubeReferences\}\}/g, formatYoutubeReferences(youtubeRefs));
 }
 
+// 注意: topic は Gemini に返させない。生成後に jobTopic を強制注入する。
+// 過去に enum 不整合 (target/format) が原因で parse が落ちた経験から、
+// 「呼び出し側が topic の真実値を持っているなら Gemini に書かせる必要がない」という方針。
 const responseSchema = {
   type: Type.OBJECT,
   properties: {
-    topic: {
-      type: Type.OBJECT,
-      properties: {
-        title: { type: Type.STRING },
-        era: { type: Type.STRING },
-        subject: { type: Type.STRING },
-        target: { type: Type.STRING },
-        format: { type: Type.STRING },
-      },
-      required: ["title", "subject", "target", "format"],
-    },
     openingTitle: {
       type: Type.OBJECT,
       properties: {
@@ -101,7 +93,6 @@ const responseSchema = {
     estimatedDurationSec: { type: Type.NUMBER },
   },
   required: [
-    "topic",
     "openingTitle",
     "openingHook",
     "chapters",
@@ -116,7 +107,7 @@ export interface GenerateScriptResult {
 }
 
 export async function generateSelfMotivationScript(
-  topic: Topic,
+  topic: SelfMotivationTopic,
   researchMd: string,
   youtubeRefs: YoutubeReferenceForPrompt[] = [],
 ): Promise<GenerateScriptResult> {
@@ -136,15 +127,18 @@ export async function generateSelfMotivationScript(
   const text = response.text;
   if (!text) throw new Error("Gemini returned empty script response");
 
-  const parsed = SelfMotivationScriptSchema.safeParse(JSON.parse(text));
+  // Gemini には topic を返させていない (responseSchema から除外済み) ので、
+  // パース前に呼び出し側の topic を強制注入する。
+  // これにより SelfMotivationScriptSchema の topic 必須制約も満たせる。
+  const rawJson = JSON.parse(text) as Record<string, unknown>;
+  const merged = { ...rawJson, topic };
+  const parsed = SelfMotivationScriptSchema.safeParse(merged);
   if (!parsed.success) {
     throw new Error(
       `script JSON が schema に合致しません: ${parsed.error.message}`,
     );
   }
-
-  // topic は必ず入力をオーバーライド（モデルが取りこぼす場合がある）
-  const script: SelfMotivationScript = { ...parsed.data, topic };
+  const script: SelfMotivationScript = parsed.data;
 
   return {
     script,

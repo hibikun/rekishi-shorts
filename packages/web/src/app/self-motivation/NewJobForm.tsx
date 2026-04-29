@@ -34,8 +34,6 @@ export function NewJobForm() {
         body: JSON.stringify({
           title: title.trim(),
           subject,
-          target: "汎用",
-          format: "single",
         }),
       });
       const data = (await res.json()) as {

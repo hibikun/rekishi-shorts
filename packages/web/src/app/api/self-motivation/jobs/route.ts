@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { TopicSchema } from "@rekishi/shared";
+import { SelfMotivationTopicSchema } from "@rekishi/shared";
 import { setChannel } from "@rekishi/shared/channel";
 import {
   SELF_MOTIVATION_CHANNEL,
@@ -34,12 +34,9 @@ export async function POST(request: NextRequest): Promise<Response> {
   // 自己啓発チャンネルでは subject default を "自己啓発" にする
   const withDefaults = {
     ...(typeof body === "object" && body !== null ? body : {}),
-    subject:
-      (body as { subject?: string })?.subject ?? "自己啓発",
-    target: (body as { target?: string })?.target ?? "汎用",
-    format: (body as { format?: string })?.format ?? "single",
+    subject: (body as { subject?: string })?.subject ?? "自己啓発",
   };
-  const parsed = TopicSchema.safeParse(withDefaults);
+  const parsed = SelfMotivationTopicSchema.safeParse(withDefaults);
   if (!parsed.success) {
     return NextResponse.json(
       {
