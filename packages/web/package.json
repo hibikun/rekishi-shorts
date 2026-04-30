@@ -14,6 +14,7 @@
   "dependencies": {
     "@google/genai": "^1.50.1",
     "@rekishi/pipeline": "workspace:*",
+    "@rekishi/publisher": "workspace:*",
     "@rekishi/shared": "workspace:*",
     "@remotion/player": "^4.0.446",
     "next": "^15.0.0",

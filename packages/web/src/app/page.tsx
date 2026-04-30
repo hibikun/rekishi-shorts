@@ -14,6 +14,37 @@ export default async function HomePage() {
       </p>
 
       <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 12 }}>
+        浮世絵スタジオ (ukiyoe-studio)
+      </h2>
+      <ul style={{ listStyle: "none", padding: 0, marginBottom: 32 }}>
+        <li
+          style={{
+            border: "1px solid var(--border)",
+            borderRadius: 8,
+            padding: "12px 16px",
+            background: "var(--card)",
+          }}
+        >
+          <Link
+            href="/ukiyoe-studio"
+            style={{
+              fontWeight: 600,
+              textDecoration: "none",
+              color: "var(--accent)",
+            }}
+          >
+            ジョブ一覧 / 新規作成 →
+          </Link>
+          <div
+            style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}
+          >
+            ウィザード: Topic → Research → Script → Scenes → Images → TTS →
+            Videos → Render → Ship（「○○の一生」「○○の1日」両対応）
+          </div>
+        </li>
+      </ul>
+
+      <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 12 }}>
         Self-Motivation 長尺動画 (16:9)
       </h2>
       <ul style={{ listStyle: "none", padding: 0, marginBottom: 32 }}>

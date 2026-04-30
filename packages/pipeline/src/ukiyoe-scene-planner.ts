@@ -100,13 +100,18 @@ const responseSchema = {
   required: ["scenes"],
 };
 
+export type UkiyoeScenePlannerMode = "routine" | "life";
+
 function renderPrompt(args: {
   topic: string;
   narration: string;
   targetSceneCount: number;
   targetDurationSec: number;
+  mode: UkiyoeScenePlannerMode;
 }): string {
-  const tpl = fs.readFileSync(promptPath("scene-plan-routine", "ukiyoe"), "utf-8");
+  const promptName =
+    args.mode === "life" ? "scene-plan-life" : "scene-plan-routine";
+  const tpl = fs.readFileSync(promptPath(promptName, "ukiyoe"), "utf-8");
   return tpl
     .replace(/\{\{topic\}\}/g, args.topic)
     .replace(/\{\{narration\}\}/g, args.narration)
@@ -114,11 +119,18 @@ function renderPrompt(args: {
     .replace(/\{\{target_duration_sec\}\}/g, String(args.targetDurationSec));
 }
 
+export interface UkiyoePlanScenesOptions {
+  /** プロンプトの軸。既定 "routine" */
+  mode?: UkiyoeScenePlannerMode;
+}
+
 export async function planUkiyoeScenes(
   script: UkiyoeScript,
+  options: UkiyoePlanScenesOptions = {},
 ): Promise<UkiyoeScenePlanResult> {
   const targetSceneCount = script.targetSceneCount;
   const targetDurationSec = targetSceneCount * 5;
+  const mode: UkiyoeScenePlannerMode = options.mode ?? "routine";
 
   const ai = new GoogleGenAI({ apiKey: config.gemini.apiKey });
   const prompt = renderPrompt({
@@ -126,6 +138,7 @@ export async function planUkiyoeScenes(
     narration: script.narration,
     targetSceneCount,
     targetDurationSec,
+    mode,
   });
 
   const response = await ai.models.generateContent({
@@ -265,7 +278,7 @@ function assertNarrationFidelity(
     throw new Error(
       [
         "scene-planner が元 narration を改変・水増しした疑いがあります。",
-        "プロンプト（scene-plan-routine.md）の「ナレーション分割の絶対ルール」を確認するか、再生成してください。",
+        "プロンプト（scene-plan-routine.md / scene-plan-life.md）の「ナレーション分割の絶対ルール」を確認するか、再生成してください。",
         "",
         "違反:",
         ...violations.map((v) => `  - ${v}`),

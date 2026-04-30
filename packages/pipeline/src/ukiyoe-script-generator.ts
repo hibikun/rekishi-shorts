@@ -3,6 +3,8 @@ import fs from "node:fs";
 import { promptPath } from "@rekishi/shared/channel";
 import { config } from "./config.js";
 
+export type UkiyoeScriptMode = "routine" | "life";
+
 export interface UkiyoeScriptInput {
   topic: string;
   era?: string;
@@ -12,6 +14,8 @@ export interface UkiyoeScriptInput {
   targetDurationSec?: number;
   /** 既定 4 シーン（試作） */
   targetSceneCount?: number;
+  /** プロンプトの軸。"routine"=○○の1日 / "life"=○○の一生。既定 "routine" */
+  mode?: UkiyoeScriptMode;
 }
 
 export interface UkiyoeScript {
@@ -52,8 +56,13 @@ const responseSchema = {
   required: ["narration", "hook", "keyTerms", "estimatedDurationSec"],
 };
 
-function renderPrompt(input: Required<Pick<UkiyoeScriptInput, "topic" | "targetDurationSec" | "targetSceneCount">> & { era: string; research: string }): string {
-  const tpl = fs.readFileSync(promptPath("script-routine", "ukiyoe"), "utf-8");
+function renderPrompt(
+  input: Required<
+    Pick<UkiyoeScriptInput, "topic" | "targetDurationSec" | "targetSceneCount">
+  > & { era: string; research: string; mode: UkiyoeScriptMode },
+): string {
+  const promptName = input.mode === "life" ? "script-life" : "script-routine";
+  const tpl = fs.readFileSync(promptPath(promptName, "ukiyoe"), "utf-8");
   return tpl
     .replace(/\{\{topic\}\}/g, input.topic)
     .replace(/\{\{era\}\}/g, input.era)
@@ -80,6 +89,7 @@ export async function generateUkiyoeScript(
   const targetSceneCount = input.targetSceneCount ?? 4;
   const era = input.era ?? "指定なし";
   const research = input.researchMd?.trim() || "（リサーチ資料なし — 自身の知識で慎重に書くこと）";
+  const mode: UkiyoeScriptMode = input.mode ?? "routine";
 
   const ai = new GoogleGenAI({ apiKey: config.gemini.apiKey });
   const prompt = renderPrompt({
@@ -88,6 +98,7 @@ export async function generateUkiyoeScript(
     research,
     targetDurationSec,
     targetSceneCount,
+    mode,
   });
 
   const response = await ai.models.generateContent({
