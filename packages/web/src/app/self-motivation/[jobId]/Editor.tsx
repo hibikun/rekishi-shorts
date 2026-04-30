@@ -12,6 +12,7 @@ import { PreviewPane } from "./components/PreviewPane";
 import { RenderPanel } from "./components/RenderPanel";
 import { ResearchEditor } from "./components/ResearchEditor";
 import { ScriptViewer } from "./components/ScriptViewer";
+import { CharacterPanel } from "./components/CharacterPanel";
 
 interface Props {
   initialJob: SelfMotivationJob;
@@ -82,6 +83,13 @@ export function Editor({
           onScriptChange={setScript}
           onJobChange={setJob}
         />
+      </details>
+
+      <details style={sectionDetailsStyle}>
+        <summary style={summaryStyle}>🧍 キャラクター参照</summary>
+        <div style={{ marginTop: 12 }}>
+          <CharacterPanel jobId={job.id} />
+        </div>
       </details>
 
       <div

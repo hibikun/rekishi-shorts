@@ -3,6 +3,7 @@ import { mkdir } from "node:fs/promises";
 import { setChannel } from "@rekishi/shared/channel";
 import {
   SELF_MOTIVATION_CHANNEL,
+  findCharacterReferenceFile,
   generateImagePromptForScene,
   generateLongformImage,
   imagesDir,
@@ -61,14 +62,20 @@ export async function POST(request: NextRequest, ctx: Ctx): Promise<Response> {
 
     await mkdir(imagesDir(jobId), { recursive: true });
 
+    const characterRef = await findCharacterReferenceFile(jobId);
+    const referenceImages = characterRef ? [characterRef] : undefined;
+
     const promptResult = await generateImagePromptForScene(
       target,
       script,
       job.topic,
       userDirection,
+      !!characterRef,
     );
     const dest = sceneImagePath(jobId, sceneId);
-    await generateLongformImage(promptResult.imagePromptEn, dest);
+    await generateLongformImage(promptResult.imagePromptEn, dest, {
+      referenceImages,
+    });
     const now = new Date().toISOString();
     const updated = scenes.map((s) =>
       s.sceneId === sceneId

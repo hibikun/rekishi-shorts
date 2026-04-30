@@ -116,5 +116,7 @@ function makeScene(
     imagePromptJa: "",
     imagePromptEn: "",
     motionPresetId: "auto",
+    videoPromptJa: "",
+    videoPromptEn: "",
   };
 }

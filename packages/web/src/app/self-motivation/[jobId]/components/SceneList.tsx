@@ -48,6 +48,7 @@ export function SceneList({
   const [regeneratingSceneId, setRegeneratingSceneId] = useState<string | null>(
     null,
   );
+  const [animatingSceneId, setAnimatingSceneId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const updateField = async <K extends keyof SelfMotivationScene>(
@@ -154,6 +155,8 @@ export function SceneList({
       imagePromptJa: "",
       imagePromptEn: "",
       motionPresetId: "auto",
+      videoPromptJa: "",
+      videoPromptEn: "",
     };
     const next = reindex([
       ...scenes.slice(0, insertAt),
@@ -204,6 +207,41 @@ export function SceneList({
     }
   };
 
+  const regenerateAnimation = async (
+    sceneId: string,
+    userDirection: string,
+  ) => {
+    setAnimatingSceneId(sceneId);
+    setError(null);
+    try {
+      const res = await fetch(
+        `/api/self-motivation/${jobId}/scenes/${sceneId}/regenerate-animation`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userDirection }),
+        },
+      );
+      const data = (await res.json()) as {
+        ok: boolean;
+        error?: string;
+        scene?: SelfMotivationScene;
+      };
+      if (!data.ok || !data.scene) {
+        setError(data.error ?? "アニメ生成に失敗");
+        return;
+      }
+      const next = scenes.map((s) =>
+        s.sceneId === sceneId ? data.scene! : s,
+      );
+      await onScenesChange(next);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setAnimatingSceneId(null);
+    }
+  };
+
   return (
     <div
       style={{
@@ -245,6 +283,7 @@ export function SceneList({
                 selected={scene.sceneId === selectedSceneId}
                 saving={savingSceneId === scene.sceneId}
                 regenerating={regeneratingSceneId === scene.sceneId}
+                animating={animatingSceneId === scene.sceneId}
                 onSelect={() => onSelectScene(scene.sceneId)}
                 onChangeNarration={(v) =>
                   updateField(scene.sceneId, "narration", v)
@@ -256,6 +295,9 @@ export function SceneList({
                   updateField(scene.sceneId, "imagePromptJa", v)
                 }
                 onRegenerateImage={(d) => regenerateImage(scene.sceneId, d)}
+                onRegenerateAnimation={(d) =>
+                  regenerateAnimation(scene.sceneId, d)
+                }
                 onRemove={() => removeScene(scene.sceneId)}
                 onSplit={(a, b) => splitScene(scene.sceneId, a, b)}
               />
@@ -326,11 +368,13 @@ interface SceneCardProps {
   selected: boolean;
   saving: boolean;
   regenerating: boolean;
+  animating: boolean;
   onSelect: () => void;
   onChangeNarration: (v: string) => void;
   onChangeMotion: (v: string) => void;
   onChangePromptJa: (v: string) => void;
   onRegenerateImage: (userDirection: string) => void;
+  onRegenerateAnimation: (userDirection: string) => void;
   onRemove: () => void;
   onSplit: (firstHalf: string, secondHalf: string) => void;
 }
@@ -341,11 +385,13 @@ function SceneCard({
   selected,
   saving,
   regenerating,
+  animating,
   onSelect,
   onChangeNarration,
   onChangeMotion,
   onChangePromptJa,
   onRegenerateImage,
+  onRegenerateAnimation,
   onRemove,
   onSplit,
 }: SceneCardProps) {
@@ -435,6 +481,24 @@ function SceneCard({
               no image
             </div>
           )}
+          {scene.videoPath ? (
+            <div
+              style={{
+                position: "absolute",
+                top: 2,
+                right: 2,
+                background: "rgba(33, 150, 243, 0.9)",
+                color: "#fff",
+                fontSize: 10,
+                padding: "1px 4px",
+                borderRadius: 3,
+                fontWeight: 700,
+              }}
+              title="このシーンはアニメ生成済み"
+            >
+              🎬
+            </div>
+          ) : null}
         </div>
 
         <textarea
@@ -511,6 +575,33 @@ function SceneCard({
           style={smallBtn}
         >
           {regenerating ? "生成中…" : "🎨 画像"}
+        </button>
+
+        <button
+          type="button"
+          disabled={animating || !scene.imagePath}
+          onClick={(e) => {
+            e.stopPropagation();
+            onRegenerateAnimation(scene.videoPromptJa ?? "");
+          }}
+          style={{
+            ...smallBtn,
+            borderColor: scene.videoPath ? "var(--accent)" : "var(--border)",
+            color: scene.videoPath ? "var(--accent)" : "inherit",
+          }}
+          title={
+            !scene.imagePath
+              ? "先に画像を生成してください"
+              : scene.videoPath
+                ? "アニメを再生成 (約30秒〜3分・有料)"
+                : "Seedance でアニメを生成 (約30秒〜3分・有料)"
+          }
+        >
+          {animating
+            ? "アニメ生成中…"
+            : scene.videoPath
+              ? "🎬 ✓ アニメ"
+              : "🎬 アニメ"}
         </button>
 
         <button

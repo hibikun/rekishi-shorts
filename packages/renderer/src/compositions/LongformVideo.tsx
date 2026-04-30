@@ -2,6 +2,8 @@ import React from "react";
 import {
   AbsoluteFill,
   Img,
+  Loop,
+  OffthreadVideo,
   Sequence,
   interpolate,
   useCurrentFrame,
@@ -22,6 +24,10 @@ export interface LongformScene {
   motionPresetId: string;
   /** 字幕用（Composition 内では未使用、上位で captionSegments を生成済み前提） */
   narration?: string;
+  /** Seedance 等で生成したアニメ mp4 の URL。あれば静止画ではなく動画を再生 */
+  videoSrc?: string;
+  /** 動画長 (秒)。TTS が長ければ Loop で繰り返す */
+  videoDurationSec?: number;
 }
 
 export interface LongformVideoProps {
@@ -157,6 +163,16 @@ const SceneView: React.FC<SceneViewProps> = ({
   sceneIndex,
   durationFrames,
 }) => {
+  // 動画があれば最優先（motionPresetId は無視）
+  if (scene.videoSrc) {
+    return (
+      <SceneVideo
+        videoSrc={scene.videoSrc}
+        videoDurationSec={scene.videoDurationSec ?? 5}
+      />
+    );
+  }
+
   if (!scene.src) {
     return (
       <AbsoluteFill
@@ -243,6 +259,37 @@ const SceneView: React.FC<SceneViewProps> = ({
         />
       );
   }
+};
+
+interface SceneVideoProps {
+  videoSrc: string;
+  videoDurationSec: number;
+}
+
+const SceneVideo: React.FC<SceneVideoProps> = ({
+  videoSrc,
+  videoDurationSec,
+}) => {
+  const { fps } = useVideoConfig();
+  const loopFrames = Math.max(1, Math.round(videoDurationSec * fps));
+  return (
+    <AbsoluteFill style={{ backgroundColor: "#000" }}>
+      <Loop durationInFrames={loopFrames}>
+        <OffthreadVideo
+          src={videoSrc}
+          muted
+          style={{
+            position: "absolute",
+            inset: 0,
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+          }}
+        />
+      </Loop>
+      <BottomGradient />
+    </AbsoluteFill>
+  );
 };
 
 const StaticImage: React.FC<{ src: string }> = ({ src }) => (

@@ -41,6 +41,10 @@ export function PreviewPane({
         src: `/self-motivation/${s.imagePath}?t=${s.imageGeneratedAt ?? ""}`,
         durationSec: s.audioDurationSec ?? 0,
         motionPresetId: s.motionPresetId,
+        videoSrc: s.videoPath
+          ? `/self-motivation/${s.videoPath}?t=${s.videoGeneratedAt ?? ""}`
+          : undefined,
+        videoDurationSec: s.videoDurationSec,
       }));
 
     const totalDurationSec = previewScenes.reduce(

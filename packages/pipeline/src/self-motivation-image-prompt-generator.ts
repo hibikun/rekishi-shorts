@@ -8,11 +8,15 @@ import type {
 import { config } from "./config.js";
 import { promptFilePath } from "./self-motivation-paths.js";
 
+const CHARACTER_DIRECTIVE_WITH_REF =
+  "## 重要: キャラクター一貫性\n\n参考画像 (reference image) が画像生成 API に同時に渡されます。プロンプト内に **「Use the same character (face, body shape, clothing, style, color palette) as in the provided reference image. The character must be visually identical to the reference across all scenes.」** という旨を必ず英語で含めてください。被写体は reference のキャラを軸に構図を組み立てる。";
+
 function renderPrompt(
   scene: SelfMotivationScene,
   script: SelfMotivationScript,
   topic: SelfMotivationTopic,
   userDirection: string,
+  hasCharacterReference: boolean,
 ): string {
   const tpl = fs.readFileSync(promptFilePath("image-prompt"), "utf-8");
   const chapterTitle =
@@ -21,7 +25,11 @@ function renderPrompt(
     .replace(/\{\{topic\.title\}\}/g, topic.title)
     .replace(/\{\{chapter\.title\}\}/g, chapterTitle)
     .replace(/\{\{scene\.narration\}\}/g, scene.narration)
-    .replace(/\{\{userDirection\}\}/g, userDirection || "（指示なし）");
+    .replace(/\{\{userDirection\}\}/g, userDirection || "（指示なし）")
+    .replace(
+      /\{\{characterDirective\}\}/g,
+      hasCharacterReference ? CHARACTER_DIRECTIVE_WITH_REF : "",
+    );
 }
 
 const responseSchema = {
@@ -44,9 +52,16 @@ export async function generateImagePromptForScene(
   script: SelfMotivationScript,
   topic: SelfMotivationTopic,
   userDirection = "",
+  hasCharacterReference = false,
 ): Promise<SelfMotivationImagePromptResult> {
   const ai = new GoogleGenAI({ apiKey: config.gemini.apiKey });
-  const prompt = renderPrompt(scene, script, topic, userDirection);
+  const prompt = renderPrompt(
+    scene,
+    script,
+    topic,
+    userDirection,
+    hasCharacterReference,
+  );
 
   const response = await ai.models.generateContent({
     model: config.gemini.sceneModel,

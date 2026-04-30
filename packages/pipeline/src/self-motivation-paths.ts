@@ -1,4 +1,5 @@
 import path from "node:path";
+import { readdir } from "node:fs/promises";
 import { channelPackageDir } from "@rekishi/shared/channel";
 
 export const SELF_MOTIVATION_CHANNEL = "self-motivation";
@@ -47,6 +48,48 @@ export function imagesDir(jobId: string): string {
 
 export function audioDir(jobId: string): string {
   return path.join(jobDir(jobId), "audio");
+}
+
+export function videosDir(jobId: string): string {
+  return path.join(jobDir(jobId), "videos");
+}
+
+export function sceneVideoPath(jobId: string, sceneId: string): string {
+  return path.join(videosDir(jobId), `${sceneId}.mp4`);
+}
+
+export function characterReferenceDir(jobId: string): string {
+  return path.join(jobDir(jobId), "reference");
+}
+
+export function characterReferencePath(jobId: string, ext: string): string {
+  const cleanExt = ext.startsWith(".") ? ext.slice(1) : ext;
+  return path.join(characterReferenceDir(jobId), `character.${cleanExt}`);
+}
+
+const CHARACTER_REFERENCE_EXTS = ["png", "jpg", "jpeg", "webp"] as const;
+
+/**
+ * jobs/{jobId}/reference/ 配下の character.{ext} を1つ探して返す。
+ * 無い場合は null。複数あれば png > jpg > jpeg > webp の優先順。
+ */
+export async function findCharacterReferenceFile(
+  jobId: string,
+): Promise<string | null> {
+  const dir = characterReferenceDir(jobId);
+  let entries: string[];
+  try {
+    entries = await readdir(dir);
+  } catch {
+    return null;
+  }
+  for (const ext of CHARACTER_REFERENCE_EXTS) {
+    const target = `character.${ext}`;
+    if (entries.includes(target)) {
+      return path.join(dir, target);
+    }
+  }
+  return null;
 }
 
 export function renderDir(jobId: string): string {

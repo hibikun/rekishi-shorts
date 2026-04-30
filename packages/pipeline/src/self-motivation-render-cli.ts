@@ -90,6 +90,9 @@ async function main(): Promise<void> {
     const stagedScenes = scenes.map((s) => ({
       ...s,
       imageAbsPath: path.resolve(channelRoot, s.imagePath as string),
+      videoAbsPath: s.videoPath
+        ? path.resolve(channelRoot, s.videoPath)
+        : undefined,
     }));
 
     const audioAbs = path.resolve(channelRoot, "jobs", jobId, "audio", "full.wav");

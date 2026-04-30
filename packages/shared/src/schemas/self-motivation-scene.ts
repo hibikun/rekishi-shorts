@@ -69,6 +69,29 @@ export const SelfMotivationSceneSchema = z.object({
     .describe(
       "longform-motion-options の MOTION_PRESETS.id。デフォルトは 'auto'（Composition 側で index ベースに自動割当）",
     ),
+  videoPath: z
+    .string()
+    .optional()
+    .describe(
+      "Seedance 等で生成したアニメ mp4 の相対パス。例: 'jobs/{jobId}/videos/{sceneId}.mp4' (channels/self-motivation 起点)。あれば Composition は静止画ではなく動画を再生する",
+    ),
+  videoDurationSec: z
+    .number()
+    .optional()
+    .describe("Seedance が返した動画長（5 or 10s）。TTS が長ければ Loop で繰り返す"),
+  videoGeneratedAt: z.string().optional().describe("動画生成日時 (ISO 8601)"),
+  videoPromptJa: z
+    .string()
+    .default("")
+    .describe("ユーザー編集可能な日本語アニメ指示（任意）"),
+  videoPromptEn: z
+    .string()
+    .default("")
+    .describe("Gemini が生成した英語 Seedance プロンプトのスナップショット"),
+  videoResolution: z
+    .enum(["480p", "720p"])
+    .optional()
+    .describe("生成解像度。default 720p"),
 });
 export type SelfMotivationScene = z.infer<typeof SelfMotivationSceneSchema>;
 

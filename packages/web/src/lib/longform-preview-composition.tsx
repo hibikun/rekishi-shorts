@@ -5,7 +5,9 @@ import {
   AbsoluteFill,
   Audio,
   Img,
+  Loop,
   Sequence,
+  Video,
   interpolate,
   useCurrentFrame,
 } from "remotion";
@@ -26,6 +28,9 @@ export interface LongformPreviewScene {
   src: string;
   durationSec: number;
   motionPresetId: string;
+  /** /self-motivation/jobs/{id}/videos/{sceneId}.mp4 のような相対 URL */
+  videoSrc?: string;
+  videoDurationSec?: number;
 }
 
 export interface LongformPreviewCaption {
@@ -68,6 +73,8 @@ export const LongformPreview: React.FC<LongformPreviewProps> = ({
               motionPresetId={scene.motionPresetId}
               sceneIndex={index}
               durationFrames={durationFrames}
+              videoSrc={scene.videoSrc}
+              videoDurationSec={scene.videoDurationSec}
             />
           </Sequence>
         );
@@ -85,6 +92,8 @@ interface PreviewSceneProps {
   motionPresetId: string;
   sceneIndex: number;
   durationFrames: number;
+  videoSrc?: string;
+  videoDurationSec?: number;
 }
 
 const PreviewScene: React.FC<PreviewSceneProps> = ({
@@ -92,8 +101,46 @@ const PreviewScene: React.FC<PreviewSceneProps> = ({
   motionPresetId,
   sceneIndex,
   durationFrames,
+  videoSrc,
+  videoDurationSec,
 }) => {
   const frame = useCurrentFrame();
+
+  if (videoSrc) {
+    const loopFrames = Math.max(
+      1,
+      Math.round((videoDurationSec ?? 5) * FPS),
+    );
+    return (
+      <AbsoluteFill style={{ backgroundColor: "#000" }}>
+        <Loop durationInFrames={loopFrames}>
+          <Video
+            src={videoSrc}
+            muted
+            style={{
+              position: "absolute",
+              inset: 0,
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+            }}
+          />
+        </Loop>
+        <div
+          style={{
+            position: "absolute",
+            left: 0,
+            right: 0,
+            bottom: 0,
+            height: "40%",
+            background:
+              "linear-gradient(to bottom, transparent 0%, rgba(0,0,0,0.6) 90%)",
+            pointerEvents: "none",
+          }}
+        />
+      </AbsoluteFill>
+    );
+  }
 
   if (!src) {
     return (

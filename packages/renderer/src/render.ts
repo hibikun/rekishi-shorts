@@ -559,11 +559,13 @@ export async function renderManabilabShort(opts: {
 export interface RenderSelfMotivationOptions {
   /** 完成 mp4 の絶対パス */
   outputPath: string;
-  /** Scene 配列 + 画像の絶対パス */
+  /** Scene 配列 + 画像（と任意で動画）の絶対パス */
   scenes: Array<
     SelfMotivationScene & {
       /** 画像の絶対パス（job_dir/images/{sceneId}.png 等） */
       imageAbsPath: string;
+      /** 動画の絶対パス（あれば。job_dir/videos/{sceneId}.mp4） */
+      videoAbsPath?: string;
     }
   >;
   /** 結合済み narration wav の絶対パス（任意） */
@@ -594,17 +596,28 @@ export async function renderSelfMotivationVideo(
   });
 
   const stagedScenes = opts.scenes.map((scene, i) => {
-    const ext = path.extname(scene.imageAbsPath) || ".png";
+    const imgExt = path.extname(scene.imageAbsPath) || ".png";
     const stagedSrc = stageAsset(
       scene.imageAbsPath,
       bundleDir,
-      `sm-scene-${String(i).padStart(3, "0")}${ext}`,
+      `sm-scene-${String(i).padStart(3, "0")}${imgExt}`,
     );
+    const stagedVideo = scene.videoAbsPath
+      ? stageAsset(
+          scene.videoAbsPath,
+          bundleDir,
+          `sm-video-${String(i).padStart(3, "0")}${
+            path.extname(scene.videoAbsPath) || ".mp4"
+          }`,
+        )
+      : undefined;
     return {
       src: stagedSrc,
       durationSec: Math.max(0.1, scene.audioDurationSec ?? 0),
       motionPresetId: scene.motionPresetId || "auto",
       narration: scene.narration,
+      videoSrc: stagedVideo,
+      videoDurationSec: scene.videoDurationSec,
     };
   });
 

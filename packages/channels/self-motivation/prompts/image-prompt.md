@@ -10,6 +10,8 @@
 - このシーンのナレーション: `{{scene.narration}}`
 - ユーザーからの追加指示（任意）: `{{userDirection}}`
 
+{{characterDirective}}
+
 ## 出力形式（JSON）
 
 ```json
