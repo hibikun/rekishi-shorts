@@ -72,6 +72,32 @@ export const TtsStepSchema = StepBaseSchema.extend({
 });
 export type TtsStepState = z.infer<typeof TtsStepSchema>;
 
+export const ExportAssetCountsSchema = z.object({
+  images: z.number().int().nonnegative().default(0),
+  videos: z.number().int().nonnegative().default(0),
+  sceneAudio: z.number().int().nonnegative().default(0),
+  concatAudio: z.number().int().nonnegative().default(0),
+});
+export type ExportAssetCounts = z.infer<typeof ExportAssetCountsSchema>;
+
+export const ExportStepSchema = StepBaseSchema.extend({
+  zipPath: z
+    .string()
+    .optional()
+    .describe(
+      "Canva投入用ZIPの相対パス。例: 'jobs/{jobId}/export/{jobId}-canva-assets.zip' (channels/manabilab-canva 起点)",
+    ),
+  manifestPath: z
+    .string()
+    .optional()
+    .describe(
+      "manifest.json の相対パス。例: 'jobs/{jobId}/export/manifest.json' (channels/manabilab-canva 起点)",
+    ),
+  generatedAt: z.string().optional().describe("Export生成日時 (ISO 8601)"),
+  assetCounts: ExportAssetCountsSchema.optional(),
+});
+export type ExportStepState = z.infer<typeof ExportStepSchema>;
+
 export const ManabilabCanvaJobSchema = z.object({
   id: z.string(),
   createdAt: z.string(),
@@ -84,7 +110,7 @@ export const ManabilabCanvaJobSchema = z.object({
     scenes: StepBaseSchema,
     images: StepBaseSchema,
     tts: TtsStepSchema,
-    export: StepBaseSchema,
+    export: ExportStepSchema,
   }),
 });
 export type ManabilabCanvaJob = z.infer<typeof ManabilabCanvaJobSchema>;

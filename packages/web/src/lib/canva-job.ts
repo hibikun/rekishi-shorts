@@ -57,6 +57,30 @@ export function scenesJsonPath(jobId: string): string {
   return path.join(jobDir(jobId), "scenes.json");
 }
 
+export function channelRootDir(): string {
+  return path.join(REPO_ROOT, "packages", "channels", CANVA_CHANNEL_SLUG);
+}
+
+export function exportDir(jobId: string): string {
+  return path.join(jobDir(jobId), "export");
+}
+
+export function exportManifestRelPath(jobId: string): string {
+  return path.join("jobs", jobId, "export", "manifest.json");
+}
+
+export function exportManifestPath(jobId: string): string {
+  return path.join(exportDir(jobId), "manifest.json");
+}
+
+export function exportZipRelPath(jobId: string): string {
+  return path.join("jobs", jobId, "export", `${jobId}-canva-assets.zip`);
+}
+
+export function exportZipPath(jobId: string): string {
+  return path.join(exportDir(jobId), `${jobId}-canva-assets.zip`);
+}
+
 export function researchPromptPath(): string {
   return path.join(
     REPO_ROOT,
