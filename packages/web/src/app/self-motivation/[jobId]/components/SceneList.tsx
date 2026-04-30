@@ -294,6 +294,9 @@ export function SceneList({
                 onChangePromptJa={(v) =>
                   updateField(scene.sceneId, "imagePromptJa", v)
                 }
+                onChangeVideoPromptJa={(v) =>
+                  updateField(scene.sceneId, "videoPromptJa", v)
+                }
                 onRegenerateImage={(d) => regenerateImage(scene.sceneId, d)}
                 onRegenerateAnimation={(d) =>
                   regenerateAnimation(scene.sceneId, d)
@@ -373,6 +376,7 @@ interface SceneCardProps {
   onChangeNarration: (v: string) => void;
   onChangeMotion: (v: string) => void;
   onChangePromptJa: (v: string) => void;
+  onChangeVideoPromptJa: (v: string) => void;
   onRegenerateImage: (userDirection: string) => void;
   onRegenerateAnimation: (userDirection: string) => void;
   onRemove: () => void;
@@ -390,6 +394,7 @@ function SceneCard({
   onChangeNarration,
   onChangeMotion,
   onChangePromptJa,
+  onChangeVideoPromptJa,
   onRegenerateImage,
   onRegenerateAnimation,
   onRemove,
@@ -520,6 +525,74 @@ function SceneCard({
         />
       </div>
 
+      {/* 画像コントロール行 */}
+      <div
+        style={{ display: "flex", gap: 8, alignItems: "center" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <input
+          type="text"
+          placeholder="🎨 画像指示 (任意・日本語)"
+          value={scene.imagePromptJa ?? ""}
+          onChange={(e) => onChangePromptJa(e.target.value)}
+          onClick={(e) => e.stopPropagation()}
+          style={inputStyle}
+        />
+        <button
+          type="button"
+          disabled={regenerating}
+          onClick={(e) => {
+            e.stopPropagation();
+            onRegenerateImage(scene.imagePromptJa ?? "");
+          }}
+          style={smallBtn}
+        >
+          {regenerating ? "生成中…" : "🎨 画像"}
+        </button>
+      </div>
+
+      {/* 動画コントロール行 */}
+      <div
+        style={{ display: "flex", gap: 8, alignItems: "center" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <input
+          type="text"
+          placeholder="🎬 動画指示 (任意・日本語、例: 振り向く)"
+          value={scene.videoPromptJa ?? ""}
+          onChange={(e) => onChangeVideoPromptJa(e.target.value)}
+          onClick={(e) => e.stopPropagation()}
+          style={inputStyle}
+        />
+        <button
+          type="button"
+          disabled={animating || !scene.imagePath}
+          onClick={(e) => {
+            e.stopPropagation();
+            onRegenerateAnimation(scene.videoPromptJa ?? "");
+          }}
+          style={{
+            ...smallBtn,
+            borderColor: scene.videoPath ? "var(--accent)" : "var(--border)",
+            color: scene.videoPath ? "var(--accent)" : "inherit",
+          }}
+          title={
+            !scene.imagePath
+              ? "先に画像を生成してください"
+              : scene.videoPath
+                ? "アニメを再生成 (約30秒〜3分・有料)"
+                : "Seedance でアニメを生成 (約30秒〜3分・有料)"
+          }
+        >
+          {animating
+            ? "アニメ生成中…"
+            : scene.videoPath
+              ? "🎬 ✓ アニメ"
+              : "🎬 アニメ"}
+        </button>
+      </div>
+
+      {/* その他 (motion / プロンプト確認 / 分割 / 削除) 行 */}
       <div
         style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}
         onClick={(e) => e.stopPropagation()}
@@ -547,63 +620,6 @@ function SceneCard({
             ))}
           </select>
         </label>
-
-        <input
-          type="text"
-          placeholder="画像指示 (任意・日本語)"
-          value={scene.imagePromptJa ?? ""}
-          onChange={(e) => onChangePromptJa(e.target.value)}
-          onClick={(e) => e.stopPropagation()}
-          style={{
-            flex: 1,
-            minWidth: 120,
-            fontSize: 12,
-            padding: "4px 6px",
-            border: "1px solid var(--border)",
-            borderRadius: 4,
-            background: "var(--card)",
-            color: "inherit",
-          }}
-        />
-
-        <button
-          type="button"
-          disabled={regenerating}
-          onClick={(e) => {
-            e.stopPropagation();
-            onRegenerateImage(scene.imagePromptJa ?? "");
-          }}
-          style={smallBtn}
-        >
-          {regenerating ? "生成中…" : "🎨 画像"}
-        </button>
-
-        <button
-          type="button"
-          disabled={animating || !scene.imagePath}
-          onClick={(e) => {
-            e.stopPropagation();
-            onRegenerateAnimation(scene.videoPromptJa ?? "");
-          }}
-          style={{
-            ...smallBtn,
-            borderColor: scene.videoPath ? "var(--accent)" : "var(--border)",
-            color: scene.videoPath ? "var(--accent)" : "inherit",
-          }}
-          title={
-            !scene.imagePath
-              ? "先に画像を生成してください"
-              : scene.videoPath
-                ? "アニメを再生成 (約30秒〜3分・有料)"
-                : "Seedance でアニメを生成 (約30秒〜3分・有料)"
-          }
-        >
-          {animating
-            ? "アニメ生成中…"
-            : scene.videoPath
-              ? "🎬 ✓ アニメ"
-              : "🎬 アニメ"}
-        </button>
 
         <button
           type="button"
@@ -645,7 +661,7 @@ function SceneCard({
               onRemove();
             }
           }}
-          style={{ ...smallBtn, color: "#c62828" }}
+          style={{ ...smallBtn, color: "#c62828", marginLeft: "auto" }}
         >
           🗑
         </button>
@@ -795,6 +811,17 @@ const smallBtn: React.CSSProperties = {
   background: "transparent",
   color: "inherit",
   cursor: "pointer",
+};
+
+const inputStyle: React.CSSProperties = {
+  flex: 1,
+  minWidth: 120,
+  fontSize: 12,
+  padding: "4px 6px",
+  border: "1px solid var(--border)",
+  borderRadius: 4,
+  background: "var(--card)",
+  color: "inherit",
 };
 
 const splitTextareaStyle: React.CSSProperties = {
