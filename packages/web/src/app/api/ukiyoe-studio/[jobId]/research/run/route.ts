@@ -46,12 +46,15 @@ export async function POST(_request: NextRequest, ctx: Ctx): Promise<Response> {
 
   try {
     setChannel(UKIYOE_CHANNEL_SLUG);
-    const result = await generateResearch({
-      title: job.topic.title,
-      subject: "歴史",
-      era: job.topic.era ?? undefined,
-      target: "汎用",
-    });
+    const result = await generateResearch(
+      {
+        title: job.topic.title,
+        subject: "歴史",
+        era: job.topic.era ?? undefined,
+        target: "汎用",
+      },
+      { mode: job.topic.mode },
+    );
 
     await writeResearchMarkdown(jobId, result.markdown);
 

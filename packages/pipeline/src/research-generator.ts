@@ -28,8 +28,19 @@ export interface ResearchTopic {
   target?: string;
 }
 
-function renderPrompt(topic: ResearchTopic): string {
-  const tpl = fs.readFileSync(promptPath("research"), "utf-8");
+export type ResearchMode = "routine" | "life";
+
+export interface ResearchOptions {
+  mode?: ResearchMode;
+}
+
+function renderPrompt(topic: ResearchTopic, mode: ResearchMode): string {
+  const primaryName = mode === "life" ? "research-life" : "research";
+  const primaryPath = promptPath(primaryName);
+  const resolvedPath = fs.existsSync(primaryPath)
+    ? primaryPath
+    : promptPath("research");
+  const tpl = fs.readFileSync(resolvedPath, "utf-8");
   return tpl
     .replace(/\{\{topic\.title\}\}/g, topic.title)
     .replace(/\{\{topic\.era\}\}/g, topic.era ?? "指定なし")
@@ -39,9 +50,11 @@ function renderPrompt(topic: ResearchTopic): string {
 
 export async function generateResearch(
   topic: ResearchTopic,
+  options: ResearchOptions = {},
 ): Promise<ResearchResult> {
+  const mode = options.mode ?? "routine";
   const ai = new GoogleGenAI({ apiKey: config.gemini.apiKey });
-  const prompt = renderPrompt(topic);
+  const prompt = renderPrompt(topic, mode);
 
   const response = await ai.models.generateContent({
     model: config.gemini.researchModel,
