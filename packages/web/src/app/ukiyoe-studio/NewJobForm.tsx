@@ -11,7 +11,7 @@ export function NewJobForm() {
   const [person, setPerson] = useState("");
   const [era, setEra] = useState("");
   const [mode, setMode] = useState<Mode>("life");
-  const [sceneCount, setSceneCount] = useState(8);
+  const [sceneCount, setSceneCount] = useState(12);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -126,13 +126,15 @@ export function NewJobForm() {
       </fieldset>
 
       <label style={{ display: "grid", gap: 4, fontSize: 13 }}>
-        <span style={{ fontWeight: 600 }}>シーン数（5秒×N）</span>
+        <span style={{ fontWeight: 600 }}>
+          シーン数（5秒×N、life モードは事実+補足ペアで 12〜16 推奨）
+        </span>
         <input
           type="number"
           min={2}
-          max={12}
+          max={16}
           value={sceneCount}
-          onChange={(e) => setSceneCount(Number.parseInt(e.target.value, 10) || 8)}
+          onChange={(e) => setSceneCount(Number.parseInt(e.target.value, 10) || 12)}
           style={inputStyle}
           disabled={submitting}
         />

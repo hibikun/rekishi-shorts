@@ -20,7 +20,7 @@ export const UkiyoeTopicSchema = z.object({
   person: z.string().nullable().optional(),
   era: z.string().nullable().optional(),
   mode: UkiyoeScriptModeSchema.default("life"),
-  sceneCount: z.number().int().min(2).max(12).default(8),
+  sceneCount: z.number().int().min(2).max(16).default(12),
   seriesKey: z.string().optional(),
   episodeIndex: z.number().int().nonnegative().optional(),
 });
