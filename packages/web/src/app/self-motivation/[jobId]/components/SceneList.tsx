@@ -402,6 +402,7 @@ function SceneCard({
   const [splitOpen, setSplitOpen] = useState(false);
   const [splitFirst, setSplitFirst] = useState("");
   const [splitSecond, setSplitSecond] = useState("");
+  const [promptsOpen, setPromptsOpen] = useState(false);
 
   const openSplit = () => {
     const [a, b] = autoSplitNarration(scene.narration);
@@ -608,6 +609,22 @@ function SceneCard({
           type="button"
           onClick={(e) => {
             e.stopPropagation();
+            setPromptsOpen((v) => !v);
+          }}
+          style={{
+            ...smallBtn,
+            borderColor: promptsOpen ? "var(--accent)" : "var(--border)",
+            color: promptsOpen ? "var(--accent)" : "inherit",
+          }}
+          title="このシーンの英語プロンプト (Nano Banana / Seedance に送る本文) を確認"
+        >
+          {promptsOpen ? "✕ プロンプト" : "📋 プロンプト"}
+        </button>
+
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
             if (splitOpen) {
               setSplitOpen(false);
             } else {
@@ -690,6 +707,79 @@ function SceneCard({
             >
               キャンセル
             </button>
+          </div>
+        </div>
+      ) : null}
+
+      {promptsOpen ? (
+        <div
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            border: "1px dashed var(--accent)",
+            borderRadius: 6,
+            padding: 10,
+            display: "grid",
+            gap: 10,
+            background: "rgba(33, 150, 243, 0.04)",
+          }}
+        >
+          <div style={{ fontSize: 12, color: "var(--muted)" }}>
+            生成 AI に送られている実プロンプトのスナップショット (読み取り専用)。
+            再生成すると更新されます。
+          </div>
+
+          <label style={{ display: "grid", gap: 4, fontSize: 12 }}>
+            <span style={{ color: "var(--muted)" }}>
+              🎨 画像プロンプト (英語・Nano Banana へ送信){" "}
+              {scene.imageGeneratedAt ? (
+                <span style={{ marginLeft: 6, fontSize: 11 }}>
+                  生成: {new Date(scene.imageGeneratedAt).toLocaleString("ja-JP")}
+                </span>
+              ) : null}
+            </span>
+            <textarea
+              readOnly
+              value={scene.imagePromptEn || "(まだ画像が生成されていません)"}
+              rows={4}
+              style={{
+                ...splitTextareaStyle,
+                fontFamily:
+                  '"SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
+                fontSize: 11,
+                color: scene.imagePromptEn ? "inherit" : "var(--muted)",
+              }}
+            />
+          </label>
+
+          <label style={{ display: "grid", gap: 4, fontSize: 12 }}>
+            <span style={{ color: "var(--muted)" }}>
+              🎬 アニメプロンプト (英語・Seedance へ送信){" "}
+              {scene.videoGeneratedAt ? (
+                <span style={{ marginLeft: 6, fontSize: 11 }}>
+                  生成: {new Date(scene.videoGeneratedAt).toLocaleString("ja-JP")}
+                </span>
+              ) : null}
+            </span>
+            <textarea
+              readOnly
+              value={
+                scene.videoPromptEn ||
+                "(まだアニメが生成されていません。🎬 アニメ ボタンで生成すると埋まります)"
+              }
+              rows={4}
+              style={{
+                ...splitTextareaStyle,
+                fontFamily:
+                  '"SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
+                fontSize: 11,
+                color: scene.videoPromptEn ? "inherit" : "var(--muted)",
+              }}
+            />
+          </label>
+
+          <div style={{ fontSize: 11, color: "var(--muted)" }}>
+            ヒント: 画像指示欄 (上の text input) に日本語で書いた内容は、再生成時に
+            英語プロンプトの参考として Gemini に渡されます。
           </div>
         </div>
       ) : null}
