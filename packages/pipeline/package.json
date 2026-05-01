@@ -20,6 +20,7 @@
     "./ukiyoe-plan-builder": "./src/ukiyoe-plan-builder.ts",
     "./ukiyoe-scene-aligner": "./src/ukiyoe-scene-aligner.ts",
     "./ukiyoe-topic-pool": "./src/ukiyoe-topic-pool.ts",
+    "./ukiyoe-youtube-research": "./src/ukiyoe-youtube-research.ts",
     "./tts-generator": "./src/tts-generator.ts",
     "./asr-aligner": "./src/asr-aligner.ts",
     "./furigana": "./src/furigana.ts",

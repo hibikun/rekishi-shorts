@@ -20,11 +20,39 @@ export const UkiyoeTopicSchema = z.object({
   person: z.string().nullable().optional(),
   era: z.string().nullable().optional(),
   mode: UkiyoeScriptModeSchema.default("life"),
-  sceneCount: z.number().int().min(2).max(16).default(12),
+  sceneCount: z.number().int().min(2).max(16).optional(),
   seriesKey: z.string().optional(),
   episodeIndex: z.number().int().nonnegative().optional(),
 });
 export type UkiyoeTopic = z.infer<typeof UkiyoeTopicSchema>;
+
+export const UkiyoeYoutubeRefStatusSchema = z.enum([
+  "pending",
+  "running",
+  "done",
+  "error",
+]);
+export type UkiyoeYoutubeRefStatus = z.infer<
+  typeof UkiyoeYoutubeRefStatusSchema
+>;
+
+export const UkiyoeYoutubeRefSchema = z.object({
+  id: z.string(),
+  url: z.string(),
+  videoId: z.string(),
+  title: z.string().optional(),
+  note: z.string().optional(),
+  status: UkiyoeYoutubeRefStatusSchema.default("pending"),
+  transcriptPath: z.string().optional(),
+  generatedAt: z.string().optional(),
+  model: z.string().optional(),
+  inputTokens: z.number().optional(),
+  outputTokens: z.number().optional(),
+  error: z.string().optional(),
+  addedAt: z.string(),
+  updatedAt: z.string().optional(),
+});
+export type UkiyoeYoutubeRef = z.infer<typeof UkiyoeYoutubeRefSchema>;
 
 export const UkiyoeResearchStepSchema = StepBaseSchema.extend({
   sources: z
@@ -38,6 +66,7 @@ export const UkiyoeResearchStepSchema = StepBaseSchema.extend({
     .default([]),
   queries: z.array(z.string()).default([]),
   model: z.string().optional(),
+  youtubeRefs: z.array(UkiyoeYoutubeRefSchema).default([]),
 });
 export type UkiyoeResearchStepState = z.infer<typeof UkiyoeResearchStepSchema>;
 

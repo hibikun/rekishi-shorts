@@ -1,4 +1,11 @@
-import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  readFile,
+  readdir,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import path from "node:path";
 import {
   UkiyoeJobSchema,
@@ -9,6 +16,7 @@ import {
   type UkiyoeScript,
   type UkiyoeStepKey,
   type UkiyoeTopic,
+  type UkiyoeYoutubeRef,
 } from "@rekishi/shared";
 import { repoRoot } from "./plan";
 
@@ -33,6 +41,10 @@ export function jobJsonPath(jobId: string): string {
 
 export function researchMdPath(jobId: string): string {
   return path.join(jobDir(jobId), "research.md");
+}
+
+export function youtubeTranscriptMdPath(jobId: string, videoId: string): string {
+  return path.join(jobDir(jobId), `youtube-${videoId}.md`);
 }
 
 export function scriptJsonPath(jobId: string): string {
@@ -113,7 +125,7 @@ export function emptyJob(jobId: string, topic: UkiyoeTopic): UkiyoeJob {
     topic,
     steps: {
       topic: { status: "done", updatedAt: now },
-      research: { status: "pending", sources: [], queries: [] },
+      research: { status: "pending", sources: [], queries: [], youtubeRefs: [] },
       script: { status: "pending" },
       scenes: { status: "pending" },
       images: { status: "pending", generatedScenes: [] },
@@ -220,6 +232,51 @@ export async function writeResearchMarkdown(
 ): Promise<void> {
   await mkdir(jobDir(jobId), { recursive: true });
   await writeFile(researchMdPath(jobId), markdown, "utf-8");
+}
+
+export async function readYoutubeTranscript(
+  jobId: string,
+  videoId: string,
+): Promise<string> {
+  try {
+    return await readFile(youtubeTranscriptMdPath(jobId, videoId), "utf-8");
+  } catch {
+    return "";
+  }
+}
+
+export async function writeYoutubeTranscript(
+  jobId: string,
+  videoId: string,
+  markdown: string,
+): Promise<void> {
+  await mkdir(jobDir(jobId), { recursive: true });
+  await writeFile(youtubeTranscriptMdPath(jobId, videoId), markdown, "utf-8");
+}
+
+export async function deleteYoutubeTranscript(
+  jobId: string,
+  videoId: string,
+): Promise<void> {
+  try {
+    await rm(youtubeTranscriptMdPath(jobId, videoId));
+  } catch {
+    // ファイルが無いだけなら無視
+  }
+}
+
+export async function readAllYoutubeTranscripts(
+  jobId: string,
+): Promise<Array<{ ref: UkiyoeYoutubeRef; markdown: string }>> {
+  const job = await loadJob(jobId);
+  const refs = job.steps.research.youtubeRefs ?? [];
+  const out: Array<{ ref: UkiyoeYoutubeRef; markdown: string }> = [];
+  for (const ref of refs) {
+    if (ref.status !== "done") continue;
+    const md = await readYoutubeTranscript(jobId, ref.videoId);
+    if (md.trim()) out.push({ ref, markdown: md });
+  }
+  return out;
 }
 
 export async function readScriptJson(

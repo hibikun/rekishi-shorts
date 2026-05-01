@@ -59,11 +59,13 @@ export async function POST(_request: NextRequest, ctx: Ctx): Promise<Response> {
     await writeResearchMarkdown(jobId, result.markdown);
 
     const doneNow = new Date().toISOString();
+    const latest = await loadJob(jobId);
     const next = {
-      ...job,
+      ...latest,
       steps: {
-        ...job.steps,
+        ...latest.steps,
         research: {
+          ...latest.steps.research,
           status: "done" as const,
           updatedAt: doneNow,
           sources: result.sources,
