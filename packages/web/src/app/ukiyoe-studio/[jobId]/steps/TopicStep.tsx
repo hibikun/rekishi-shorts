@@ -42,7 +42,9 @@ export function TopicStep({ job, onAdvance }: Props) {
         </dd>
         <dt style={dtStyle}>シーン数</dt>
         <dd style={ddStyle}>
-          {job.topic.sceneCount} シーン × 5 秒 = {job.topic.sceneCount * 5} 秒
+          {job.topic.sceneCount !== undefined
+            ? `${job.topic.sceneCount} シーン × 5 秒 = ${job.topic.sceneCount * 5} 秒`
+            : "台本生成後に自動決定"}
         </dd>
         <dt style={dtStyle}>jobId</dt>
         <dd style={{ ...ddStyle, fontFamily: "monospace", fontSize: 12 }}>

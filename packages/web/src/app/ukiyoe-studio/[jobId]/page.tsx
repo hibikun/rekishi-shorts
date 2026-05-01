@@ -30,6 +30,18 @@ export default async function UkiyoeStudioJobPage({ params }: PageProps) {
     readScriptJson(jobId),
     readScenePlanJson(jobId),
   ]);
+  const sceneLabel = scenePlan
+    ? `${scenePlan.scenes.length}シーン`
+    : script
+      ? `${script.targetSceneCount}シーン`
+      : job.topic.sceneCount !== undefined
+        ? `${job.topic.sceneCount}シーン固定`
+        : "台本生成後に自動決定";
+  const durationLabel = scenePlan
+    ? `${scenePlan.totalDurationSec.toFixed(1)}秒`
+    : script
+      ? `約${script.estimatedDurationSec.toFixed(1)}秒`
+      : null;
 
   return (
     <main style={{ maxWidth: 1280, margin: "40px auto", padding: "0 24px" }}>
@@ -50,7 +62,8 @@ export default async function UkiyoeStudioJobPage({ params }: PageProps) {
         }}
       >
         {job.id} ・ mode: <strong>{job.topic.mode}</strong> ・ scenes:{" "}
-        {job.topic.sceneCount} ・ {job.topic.sceneCount * 5}秒
+        {sceneLabel}
+        {durationLabel ? ` ・ ${durationLabel}` : ""}
       </div>
 
       <Wizard

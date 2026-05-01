@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { spawn } from "node:child_process";
-import { stat } from "node:fs/promises";
+import { stat, unlink } from "node:fs/promises";
 import path from "node:path";
 import {
   finalVideoPath,
@@ -9,6 +9,7 @@ import {
   readScriptJson,
   saveJob,
   ukiyoePlanJsonPath,
+  wordsJsonPath,
 } from "@/lib/ukiyoe-studio-job";
 import { repoRoot } from "@/lib/plan";
 
@@ -25,6 +26,14 @@ async function fileExists(p: string): Promise<boolean> {
     return true;
   } catch {
     return false;
+  }
+}
+
+async function removeIfExists(p: string): Promise<void> {
+  try {
+    await unlink(p);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
   }
 }
 
@@ -100,6 +109,12 @@ export async function POST(_request: NextRequest, ctx: Ctx): Promise<Response> {
       },
     },
   });
+
+  await Promise.all([
+    removeIfExists(wordsJsonPath(jobId)),
+    removeIfExists(ukiyoePlanJsonPath(jobId)),
+    removeIfExists(finalVideoPath(jobId)),
+  ]);
 
   try {
     // pipeline の ukiyoe-generate を --no-images --no-videos --no-tts で実行

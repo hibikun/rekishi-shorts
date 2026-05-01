@@ -93,7 +93,7 @@ export default async function UkiyoeStudioListPage() {
                   style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}
                 >
                   mode: <strong>{job.topic.mode}</strong> / scenes:{" "}
-                  {job.topic.sceneCount} / 進捗: {doneCount} /{" "}
+                  {job.topic.sceneCount ?? "auto"} / 進捗: {doneCount} /{" "}
                   {UKIYOE_STEP_ORDER.length} (
                   {UKIYOE_STEP_ORDER.map((k) => {
                     const status =
