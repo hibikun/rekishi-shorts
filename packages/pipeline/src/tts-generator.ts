@@ -18,6 +18,8 @@ const NARRATOR_VOICE_BY_CHANNEL: Record<string, string> = {
   // manabilab-canva: Charon = ニュースアンカー風で明瞭・説得力あり、学習科学テーマと相性良い
   "manabilab-canva": "Charon",
   ukiyoe: "Fenrir",
+  // self-motivation: Charon = 落ち着いた説得力。長尺の自己啓発ナレーションに合う
+  "self-motivation": "Charon",
 };
 
 /**

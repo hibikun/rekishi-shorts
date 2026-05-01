@@ -2,7 +2,6 @@ import { GoogleGenAI, Type } from "@google/genai";
 import fs from "node:fs";
 import { promptPath } from "@rekishi/shared/channel";
 import type { MotionGrammar } from "@rekishi/shared";
-import { config } from "./config.js";
 import type { UkiyoeActionTag } from "./ukiyoe-video-generator.js";
 import type { UkiyoeScript } from "./ukiyoe-script-generator.js";
 
@@ -100,13 +99,18 @@ const responseSchema = {
   required: ["scenes"],
 };
 
+export type UkiyoeScenePlannerMode = "routine" | "life";
+
 function renderPrompt(args: {
   topic: string;
   narration: string;
   targetSceneCount: number;
   targetDurationSec: number;
+  mode: UkiyoeScenePlannerMode;
 }): string {
-  const tpl = fs.readFileSync(promptPath("scene-plan-routine", "ukiyoe"), "utf-8");
+  const promptName =
+    args.mode === "life" ? "scene-plan-life" : "scene-plan-routine";
+  const tpl = fs.readFileSync(promptPath(promptName, "ukiyoe"), "utf-8");
   return tpl
     .replace(/\{\{topic\}\}/g, args.topic)
     .replace(/\{\{narration\}\}/g, args.narration)
@@ -114,18 +118,27 @@ function renderPrompt(args: {
     .replace(/\{\{target_duration_sec\}\}/g, String(args.targetDurationSec));
 }
 
+export interface UkiyoePlanScenesOptions {
+  /** プロンプトの軸。既定 "routine" */
+  mode?: UkiyoeScenePlannerMode;
+}
+
 export async function planUkiyoeScenes(
   script: UkiyoeScript,
+  options: UkiyoePlanScenesOptions = {},
 ): Promise<UkiyoeScenePlanResult> {
   const targetSceneCount = script.targetSceneCount;
   const targetDurationSec = targetSceneCount * 5;
+  const mode: UkiyoeScenePlannerMode = options.mode ?? "routine";
 
+  const { config } = await import("./config.js");
   const ai = new GoogleGenAI({ apiKey: config.gemini.apiKey });
   const prompt = renderPrompt({
     topic: script.topic,
     narration: script.narration,
     targetSceneCount,
     targetDurationSec,
+    mode,
   });
 
   const response = await ai.models.generateContent({
@@ -185,13 +198,13 @@ export async function planUkiyoeScenes(
   }
 
   // 元 narration を改変・水増ししていないか検証する。
-  // 句読点・空白・括弧などの装飾差は無視して比較。
-  assertNarrationFidelity(script.narration, scenes);
+  // 違反時は LLM 出力の prompts/motion は残し、narration だけを元文から機械的に再分割する。
+  const finalScenes = ensureNarrationFidelity(script.narration, scenes);
 
   const plan: UkiyoeScenePlan = {
     topic: raw.topic ?? script.topic,
     totalDurationSec: raw.totalDurationSec ?? targetDurationSec,
-    scenes,
+    scenes: finalScenes,
   };
 
   return {
@@ -213,6 +226,126 @@ function normalizeForCompare(s: string): string {
   return s
     .replace(/[\s　、。．，「」『』（）()！？!?・…—\-]/g, "")
     .trim();
+}
+
+/**
+ * 元 narration をシーン数に合わせて、連続した raw substring に分割する。
+ * 句点・読点などの自然な切れ目を優先し、足りない場合は文字位置で分割する。
+ */
+export function splitNarrationIntoSceneSegments(
+  sourceNarration: string,
+  sceneCount: number,
+): string[] {
+  if (!Number.isInteger(sceneCount) || sceneCount <= 0) {
+    throw new Error(`sceneCount must be a positive integer: ${sceneCount}`);
+  }
+  if (sceneCount === 1) return [sourceNarration];
+  if (sourceNarration.length === 0) return Array(sceneCount).fill("");
+
+  const sourceNormLength = normalizeForCompare(sourceNarration).length;
+  if (sourceNormLength === 0) {
+    return splitRawEvenly(sourceNarration, sceneCount);
+  }
+
+  const boundaries: number[] = [];
+  let previous = 0;
+  for (let i = 1; i < sceneCount; i += 1) {
+    const minPos = Math.min(previous + 1, sourceNarration.length);
+    const maxPos = Math.max(
+      minPos,
+      sourceNarration.length - (sceneCount - i),
+    );
+    const targetNormLength = (sourceNormLength * i) / sceneCount;
+    const boundary = includeFollowingWhitespace(
+      sourceNarration,
+      chooseNarrationBoundary(
+        sourceNarration,
+        targetNormLength,
+        minPos,
+        maxPos,
+      ),
+    );
+    boundaries.push(boundary);
+    previous = boundary;
+  }
+
+  const segments: string[] = [];
+  let start = 0;
+  for (const boundary of boundaries) {
+    segments.push(sourceNarration.slice(start, boundary));
+    start = boundary;
+  }
+  segments.push(sourceNarration.slice(start));
+  return segments;
+}
+
+function splitRawEvenly(source: string, sceneCount: number): string[] {
+  const segments: string[] = [];
+  for (let i = 0; i < sceneCount; i += 1) {
+    const start = Math.floor((source.length * i) / sceneCount);
+    const end = Math.floor((source.length * (i + 1)) / sceneCount);
+    segments.push(source.slice(start, end));
+  }
+  return segments;
+}
+
+function chooseNarrationBoundary(
+  source: string,
+  targetNormLength: number,
+  minPos: number,
+  maxPos: number,
+): number {
+  let bestPos = minPos;
+  let bestScore = Number.POSITIVE_INFINITY;
+  for (let pos = minPos; pos <= maxPos; pos += 1) {
+    const normLength = normalizeForCompare(source.slice(0, pos)).length;
+    const score =
+      Math.abs(normLength - targetNormLength) * 2 +
+      boundaryPenalty(source, pos);
+    if (score < bestScore) {
+      bestScore = score;
+      bestPos = pos;
+    }
+  }
+  return bestPos;
+}
+
+function boundaryPenalty(source: string, pos: number): number {
+  const prev = source[pos - 1] ?? "";
+  const next = source[pos] ?? "";
+  if (/[。！？!?]/.test(prev) || prev === "\n") return 0;
+  if (/[、,，]/.test(prev)) return 15;
+  if (/\s/.test(prev) || /\s/.test(next)) return 30;
+  return 100;
+}
+
+function includeFollowingWhitespace(source: string, pos: number): number {
+  let next = pos;
+  while (next < source.length && /\s/.test(source[next] ?? "")) {
+    next += 1;
+  }
+  return next;
+}
+
+function ensureNarrationFidelity(
+  sourceNarration: string,
+  scenes: UkiyoeSceneSpec[],
+): UkiyoeSceneSpec[] {
+  try {
+    assertNarrationFidelity(sourceNarration, scenes);
+    return scenes;
+  } catch {
+    const segments = splitNarrationIntoSceneSegments(
+      sourceNarration,
+      scenes.length,
+    );
+    const repaired = scenes.map((scene, i) => ({
+      ...scene,
+      narration: segments[i] ?? "",
+    }));
+    assertNarrationFidelity(sourceNarration, repaired);
+    return repaired;
+  }
 }
 
 /**
@@ -265,7 +398,7 @@ function assertNarrationFidelity(
     throw new Error(
       [
         "scene-planner が元 narration を改変・水増しした疑いがあります。",
-        "プロンプト（scene-plan-routine.md）の「ナレーション分割の絶対ルール」を確認するか、再生成してください。",
+        "プロンプト（scene-plan-routine.md / scene-plan-life.md）の「ナレーション分割の絶対ルール」を確認するか、再生成してください。",
         "",
         "違反:",
         ...violations.map((v) => `  - ${v}`),

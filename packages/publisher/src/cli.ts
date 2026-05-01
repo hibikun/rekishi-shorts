@@ -441,7 +441,13 @@ program
       const a = s.analytics;
       const base = `${chalk.bold(s.videoId)} (${ageDays}d)  views=${s.statistics.viewCount}  👍${s.statistics.likeCount}  💬${s.statistics.commentCount}`;
       if (a) {
-        log(`${base}  視聴率=${a.averageViewPercentage.toFixed(1)}%  平均=${a.averageViewDuration.toFixed(1)}s  登録+${a.subscribersGained}/-${a.subscribersLost}  shares=${a.shares}`);
+        const r = s.retention;
+        const retentionStr = r
+          ? `  swipe@3s=${r.swipeRate3s !== null ? (r.swipeRate3s * 100).toFixed(1) + "%" : "—"}  swipe@10s=${r.swipeRate10s !== null ? (r.swipeRate10s * 100).toFixed(1) + "%" : "—"}`
+          : `  ${chalk.dim(`retention: ${s.retentionError ?? "n/a"}`)}`;
+        log(
+          `${base}  視聴率=${a.averageViewPercentage.toFixed(1)}%  平均=${a.averageViewDuration.toFixed(1)}s  登録+${a.subscribersGained}/-${a.subscribersLost}  shares=${a.shares}${retentionStr}`,
+        );
       } else {
         log(`${base}  ${chalk.red(`analytics取得失敗: ${s.analyticsError ?? "unknown"}`)}`);
       }
@@ -464,7 +470,7 @@ function parseMinAge(raw: string | undefined): number | undefined {
   return m[2] === "d" ? n * 24 : n;
 }
 
-const SORT_KEYS: SortKey[] = ["views", "likeRate", "retention", "subs", "age"];
+const SORT_KEYS: SortKey[] = ["views", "likeRate", "retention", "subs", "age", "swipe"];
 
 program
   .command("summary")

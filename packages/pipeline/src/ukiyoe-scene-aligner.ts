@@ -19,6 +19,8 @@ export interface AlignUkiyoeScenesInput {
 }
 
 const DEFAULT_MIN_SCENE_DURATION_SEC = 1.5;
+const FIRST_SCENE_MAX_LEADING_CHARS = 12;
+const ANCHOR_LENGTH = 6;
 
 /**
  * Whisper の word タイムスタンプを使って、各シーンのナレーション末尾位置を求め、
@@ -48,6 +50,8 @@ export function alignUkiyoeScenes(input: AlignUkiyoeScenesInput): UkiyoeSceneTim
 
   if (words.length === 0 || totalDurationSec <= 0) return fallback();
 
+  assertSceneTranscriptOrder(words, sceneNarrations);
+
   // 各シーンのナレーション末尾の累積文字数（target）を計算
   const targets: number[] = [];
   let acc = 0;
@@ -57,7 +61,11 @@ export function alignUkiyoeScenes(input: AlignUkiyoeScenesInput): UkiyoeSceneTim
   }
 
   // words を走査して、target に到達した瞬間の word.endSec を採用
-  const sceneEndSec: (number | undefined)[] = new Array(sceneNarrations.length);
+  // 注意: new Array(n) はスパース配列になり Array.prototype.some が穴をスキップする。
+  // 未到達シーンの検出が漏れると下流で NaN を量産するので必ず undefined を埋める。
+  const sceneEndSec: (number | undefined)[] = Array.from({
+    length: sceneNarrations.length,
+  });
   let charCount = 0;
   let sceneIdx = 0;
   for (const w of words) {
@@ -91,4 +99,71 @@ export function alignUkiyoeScenes(input: AlignUkiyoeScenesInput): UkiyoeSceneTim
   }
 
   return timings;
+}
+
+export function assertSceneTranscriptOrder(
+  words: CaptionWord[],
+  sceneNarrations: string[],
+): void {
+  const transcript = normalizeForOrder(words.map((w) => w.text).join(""));
+  const scenes = sceneNarrations.map(normalizeForOrder).filter((s) => s.length > 0);
+  if (transcript.length === 0 || scenes.length === 0) return;
+
+  const firstStart = findSceneStart(transcript, scenes[0]!, 0);
+  if (firstStart === null) {
+    throw new Error(
+      "ASR transcript does not follow script order: first scene narration was not found near the beginning. Regenerate TTS or rerun alignment.",
+    );
+  }
+  if (firstStart > FIRST_SCENE_MAX_LEADING_CHARS) {
+    throw new Error(
+      `ASR transcript does not follow script order: first scene starts after ${firstStart} transcript characters. Regenerate TTS or rerun alignment.`,
+    );
+  }
+
+  let cursor = firstStart;
+  for (let i = 1; i < scenes.length; i += 1) {
+    const start = findSceneStart(transcript, scenes[i]!, cursor);
+    if (start === null) {
+      throw new Error(
+        `ASR transcript does not follow script order: scene[${i}] narration was not found after scene[${i - 1}]. Regenerate TTS or rerun alignment.`,
+      );
+    }
+    if (start < cursor) {
+      throw new Error(
+        `ASR transcript does not follow script order: scene[${i}] appears before the previous scene. Regenerate TTS or rerun alignment.`,
+      );
+    }
+    cursor = start;
+  }
+}
+
+function findSceneStart(
+  transcript: string,
+  scene: string,
+  fromIndex: number,
+): number | null {
+  const anchors = buildAnchors(scene);
+  let best: number | null = null;
+  for (const anchor of anchors) {
+    const pos = transcript.indexOf(anchor, fromIndex);
+    if (pos === -1) continue;
+    if (best === null || pos < best) best = pos;
+  }
+  return best;
+}
+
+function buildAnchors(scene: string): string[] {
+  if (scene.length <= ANCHOR_LENGTH) return [scene];
+  const anchors: string[] = [];
+  for (let i = 0; i <= scene.length - ANCHOR_LENGTH; i += 1) {
+    anchors.push(scene.slice(i, i + ANCHOR_LENGTH));
+  }
+  return anchors;
+}
+
+function normalizeForOrder(text: string): string {
+  return text
+    .normalize("NFKC")
+    .replace(/[、。！？!?…‥・「」『』（）()［］\[\]【】"'“”‘’\s]/g, "");
 }

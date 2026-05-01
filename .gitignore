@@ -61,5 +61,9 @@ packages/channels/*/assets/audio/
 packages/channels/manabilab-canva/jobs/*
 !packages/channels/manabilab-canva/jobs/.gitkeep
 
+# self-motivation のジョブ作業ディレクトリは各自ローカルに保管（生成物のみ）
+packages/channels/self-motivation/jobs/*
+!packages/channels/self-motivation/jobs/.gitkeep
+
 # ローカルプレビュー用（モーションショーケース等の試作出力）
 data/previews/

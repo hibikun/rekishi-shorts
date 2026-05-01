@@ -15,6 +15,7 @@ import { ScriptStep } from "./steps/ScriptStep";
 import { ScenesStep } from "./steps/ScenesStep";
 import { ImagesStep } from "./steps/ImagesStep";
 import { TTSStep } from "./steps/TTSStep";
+import { ExportStep } from "./steps/ExportStep";
 
 interface Props {
   initialJob: ManabilabCanvaJob;
@@ -113,17 +114,10 @@ export function CanvaWizard({
             onAdvance={() => advance("export")}
           />
         )}
-        {currentStep === "export" && <UpcomingPlaceholder label="Export" />}
+        {currentStep === "export" && (
+          <ExportStep job={job} scenes={scenes} onJobChange={setJob} />
+        )}
       </section>
-    </div>
-  );
-}
-
-function UpcomingPlaceholder({ label }: { label: string }) {
-  return (
-    <div style={{ textAlign: "center", padding: 32, color: "var(--muted)" }}>
-      <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>{label} ステップ</div>
-      <p style={{ fontSize: 13 }}>このステップは Phase 2 以降で実装予定です。</p>
     </div>
   );
 }

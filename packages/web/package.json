@@ -14,10 +14,13 @@
   "dependencies": {
     "@google/genai": "^1.50.1",
     "@rekishi/pipeline": "workspace:*",
+    "@rekishi/publisher": "workspace:*",
     "@rekishi/shared": "workspace:*",
+    "@remotion/player": "^4.0.446",
     "next": "^15.0.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "remotion": "^4.0.446"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

@@ -12,8 +12,10 @@ const STYLE_SUFFIX =
   "Avoid photorealism.";
 
 // Lite は camera_fixed パラメータを受け付けないので、prompt 側で意図を伝える。
-const CAMERA_FIXED_HINT = "Camera locked, no panning or zoom.";
-const CAMERA_DYNAMIC_HINT = "Camera follows the motion subtly.";
+const CAMERA_FIXED_HINT =
+  "Keep the camera mostly steady, but allow strong character, prop, cloth, smoke, water, and background motion inside the frame.";
+const CAMERA_DYNAMIC_HINT =
+  "Camera tracks the subject with energetic parallax, slight handheld shake, and strong foreground-background motion.";
 
 export type UkiyoeActionTag =
   | "running_forward"
@@ -35,22 +37,22 @@ interface ActionTagDef {
 const ACTION_TAG_PROMPTS: Record<UkiyoeActionTag, ActionTagDef> = {
   running_forward: {
     prompt:
-      "The figure runs forward dynamically, legs alternating in rapid stride, hair and clothes streaming behind, dust kicked up at the heels.",
+      "The figure rushes across the scene with fast alternating strides, arms pumping, hair and clothes streaming behind, dust kicked up at the heels. Background people, banners, and street details slide past with strong motion.",
     cameraFixed: false,
   },
   eating_meal: {
     prompt:
-      "The figure brings food to the mouth slowly, chews, occasional small movements of hands and head.",
-    cameraFixed: true,
+      "The figure actively prepares, serves, and eats food with quick hand motions, lifting ingredients, setting plates down, and bringing food to the mouth. Steam curls upward, sleeves swing, and nearby tools shift from the repeated movement.",
+    cameraFixed: false,
   },
   drawing_sword: {
     prompt:
-      "The warrior pulls a sword from its sheath in one swift motion, cape and clothing flare outward, sleeves snap with the motion.",
+      "The warrior pulls a sword from its sheath in one swift motion, then follows through with a sharp stance change. Cape and clothing flare outward, sleeves snap with the motion, dust and loose paper scatter around the feet.",
     cameraFixed: false,
   },
   walking_carrying: {
     prompt:
-      "The figure walks forward steadily carrying a load on the shoulder, the load sways slightly with each step, sleeves and hem move with the gait.",
+      "The figure hurries forward with a clear destination, carrying a load on the shoulder or in both hands. The load swings with each step, sleeves and hem whip with the gait, and passersby or market objects move aside as the figure advances.",
     cameraFixed: false,
   },
   sleeping: {
@@ -60,13 +62,13 @@ const ACTION_TAG_PROMPTS: Record<UkiyoeActionTag, ActionTagDef> = {
   },
   crowd_cheering: {
     prompt:
-      "A crowd of people cheers in waves, hands raised and waving, banners and flags flutter in the wind, dust rises from many feet.",
-    cameraFixed: true,
+      "A crowd of people cheers in waves, bodies surging forward and backward, hands raised and waving. Banners and flags whip hard in the wind, dust rises from many feet, and foreground figures cross the scene.",
+    cameraFixed: false,
   },
   weather_dynamic: {
     prompt:
-      "Rain falls diagonally in heavy sheets, lightning flashes across the sky, banners and foliage whip in the strong wind, cloth and hair are buffeted.",
-    cameraFixed: true,
+      "Rain falls diagonally in heavy sheets, lightning flashes across the sky, banners and foliage whip in the strong wind, cloth and hair are buffeted. People brace themselves, stumble forward, or pull garments tight against the storm.",
+    cameraFixed: false,
   },
   still_subtle: {
     prompt:

@@ -1,5 +1,6 @@
 import { bundle } from "@remotion/bundler";
 import { renderMedia, selectComposition } from "@remotion/renderer";
+export { buildLongformCaptionSegments } from "./longform-captions.js";
 // budoux は CJS/ESM interop で tsx subprocess 実行時に named import が
 // 解決できないことがあるため namespace import を使う。どちらの形式でもアクセスできる。
 import * as budouxNs from "budoux";
@@ -7,12 +8,15 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  LONGFORM_VIDEO_FPS,
   UKIYOE_VIDEO_FPS,
   VIDEO_FPS,
   type CaptionSegment,
   type MotionGrammar,
   type RankingPlan,
   type RenderPlan,
+  type SelfMotivationScene,
+  type SelfMotivationScript,
   type UkiyoePlan,
 } from "@rekishi/shared";
 
@@ -546,4 +550,130 @@ export async function renderManabilabShort(opts: {
     },
   });
   process.stdout.write("\n");
+}
+
+// ============================================================================
+// SelfMotivation longform renderer (16:9 / 1920×1080)
+// ============================================================================
+
+export interface RenderSelfMotivationOptions {
+  /** 完成 mp4 の絶対パス */
+  outputPath: string;
+  /** Scene 配列 + 画像（と任意で動画）の絶対パス */
+  scenes: Array<
+    SelfMotivationScene & {
+      /** 画像の絶対パス（job_dir/images/{sceneId}.png 等） */
+      imageAbsPath: string;
+      /** 動画の絶対パス（あれば。job_dir/videos/{sceneId}.mp4） */
+      videoAbsPath?: string;
+    }
+  >;
+  /** 結合済み narration wav の絶対パス（任意） */
+  audioAbsPath?: string;
+  /** BGM mp3 の絶対パス（任意） */
+  bgmAbsPath?: string;
+  /** BGM 音量 (0-1)。default 0.05 */
+  bgmVolume?: number;
+  /** 字幕セグメント */
+  captionSegments?: CaptionSegment[];
+  /** 動画全長 (秒) */
+  totalDurationSec: number;
+  /** Script から抽出するタイトル/CTA（任意） */
+  script?: Pick<SelfMotivationScript, "openingTitle" | "closingCta">;
+  /** 進捗コールバック (0..1) */
+  onProgress?: (progress: number) => void;
+}
+
+/**
+ * SelfMotivation 長尺動画を Remotion で MP4 に書き出す。
+ */
+export async function renderSelfMotivationVideo(
+  opts: RenderSelfMotivationOptions,
+): Promise<void> {
+  const bundleDir = await bundle({
+    entryPoint: getEntryPoint(),
+    webpackOverride: (c) => c,
+  });
+
+  const stagedScenes = opts.scenes.map((scene, i) => {
+    const imgExt = path.extname(scene.imageAbsPath) || ".png";
+    const stagedSrc = stageAsset(
+      scene.imageAbsPath,
+      bundleDir,
+      `sm-scene-${String(i).padStart(3, "0")}${imgExt}`,
+    );
+    const stagedVideo = scene.videoAbsPath
+      ? stageAsset(
+          scene.videoAbsPath,
+          bundleDir,
+          `sm-video-${String(i).padStart(3, "0")}${
+            path.extname(scene.videoAbsPath) || ".mp4"
+          }`,
+        )
+      : undefined;
+    return {
+      src: stagedSrc,
+      durationSec: Math.max(0.1, scene.audioDurationSec ?? 0),
+      motionPresetId: scene.motionPresetId || "auto",
+      narration: scene.narration,
+      videoSrc: stagedVideo,
+      videoDurationSec: scene.videoDurationSec,
+    };
+  });
+
+  const audioStaged = opts.audioAbsPath
+    ? stageAsset(
+        opts.audioAbsPath,
+        bundleDir,
+        `sm-narration${path.extname(opts.audioAbsPath) || ".wav"}`,
+      )
+    : "";
+
+  const bgmStaged = opts.bgmAbsPath
+    ? stageAsset(
+        opts.bgmAbsPath,
+        bundleDir,
+        `sm-bgm${path.extname(opts.bgmAbsPath) || ".mp3"}`,
+      )
+    : "";
+
+  const inputProps: Record<string, unknown> = {
+    scenes: stagedScenes,
+    audioSrc: audioStaged,
+    totalDurationSec: opts.totalDurationSec,
+    captionSegments: opts.captionSegments ?? [],
+    bgmSrc: bgmStaged,
+    bgmVolume: opts.bgmVolume ?? 0.05,
+  };
+
+  if (opts.script?.openingTitle) {
+    inputProps.openingTitle = opts.script.openingTitle;
+  }
+  if (opts.script?.closingCta) {
+    inputProps.closingCta = opts.script.closingCta;
+  }
+
+  const composition = await selectComposition({
+    serveUrl: bundleDir,
+    id: "LongformVideo",
+    inputProps,
+  });
+
+  const durationInFrames = Math.max(
+    1,
+    Math.ceil(opts.totalDurationSec * LONGFORM_VIDEO_FPS),
+  );
+
+  fs.mkdirSync(path.dirname(opts.outputPath), { recursive: true });
+
+  await renderMedia({
+    composition: { ...composition, durationInFrames },
+    serveUrl: bundleDir,
+    codec: "h264",
+    outputLocation: opts.outputPath,
+    inputProps,
+    onProgress: ({ progress }) => {
+      opts.onProgress?.(progress);
+    },
+  });
 }

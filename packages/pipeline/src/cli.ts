@@ -1323,7 +1323,6 @@ program
         era: undefined,
         subject: "歴史",
         target: "汎用",
-        format: "single",
       });
       fs.writeFileSync(paths.researchMd, research.markdown);
       console.log(chalk.green(`   saved: ${paths.researchMd}`));
