@@ -40,6 +40,7 @@ export function VideosStep({ job, scenePlan, onJobChange, onAdvance }: Props) {
   const [resolution, setResolution] = useState<"480p" | "720p">("720p");
   const [error, setError] = useState<string | null>(null);
   const [last, setLast] = useState<RunResult | null>(null);
+  const [busy, setBusy] = useState<number | null>(null);
 
   const status = job.steps.videos.status;
   const generated = job.steps.videos.generatedScenes ?? [];
@@ -66,6 +67,34 @@ export function VideosStep({ job, scenePlan, onJobChange, onAdvance }: Props) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setRunning(false);
+    }
+  };
+
+  const regenOne = async (index: number) => {
+    setBusy(index);
+    setError(null);
+    try {
+      const res = await fetch(`/api/ukiyoe-studio/${job.id}/videos/run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sceneIndices: [index],
+          force: true,
+          resolution,
+          dryRun: false,
+        }),
+      });
+      const data = (await res.json()) as RunResult;
+      setLast(data);
+      if (!data.ok || !data.job) {
+        setError(data.error ?? "個別生成に失敗しました");
+        return;
+      }
+      onJobChange(data.job);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(null);
     }
   };
 
@@ -205,6 +234,35 @@ export function VideosStep({ job, scenePlan, onJobChange, onAdvance }: Props) {
                     未生成
                   </div>
                 )}
+                <div
+                  style={{
+                    fontSize: 10,
+                    color: "var(--muted)",
+                    marginTop: 4,
+                    lineHeight: 1.3,
+                  }}
+                >
+                  {s.narration}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => regenOne(s.index)}
+                  disabled={busy !== null || running}
+                  style={{
+                    marginTop: 6,
+                    width: "100%",
+                    padding: "4px 8px",
+                    fontSize: 11,
+                    border: "1px solid var(--border)",
+                    borderRadius: 4,
+                    background: "transparent",
+                    cursor:
+                      busy === s.index || running ? "not-allowed" : "pointer",
+                  }}
+                  title={`scene[${s.index}] のみ Seedance で再生成（${resolution}）`}
+                >
+                  {busy === s.index ? "生成中..." : "このシーンだけ再生成"}
+                </button>
               </li>
             );
           })}
